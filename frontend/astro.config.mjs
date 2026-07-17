@@ -11,11 +11,6 @@ export default defineConfig({
 
   vite: {
     plugins: [tailwindcss()],
-    server: {
-      proxy: {
-        "/api": "http://localhost:8000",
-      },
-    },
   },
 
   output: "server"

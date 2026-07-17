@@ -1,4 +1,4 @@
-const BASE = "/api/v1";
+import { API_BASE } from "./config";
 
 export interface Patch {
   id: string;
@@ -31,13 +31,13 @@ export async function listPatches(
 ): Promise<Patch[]> {
   const params = new URLSearchParams({ page: String(page) });
   if (status) params.set("status", status);
-  const res = await fetch(`${BASE}/patches?${params}`, { credentials: "include" });
+  const res = await fetch(`${API_BASE}/patches?${params}`, { credentials: "include" });
   if (!res.ok) throw new Error("Failed to load patches");
   return res.json();
 }
 
 export async function getPatch(id: string): Promise<Patch> {
-  const res = await fetch(`${BASE}/patches/${id}`, { credentials: "include" });
+  const res = await fetch(`${API_BASE}/patches/${id}`, { credentials: "include" });
   if (!res.ok) throw new Error("Patch not found");
   return res.json();
 }
@@ -47,7 +47,7 @@ export async function createPatch(data: {
   content: string;
   pr_number: number;
 }): Promise<Patch> {
-  const res = await fetch(`${BASE}/patches`, {
+  const res = await fetch(`${API_BASE}/patches`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -58,7 +58,7 @@ export async function createPatch(data: {
 }
 
 export async function deletePatch(id: string): Promise<void> {
-  const res = await fetch(`${BASE}/patches/${id}`, {
+  const res = await fetch(`${API_BASE}/patches/${id}`, {
     method: "DELETE",
     credentials: "include",
   });
@@ -66,7 +66,7 @@ export async function deletePatch(id: string): Promise<void> {
 }
 
 export async function submitPatch(id: string): Promise<Patch> {
-  const res = await fetch(`${BASE}/patches/${id}/submit`, {
+  const res = await fetch(`${API_BASE}/patches/${id}/submit`, {
     method: "POST",
     credentials: "include",
   });
@@ -78,7 +78,7 @@ export async function votePatch(
   patchId: string,
   choice: string,
 ): Promise<Vote> {
-  const res = await fetch(`${BASE}/patches/${patchId}/vote`, {
+  const res = await fetch(`${API_BASE}/patches/${patchId}/vote`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ choice }),
@@ -89,7 +89,7 @@ export async function votePatch(
 }
 
 export async function listVotes(patchId: string): Promise<Vote[]> {
-  const res = await fetch(`${BASE}/patches/${patchId}/votes`, {
+  const res = await fetch(`${API_BASE}/patches/${patchId}/votes`, {
     credentials: "include",
   });
   if (!res.ok) throw new Error("Failed to load votes");
