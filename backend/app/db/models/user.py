@@ -1,3 +1,4 @@
+from sqlalchemy import String
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -11,7 +12,8 @@ from app.db.base import Base
 from app.db import get_session
 
 class User(SQLAlchemyBaseUserTableUUID, Base):
-    pass
+    username: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
+    nickname: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
 
 async def get_user_db(session: AsyncSession = Depends(get_session)):

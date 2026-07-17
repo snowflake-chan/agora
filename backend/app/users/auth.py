@@ -1,3 +1,5 @@
+from sqlalchemy import select
+
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi_users.authentication import Strategy
 from fastapi_users.password import PasswordHelper
@@ -22,12 +24,19 @@ async def register(
     if existing:
         raise HTTPException(status_code=409, detail="REGISTER_EMAIL_TAKEN")
 
+    existing_username = await user_db.session.execute(
+        select(User).where(User.username == data.username)
+    )
+    if existing_username.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="REGISTER_USERNAME_TAKEN")
+
     if len(data.password) < 8:
         raise HTTPException(status_code=422, detail="REGISTER_PASSWORD_TOO_SHORT")
 
     user: User = await user_db.create(
         {
             "email": data.email,
+            "username": data.username,
             "hashed_password": password_helper.hash(data.password),
             "is_active": True,
             "is_superuser": False,

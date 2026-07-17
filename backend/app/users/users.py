@@ -1,3 +1,5 @@
+from sqlalchemy import select
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi_users.password import PasswordHelper
 
@@ -21,7 +23,7 @@ async def update_me(
     user_db=Depends(get_user_db),
     user: User = Depends(current_user),
 ) -> UserRead:
-    """Update the currently authenticated user's email or password."""
+    """Update the currently authenticated user's profile."""
     update_dict = data.model_dump(exclude_unset=True, exclude_none=True)
 
     if not update_dict:
@@ -38,6 +40,13 @@ async def update_me(
         existing = await user_db.get_by_email(update_dict["email"])
         if existing:
             raise HTTPException(status_code=409, detail="UPDATE_EMAIL_TAKEN")
+
+    if "username" in update_dict and update_dict["username"] != user.username:
+        existing = await user_db.session.execute(
+            select(User).where(User.username == update_dict["username"])
+        )
+        if existing.scalar_one_or_none():
+            raise HTTPException(status_code=409, detail="UPDATE_USERNAME_TAKEN")
 
     updated_user: User = await user_db.update(user, update_dict)
     return UserRead.model_validate(updated_user)

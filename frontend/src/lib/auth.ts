@@ -3,6 +3,8 @@ const BASE = "/api/v1";
 export interface User {
   id: string;
   email: string;
+  username: string;
+  nickname: string | null;
   is_active: boolean;
 }
 
@@ -27,11 +29,11 @@ export async function login(email: string, password: string): Promise<User> {
   return res.json();
 }
 
-export async function register(email: string, password: string): Promise<User> {
+export async function register(email: string, username: string, password: string): Promise<User> {
   const res = await fetch(`${BASE}/auth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, username, password }),
     credentials: "include",
   });
   if (!res.ok) throw new ApiError((await res.json()).detail);

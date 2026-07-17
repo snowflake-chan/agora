@@ -3,12 +3,14 @@
   import { toaster } from "../../stores/toaster";
 
   let email = "";
+  let username = "";
   let password = "";
   let confirmPassword = "";
   let loading = false;
 
   const ERROR_MAP: Record<string, string> = {
     REGISTER_EMAIL_TAKEN: "该邮箱已被注册",
+    REGISTER_USERNAME_TAKEN: "该用户名已被使用",
     REGISTER_PASSWORD_TOO_SHORT: "密码至少需要 8 位",
   };
 
@@ -19,7 +21,7 @@
     }
     loading = true;
     try {
-      await register(email, password);
+      await register(email, username, password);
       window.location.href = "/";
     } catch (e: any) {
       toaster.error({
@@ -33,6 +35,18 @@
 </script>
 
 <form on:submit|preventDefault={handleSubmit} class="flex flex-col gap-5">
+  <label class="label">
+    <span class="label-text">用户名</span>
+    <input
+      type="text"
+      bind:value={username}
+      class="input placeholder:text-surface-400"
+      placeholder="your_username"
+      required
+      minlength={3}
+    />
+  </label>
+
   <label class="label">
     <span class="label-text">邮箱</span>
     <input
