@@ -1,0 +1,16 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import PostDetail from "../../components/posts/PostDetail.svelte";
+
+export async function getStaticPaths() {
+  return [{ params: { id: "placeholder" } }];
+}
+
+const { id } = Astro.params;
+---
+
+<Layout>
+  <main class="mx-auto max-w-3xl px-4 py-8">
+    <PostDetail postId={id!} client:load />
+  </main>
+</Layout>

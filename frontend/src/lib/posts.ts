@@ -1,0 +1,66 @@
+import type { User } from "./auth";
+
+const BASE = "/api/v1";
+
+export interface Post {
+  id: string;
+  title: string;
+  content: string;
+  author_id: string;
+  tags: string[] | null;
+  author_username: string | null;
+  reply_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Comment {
+  id: string;
+  content: string;
+  author_id: string;
+  parent_id: string;
+  replying_id: string | null;
+  author_username: string | null;
+  replying_to_username: string | null;
+  created_at: string;
+}
+
+export async function listPosts(page = 1): Promise<Post[]> {
+  const res = await fetch(`${BASE}/posts?page=${page}`, { credentials: "include" });
+  if (!res.ok) throw new Error("Failed to load posts");
+  return res.json();
+}
+
+export async function getPost(id: string): Promise<Post> {
+  const res = await fetch(`${BASE}/posts/${id}`, { credentials: "include" });
+  if (!res.ok) throw new Error("Post not found");
+  return res.json();
+}
+
+export async function createPost(data: { title: string; content: string; tags?: string[] }): Promise<Post> {
+  const res = await fetch(`${BASE}/posts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error((await res.json()).detail);
+  return res.json();
+}
+
+export async function listComments(postId: string): Promise<Comment[]> {
+  const res = await fetch(`${BASE}/posts/${postId}/comments`, { credentials: "include" });
+  if (!res.ok) throw new Error("Failed to load comments");
+  return res.json();
+}
+
+export async function createComment(postId: string, data: { content: string; replying_id?: string }): Promise<Comment> {
+  const res = await fetch(`${BASE}/posts/${postId}/comments`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error((await res.json()).detail);
+  return res.json();
+}
