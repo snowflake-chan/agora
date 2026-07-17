@@ -16,6 +16,9 @@ class Patch(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     pr_number: Mapped[int] = mapped_column(nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft")
+    voting_ends_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
     author_id: Mapped[UUID] = mapped_column(
         ForeignKey("user.id", ondelete="CASCADE"), index=True, nullable=False
     )

@@ -8,6 +8,7 @@ export interface Patch {
   status: string;
   author_id: string;
   author_username: string | null;
+  voting_ends_at: string | null;
   for_count: number;
   against_count: number;
   abstain_count: number;
@@ -66,15 +67,6 @@ export async function deletePatch(id: string): Promise<void> {
 
 export async function submitPatch(id: string): Promise<Patch> {
   const res = await fetch(`${BASE}/patches/${id}/submit`, {
-    method: "POST",
-    credentials: "include",
-  });
-  if (!res.ok) throw new Error((await res.json()).detail);
-  return res.json();
-}
-
-export async function closePatch(id: string): Promise<Patch> {
-  const res = await fetch(`${BASE}/patches/${id}/close`, {
     method: "POST",
     credentials: "include",
   });

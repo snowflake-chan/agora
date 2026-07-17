@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { marked } from "marked";
-  import { getPatch, deletePatch, submitPatch, closePatch, votePatch, listVotes, type Patch, type Vote } from "../../lib/patches";
+  import { getPatch, deletePatch, submitPatch, votePatch, listVotes, type Patch, type Vote } from "../../lib/patches";
   import { toaster } from "../../stores/toaster";
   import { currentUser } from "../../stores/auth";
   import AuthorMeta from "../AuthorMeta.svelte";
@@ -18,7 +18,6 @@
   let showVoteDialog = false;
   let pendingChoice = "";
   let showDeleteDialog = false;
-  let showCloseDialog = false;
 
   const STATUS_MAP: Record<string, { label: string; cls: string }> = {
     draft: { label: "草稿", cls: "bg-surface-300 text-surface-700" },
@@ -30,6 +29,18 @@
   };
 
   $: statusInfo = patch ? STATUS_MAP[patch.status] ?? { label: patch.status, cls: "" } : { label: "", cls: "" };
+  $: deadlineStr = patch?.voting_ends_at ? formatDeadline(patch.voting_ends_at) : null;
+
+  function formatDeadline(iso: string): string {
+    const end = new Date(iso);
+    const now = new Date();
+    const diff = end.getTime() - now.getTime();
+    if (diff <= 0) return "已截止";
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(hours / 24);
+    if (days > 0) return `剩余 ${days} 天 ${hours % 24} 小时`;
+    return `剩余 ${hours} 小时`;
+  }
 
   onMount(async () => {
     try {
@@ -57,24 +68,9 @@
   async function handleSubmit() {
     try {
       patch = await submitPatch(patchId);
-      toaster.success({ title: "已提交投票" });
+      toaster.success({ title: "已提交投票", description: "窗口期 3 天" });
     } catch (e: any) {
       toaster.error({ title: "提交失败", description: e.message ?? "" });
-    }
-  }
-
-  async function handleClose() {
-    try {
-      patch = await closePatch(patchId);
-      if (patch.status === "merged") {
-        toaster.success({ title: "投票通过，PR 已自动合并！" });
-      } else if (patch.status === "failed") {
-        toaster.error({ title: "合并失败", description: "PR 可能已冲突或关闭，请手动处理" });
-      } else {
-        toaster.info({ title: patch.status === "rejected" ? "投票未通过" : "投票已结束" });
-      }
-    } catch (e: any) {
-      toaster.error({ title: "操作失败", description: e.message ?? "" });
     }
   }
 
@@ -87,9 +83,7 @@
     try {
       const v = await votePatch(patchId, pendingChoice);
       currentUserVote = v;
-      // Update vote in list
       votes = [...votes.filter((v) => v.voter_id !== $currentUser?.id), v];
-      // Refresh patch to get updated counts
       patch = await getPatch(patchId);
       toaster.success({ title: "投票成功" });
     } catch (e: any) {
@@ -114,6 +108,9 @@
       <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium {statusInfo.cls}">
         {statusInfo.label}
       </span>
+      {#if patch.status === "voting" && deadlineStr}
+        <span class="text-xs text-surface-500">{deadlineStr}</span>
+      {/if}
       <a
         href="https://github.com/{patch.pr_number}"
         target="_blank"
@@ -139,6 +136,10 @@
   {#if patch.status === "voting"}
     <div class="mb-8 rounded-md border border-surface-200-800 bg-surface p-4">
       <h3 class="mb-3 text-sm font-semibold text-surface-900-100">投票</h3>
+
+      {#if deadlineStr && deadlineStr !== "已截止"}
+        <p class="mb-3 text-xs text-surface-500">{deadlineStr}，截止后自动计票</p>
+      {/if}
 
       <!-- Vote bars -->
       <div class="mb-4 flex h-2 overflow-hidden rounded-full bg-surface-200">
@@ -191,7 +192,7 @@
     </div>
   {/if}
 
-  <!-- Results panel (passed/rejected/merged/failed) -->
+  <!-- Results panel -->
   {#if patch.status === "merged" || patch.status === "rejected" || patch.status === "failed" || patch.status === "passed"}
     <div class="mb-8 rounded-md border border-surface-200-800 bg-surface p-4">
       <h3 class="mb-3 text-sm font-semibold text-surface-900-100">
@@ -215,11 +216,6 @@
         </button>
         <button class="btn preset-filled-error-500 text-sm" on:click={() => (showDeleteDialog = true)}>
           删除
-        </button>
-      {/if}
-      {#if patch.status === "voting"}
-        <button class="btn preset-filled-warning-500 text-sm" on:click={() => (showCloseDialog = true)}>
-          结束投票
         </button>
       {/if}
     </div>
@@ -250,14 +246,6 @@
   description="确认删除这个变更？此操作不可撤销。"
   confirmText="删除"
   onConfirm={handleDelete}
-/>
-
-<ConfirmDialog
-  bind:open={showCloseDialog}
-  title="结束投票"
-  description="结束投票后，系统将自动计票。若赞成超过半数则自动合并 PR。"
-  confirmText="结束投票"
-  onConfirm={handleClose}
 />
 
 <ConfirmDialog

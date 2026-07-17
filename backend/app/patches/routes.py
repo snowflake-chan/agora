@@ -1,4 +1,4 @@
-from math import ceil
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
@@ -18,6 +18,8 @@ from app.patches.github import merge_pr
 from app.users.deps import current_user
 
 router = APIRouter()
+
+VOTING_PERIOD_DAYS = 3
 
 
 # ── Helpers ──
@@ -40,6 +42,38 @@ async def _get_vote_counts(
     return counts
 
 
+async def _tally_and_merge(
+    session: AsyncSession, patch: PatchModel
+) -> bool:
+    """Tally votes and merge if passed. Returns True if status changed."""
+    counts = await _get_vote_counts(session, str(patch.id))
+    total = counts["for"] + counts["against"] + counts["abstain"]
+
+    if total > 0 and counts["for"] > total / 2:
+        patch.status = "passed"
+        await session.commit()
+        try:
+            await merge_pr(patch.pr_number)
+            patch.status = "merged"
+        except Exception:
+            patch.status = "failed"
+    else:
+        patch.status = "rejected"
+
+    await session.commit()
+    return True
+
+
+async def _auto_tally(session: AsyncSession, patch: PatchModel) -> bool:
+    """If voting period has ended, tally and merge. Returns True if status changed."""
+    if patch.status != "voting" or not patch.voting_ends_at:
+        return False
+    if patch.voting_ends_at > datetime.now(patch.voting_ends_at.tzinfo):
+        return False
+    await _tally_and_merge(session, patch)
+    return True
+
+
 def _patch_to_read(patch: PatchModel, counts: dict[str, int] | None = None) -> PatchRead:
     c = counts or {"for": 0, "against": 0, "abstain": 0}
     return PatchRead(
@@ -50,6 +84,7 @@ def _patch_to_read(patch: PatchModel, counts: dict[str, int] | None = None) -> P
         status=patch.status,
         author_id=patch.author_id,
         author_username=patch.author.username,
+        voting_ends_at=patch.voting_ends_at,
         for_count=c["for"],
         against_count=c["against"],
         abstain_count=c["abstain"],
@@ -89,7 +124,11 @@ async def list_patches(
     result = await session.execute(stmt)
     patches = result.scalars().all()
 
-    # Get vote counts for all fetched patches
+    # Auto-tally any stale voting patches
+    for p in patches:
+        await _auto_tally(session, p)
+
+    # Get vote counts
     patch_ids = [str(p.id) for p in patches]
     counts_map: dict[str, dict[str, int]] = {}
     if patch_ids:
@@ -146,12 +185,14 @@ async def get_patch(
     patch_id: str,
     session: AsyncSession = Depends(get_session),
 ):
-    """Get a single patch."""
+    """Get a single patch. Auto-tallies if voting period has ended."""
     stmt = select(PatchModel).where(PatchModel.id == patch_id)
     result = await session.execute(stmt)
     patch = result.scalar_one_or_none()
     if not patch:
         raise HTTPException(status_code=404, detail="PATCH_NOT_FOUND")
+
+    await _auto_tally(session, patch)
 
     counts = await _get_vote_counts(session, patch_id)
     return _patch_to_read(patch, counts)
@@ -184,7 +225,7 @@ async def submit_patch(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(current_user),
 ):
-    """Submit a draft patch for voting (draft → voting)."""
+    """Submit for voting with a 3-day voting period (draft → voting)."""
     stmt = select(PatchModel).where(PatchModel.id == patch_id)
     result = await session.execute(stmt)
     patch = result.scalar_one_or_none()
@@ -196,47 +237,9 @@ async def submit_patch(
         raise HTTPException(status_code=422, detail="PATCH_NOT_DRAFT")
 
     patch.status = "voting"
+    now = datetime.now(timezone.utc)
+    patch.voting_ends_at = now + timedelta(days=VOTING_PERIOD_DAYS)
     await session.commit()
-
-    counts = await _get_vote_counts(session, patch_id)
-    return _patch_to_read(patch, counts)
-
-
-@router.post("/{patch_id}/close", response_model=PatchRead)
-async def close_patch(
-    patch_id: str,
-    session: AsyncSession = Depends(get_session),
-    user: User = Depends(current_user),
-):
-    """Close voting, tally votes, and merge if passed (voting → passed/merged/rejected/failed)."""
-    stmt = select(PatchModel).where(PatchModel.id == patch_id)
-    result = await session.execute(stmt)
-    patch = result.scalar_one_or_none()
-    if not patch:
-        raise HTTPException(status_code=404, detail="PATCH_NOT_FOUND")
-    if patch.author_id != user.id:
-        raise HTTPException(status_code=403, detail="FORBIDDEN")
-    if patch.status != "voting":
-        raise HTTPException(status_code=422, detail="PATCH_NOT_VOTING")
-
-    counts = await _get_vote_counts(session, patch_id)
-    total = counts["for"] + counts["against"] + counts["abstain"]
-
-    if total > 0 and counts["for"] > total / 2:
-        # Passed — try to merge
-        patch.status = "passed"
-        await session.commit()
-
-        try:
-            await merge_pr(patch.pr_url)
-            patch.status = "merged"
-        except Exception:
-            patch.status = "failed"
-
-        await session.commit()
-    else:
-        patch.status = "rejected"
-        await session.commit()
 
     counts = await _get_vote_counts(session, patch_id)
     return _patch_to_read(patch, counts)
@@ -263,6 +266,10 @@ async def vote_patch(
         raise HTTPException(status_code=404, detail="PATCH_NOT_FOUND")
     if patch.status != "voting":
         raise HTTPException(status_code=422, detail="PATCH_NOT_VOTING")
+
+    # Reject if voting period has ended
+    if patch.voting_ends_at and patch.voting_ends_at < datetime.now(patch.voting_ends_at.tzinfo):
+        raise HTTPException(status_code=422, detail="VOTING_ALREADY_ENDED")
 
     # Upsert vote
     vote_stmt = select(VoteModel).where(
