@@ -4,7 +4,7 @@ import ToastShell from "../components/ToastShell.svelte";
 ---
 
 <!doctype html>
-<html lang="en" data-theme="wintry">
+<html lang="en" data-theme="cerberus">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width" />
@@ -12,6 +12,12 @@ import ToastShell from "../components/ToastShell.svelte";
     <link rel="icon" href="/favicon.ico" />
     <meta name="generator" content={Astro.generator} />
     <title>Agora</title>
+    <script>
+      // Restore dark mode preference before render to avoid flash
+      var m = localStorage.getItem('mode');
+      if (m === 'dark') document.documentElement.setAttribute('data-mode', 'dark');
+      else if (!m && matchMedia('(prefers-color-scheme: dark)').matches) document.documentElement.setAttribute('data-mode', 'dark');
+    </script>
   </head>
   <body>
     <slot />

@@ -1,33 +1,18 @@
 <script lang="ts">
   import type { Post } from "../../lib/posts";
+  import { stripMarkdown } from "../../lib/utils";
   import AuthorMeta from "../AuthorMeta.svelte";
 
   export let post: Post;
-
-  function stripMarkdown(md: string): string {
-    return md
-      .replace(/^#{1,6}\s+(.+)$/gm, '$1')    // strip heading markers
-      .replace(/\*\*(.+?)\*\*/g, '$1')        // bold
-      .replace(/\*(.+?)\*/g, '$1')            // italic
-      .replace(/`{1,3}.+?`{1,3}/g, (m) => m.replace(/`/g, ''))  // inline code
-      .replace(/\[(.+?)\]\(.+?\)/g, '$1')      // links
-      .replace(/!\[.*?\]\(.+?\)/g, '[图片]')   // images
-      .replace(/^[-*+]\s+/gm, '')              // unordered list markers
-      .replace(/^\d+\.\s+/gm, '')              // ordered list markers
-      .replace(/^>\s+/gm, '')                  // blockquote
-      .replace(/---+/g, '')                    // hr
-      .replace(/\n{3,}/g, '\n\n')              // collapse newlines
-      .trim();
-  }
 
   $: snippet = stripMarkdown(post.content);
 </script>
 
 <a
   href={`/posts/${post.id}`}
-  class="group block border-b border-surface-200/50 px-4 py-4 transition-colors hover:bg-surface-50"
+  class="group block border-b border-surface-200-800/50 px-4 py-4 transition-colors hover:bg-surface"
 >
-  <h2 class="text-base font-semibold text-surface-900 group-hover:text-primary-700">
+  <h2 class="text-base font-semibold text-surface-900-100 group-hover:text-primary-700">
     {post.title}
   </h2>
 
@@ -36,7 +21,7 @@
   </p>
 
   <div class="mt-2 flex items-center justify-between gap-2">
-    <div class="flex items-center gap-3 text-xs text-surface-400">
+    <div class="flex items-center gap-3 text-xs text-surface-400-600">
       {#if post.tags && post.tags.length > 0}
         <span>{post.tags.join(", ")}</span>
       {/if}

@@ -93,17 +93,17 @@
 </script>
 
 {#if loading}
-  <div class="flex justify-center py-12 text-sm text-surface-400">加载中…</div>
+  <div class="flex justify-center py-12 text-sm text-surface-400-600">加载中…</div>
 {:else if !post}
   <div class="flex justify-center py-12 text-sm text-surface-500">帖子不存在</div>
 {:else}
   <!-- Title outside timeline, aligned with cards -->
   <div class="mb-6 ml-7">
-    <h1 class="text-xl font-bold text-surface-900">{postTitle}</h1>
+    <h1 class="text-xl font-bold text-surface-900-100">{postTitle}</h1>
     {#if postTags && postTags.length > 0}
       <div class="mt-2 flex flex-wrap gap-2">
         {#each postTags as tag}
-          <span class="rounded-full bg-surface-100 px-2.5 py-0.5 text-xs text-surface-600">{tag}</span>
+          <span class="rounded-full bg-surface-100-900 px-2.5 py-0.5 text-xs text-surface-600-400">{tag}</span>
         {/each}
       </div>
     {/if}
@@ -111,7 +111,7 @@
 
   <div class="relative">
     <!-- Continuous timeline line behind all cards -->
-    <div class="absolute left-[36px] inset-y-0 w-0.5 bg-surface-100"></div>
+    <div class="absolute left-[36px] inset-y-0 w-0.5 bg-surface-100-900"></div>
 
     <div>
       {#each items as item, i (item.key)}
@@ -132,12 +132,12 @@
       {#if replyingTo}
         <div class="mb-2 flex items-center gap-2 text-xs text-surface-500">
           <span>回复 <span class="font-medium text-primary-600">@{replyingTo.author_username}</span></span>
-          <button class="text-surface-400 hover:text-surface-600" on:click={cancelReply}>取消</button>
+          <button class="text-surface-400-600 hover:text-surface-600-400" on:click={cancelReply}>取消</button>
         </div>
       {/if}
       <div class="flex gap-3">
         <div
-          class="mt-1 flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-200 text-[10px] font-bold text-surface-600"
+          class="mt-1 flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-200-800 text-[10px] font-bold text-surface-600-400"
         >
           {($currentUser.username ?? "?")[0].toUpperCase()}
         </div>

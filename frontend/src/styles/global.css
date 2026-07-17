@@ -1,9 +1,23 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/forms";
+
+@utility bg-surface {
+  background-color: var(--color-surface-50);
+  @variant dark {
+    background-color: var(--color-surface-950);
+  }
+}
 @import "@skeletonlabs/skeleton-svelte";
 @import "@skeletonlabs/skeleton";
-@import "@skeletonlabs/skeleton/themes/wintry";
+@import "@skeletonlabs/skeleton/themes/cerberus";
 @import "./markdown.css";
+
+/* Dark mode based on data-mode attribute */
+@custom-variant dark (&:where([data-mode="dark"], [data-mode="dark"] *));
+
+/* Set color-scheme so light-dark() CSS function works correctly */
+[data-mode="dark"] { color-scheme: dark; }
+[data-mode="light"] { color-scheme: light; }
 
 /* Suppress default blue focus ring — Skeleton uses its own */
 *:focus {

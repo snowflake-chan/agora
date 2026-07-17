@@ -21,7 +21,7 @@
   }
 </script>
 
-<div class="flex h-dvh flex-col bg-white">
+<div class="flex h-dvh flex-col bg-surface">
   <!-- Top bar -->
   <div class="flex items-center gap-3 border-b border-surface-200 px-6 py-3">
     <input
@@ -44,7 +44,7 @@
     <!-- Editor -->
     <textarea
       bind:value={content}
-      class="w-1/2 resize-none border-0 border-r border-surface-200 bg-white px-6 py-5 font-mono text-sm leading-relaxed placeholder:text-surface-300 focus:ring-0"
+      class="w-1/2 resize-none border-0 border-r border-surface-200 bg-surface px-6 py-5 font-mono text-sm leading-relaxed placeholder:text-surface-300 focus:ring-0"
       placeholder="支持 Markdown 语法"
     ></textarea>
 

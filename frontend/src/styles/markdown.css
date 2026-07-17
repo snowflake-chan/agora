@@ -30,7 +30,7 @@
 .markdown-body ol { list-style-type: decimal; }
 .markdown-body li { margin-bottom: 0.375rem; }
 .markdown-body blockquote {
-  border-left: 3px solid var(--color-surface-300);
+  border-left: 3px solid var(--color-surface-300-700);
   padding: 0.5rem 1rem;
   margin-bottom: 1rem;
   color: var(--color-surface-500);
@@ -38,13 +38,13 @@
 }
 .markdown-body code {
   border-radius: 0.25rem;
-  background: var(--color-surface-100);
+  background: var(--color-surface-100-900);
   padding: 0.125rem 0.375rem;
   font-size: 0.75rem;
 }
 .markdown-body pre {
   border-radius: 0.375rem;
-  background: var(--color-surface-100);
+  background: var(--color-surface-100-900);
   padding: 1rem;
   margin-bottom: 1rem;
   overflow-x: auto;
@@ -56,7 +56,7 @@
 .markdown-body hr {
   margin: 1.5rem 0;
   border: none;
-  border-top: 1px solid var(--color-surface-200);
+  border-top: 1px solid var(--color-surface-200-800);
 }
 .markdown-body a {
   color: var(--color-primary-600);

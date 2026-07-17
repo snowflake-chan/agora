@@ -1,12 +1,26 @@
 <script lang="ts">
-  import { MenuIcon, SearchIcon, LogOutIcon } from "@lucide/svelte";
+  import { MenuIcon, SearchIcon, LogOutIcon, Sun, Moon } from "@lucide/svelte";
   import { AppBar, Avatar, Menu } from "@skeletonlabs/skeleton-svelte";
   import { onMount } from "svelte";
   import { initAuth, currentUser, logout } from "../stores/auth";
 
+  let darkMode = false;
+
   onMount(() => {
     initAuth();
+    const saved = localStorage.getItem("mode");
+    if (saved === "dark" || (saved !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches)) {
+      document.documentElement.setAttribute("data-mode", "dark");
+      darkMode = true;
+    }
   });
+
+  function toggleMode() {
+    const next = darkMode ? "light" : "dark";
+    document.documentElement.setAttribute("data-mode", next);
+    localStorage.setItem("mode", next);
+    darkMode = !darkMode;
+  }
 
   async function handleLogout() {
     await logout();
@@ -29,6 +43,13 @@
     </AppBar.Headline>
 
     <AppBar.Trail>
+      <button type="button" class="btn-icon hover:preset-tonal" onclick={toggleMode}>
+        {#if darkMode}
+          <Sun class="size-5" />
+        {:else}
+          <Moon class="size-5" />
+        {/if}
+      </button>
       <button type="button" class="btn-icon hover:preset-tonal">
         <SearchIcon class="size-6" />
       </button>

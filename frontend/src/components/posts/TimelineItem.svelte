@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Menu } from "@skeletonlabs/skeleton-svelte";
   import { marked } from "marked";
+  import { timeAgo } from "../../lib/utils";
 
   export let username: string;
   export let createdAt: string;
@@ -9,35 +10,23 @@
   export let tags: string[] | null = null;
   export let replyingToUsername: string | null = null;
   export let onReply: (() => void) | null = null;
-
-  function timeAgo(dateStr: string): string {
-    const diff = Date.now() - new Date(dateStr).getTime();
-    const mins = Math.floor(diff / 60000);
-    if (mins < 1) return "刚刚";
-    if (mins < 60) return `${mins} 分钟前`;
-    const hours = Math.floor(mins / 60);
-    if (hours < 24) return `${hours} 小时前`;
-    const days = Math.floor(hours / 24);
-    if (days < 30) return `${days} 天前`;
-    return new Date(dateStr).toLocaleDateString("zh-CN");
-  }
 </script>
 
 <div class="relative z-10 mb-6 ml-7 markdown-container">
   <!-- Card -->
-  <div class="rounded-md border border-surface-200 bg-white">
+  <div class="rounded-md border border-surface-200-800 bg-surface">
     <!-- Header -->
-    <div class="flex items-center gap-2 rounded-t-md bg-surface-50 border-b border-surface-100 px-4 py-2">
+    <div class="flex items-center gap-2 rounded-t-md bg-surface-100-900 border-b border-surface-200-800 px-4 py-2">
       <div
-        class="flex size-5 items-center justify-center rounded-full bg-surface-300 text-[9px] font-bold text-surface-600"
+        class="flex size-5 items-center justify-center rounded-full bg-surface-300-700 text-[9px] font-bold text-surface-600-400"
       >
         {(username ?? "?")[0].toUpperCase()}
       </div>
-      <span class="text-sm font-medium text-surface-700">{username ?? "匿名"}</span>
-      <span class="text-xs text-surface-400">{timeAgo(createdAt)}</span>
+      <span class="text-sm font-medium text-surface-700-300">{username ?? "匿名"}</span>
+      <span class="text-xs text-surface-400-600">{timeAgo(createdAt)}</span>
       <div class="ml-auto">
         <Menu>
-          <Menu.Trigger class="flex size-6 items-center justify-center rounded-md text-surface-400 hover:bg-surface-200 hover:text-surface-600">
+          <Menu.Trigger class="flex size-6 items-center justify-center rounded-md text-surface-400-600 hover:bg-surface-200-800 hover:text-surface-600-400">
             <span class="text-lg leading-none">⋮</span>
           </Menu.Trigger>
           <Menu.Positioner>
@@ -68,7 +57,7 @@
       {#if tags && tags.length > 0}
         <div class="mt-3 flex flex-wrap gap-2">
           {#each tags as tag}
-            <span class="rounded-full bg-surface-100 px-2.5 py-0.5 text-xs text-surface-600">{tag}</span>
+            <span class="rounded-full bg-surface-100 px-2.5 py-0.5 text-xs text-surface-600-400">{tag}</span>
           {/each}
         </div>
       {/if}
