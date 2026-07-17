@@ -1,3 +1,14 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/forms";
 @import "@skeletonlabs/skeleton-svelte";
 @import "@skeletonlabs/skeleton";
+@import "@skeletonlabs/skeleton/themes/wintry";
+
+/* Windows bugfix: https://skeleton.dev/docs/svelte/tailwind-components/forms */
+.select,
+.input,
+.textarea,
+.input-group {
+  background-color: var(--color-surface-50-950);
+  color: var(--color-surface-950-50);
+}

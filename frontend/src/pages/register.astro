@@ -1,0 +1,19 @@
+---
+import Layout from "../layouts/Layout.astro";
+import RegisterForm from "../components/auth/RegisterForm.svelte";
+---
+
+<Layout>
+  <main
+    class="mx-auto flex min-h-dvh max-w-sm flex-col items-center justify-center px-4"
+  >
+    <h1 class="mb-1 text-3xl font-bold tracking-tight text-surface-900">
+      Agora
+    </h1>
+    <p class="mb-8 text-sm text-surface-500">创建你的账号</p>
+
+    <div class="card w-full border border-surface-200/50 bg-surface-50/50 p-6 shadow-md shadow-surface-900/5">
+      <RegisterForm client:load />
+    </div>
+  </main>
+</Layout>
