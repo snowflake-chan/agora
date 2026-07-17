@@ -41,7 +41,7 @@
             </Avatar>
           </Menu.Trigger>
           <Menu.Positioner>
-            <Menu.Content class="min-w-40">
+            <Menu.Content class="min-w-40 rounded-md">
               <div class="px-3 py-2 text-sm text-surface-500">
                 {$currentUser.nickname ?? $currentUser.username}
               </div>

@@ -3,6 +3,12 @@
 @import "@skeletonlabs/skeleton-svelte";
 @import "@skeletonlabs/skeleton";
 @import "@skeletonlabs/skeleton/themes/wintry";
+@import "./markdown.css";
+
+/* Suppress default blue focus ring — Skeleton uses its own */
+*:focus {
+  outline: none !important;
+}
 
 /* Windows bugfix: https://skeleton.dev/docs/svelte/tailwind-components/forms */
 .select,

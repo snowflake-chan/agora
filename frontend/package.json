@@ -16,6 +16,7 @@
     "@lucide/svelte": "^1.24.0",
     "@tailwindcss/vite": "^4.3.2",
     "astro": "^7.0.9",
+    "marked": "^18.0.6",
     "svelte": "^5.56.5",
     "tailwindcss": "^4.3.2",
     "typescript": "^6.0.3"

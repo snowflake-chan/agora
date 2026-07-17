@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { marked } from "marked";
   import { createPost } from "../../lib/posts";
   import { toaster } from "../../stores/toaster";
 
@@ -20,27 +21,42 @@
   }
 </script>
 
-<div class="flex gap-3">
-  <div class="flex-1">
+<div class="flex h-dvh flex-col bg-white">
+  <!-- Top bar -->
+  <div class="flex items-center gap-3 border-b border-surface-200 px-6 py-3">
     <input
       bind:value={title}
-      class="input mb-3 text-base font-semibold"
+      class="input flex-1 border-0 bg-transparent px-0 text-xl font-bold placeholder:text-surface-300 focus:ring-0"
       placeholder="标题"
     />
+    <a href="/" class="btn preset-tonal text-sm">取消</a>
+    <button
+      class="btn preset-filled-primary-500 text-sm"
+      on:click={handleSubmit}
+      disabled={submitting || !title.trim() || !content.trim()}
+    >
+      {submitting ? "发布中…" : "发布"}
+    </button>
+  </div>
+
+  <!-- Split pane -->
+  <div class="flex flex-1 overflow-hidden">
+    <!-- Editor -->
     <textarea
       bind:value={content}
-      class="input min-h-[120px] resize-y text-sm"
-      placeholder="正文（支持 Markdown）"
+      class="w-1/2 resize-none border-0 border-r border-surface-200 bg-white px-6 py-5 font-mono text-sm leading-relaxed placeholder:text-surface-300 focus:ring-0"
+      placeholder="支持 Markdown 语法"
     ></textarea>
-    <div class="mt-3 flex justify-end gap-2">
-      <a href="/" class="btn preset-tonal text-sm">取消</a>
-      <button
-        class="btn preset-filled-primary-500 text-sm"
-        on:click={handleSubmit}
-        disabled={submitting || !title.trim() || !content.trim()}
-      >
-        {submitting ? "发布中…" : "发布帖子"}
-      </button>
+
+    <!-- Preview -->
+    <div class="w-1/2 overflow-y-auto px-6 py-5">
+      {#if content.trim()}
+        {#await marked.parse(content, { breaks: true, gfm: true }) then html}
+          <div class="markdown-body">{@html html}</div>
+        {/await}
+      {:else}
+        <p class="text-sm text-surface-300">预览</p>
+      {/if}
     </div>
   </div>
 </div>

@@ -3,7 +3,7 @@
   import { getPost, listComments, createComment, type Post, type Comment } from "../../lib/posts";
   import { toaster } from "../../stores/toaster";
   import { currentUser } from "../../stores/auth";
-  import CommentItem from "./CommentItem.svelte";
+  import TimelineItem from "./TimelineItem.svelte";
 
   export let postId: string;
 
@@ -25,18 +25,6 @@
       loading = false;
     }
   });
-
-  function timeAgo(dateStr: string): string {
-    const diff = Date.now() - new Date(dateStr).getTime();
-    const mins = Math.floor(diff / 60000);
-    if (mins < 1) return "刚刚";
-    if (mins < 60) return `${mins} 分钟前`;
-    const hours = Math.floor(mins / 60);
-    if (hours < 24) return `${hours} 小时前`;
-    const days = Math.floor(hours / 24);
-    if (days < 30) return `${days} 天前`;
-    return new Date(dateStr).toLocaleDateString("zh-CN");
-  }
 
   function cancelReply() {
     replyingTo = null;
@@ -70,6 +58,38 @@
       submitting = false;
     }
   }
+
+  // Flatten post + comments into a single timeline
+  let postTitle = "";
+  let postTags: string[] | null = null;
+  let items: Array<{
+    key: string;
+    username: string;
+    createdAt: string;
+    content: string;
+    replyingToUsername: string | null;
+  }> = [];
+
+  $: if (post) {
+    postTitle = post.title;
+    postTags = post.tags;
+    items = [
+      {
+        key: post.id,
+        username: post.author_username ?? "匿名",
+        createdAt: post.created_at,
+        content: post.content,
+        replyingToUsername: null,
+      },
+      ...comments.map((c) => ({
+        key: c.id,
+        username: c.author_username ?? "匿名",
+        createdAt: c.created_at,
+        content: c.content,
+        replyingToUsername: c.replying_to_username,
+      })),
+    ];
+  }
 </script>
 
 {#if loading}
@@ -77,54 +97,38 @@
 {:else if !post}
   <div class="flex justify-center py-12 text-sm text-surface-500">帖子不存在</div>
 {:else}
-  <!-- Post header -->
-  <div class="border-b border-surface-200/50 pb-6">
-    <div class="flex items-center gap-3">
-      <div
-        class="flex size-10 items-center justify-center rounded-full bg-surface-200 text-base font-bold text-surface-600"
-      >
-        {(post.author_username ?? "?")[0].toUpperCase()}
-      </div>
-      <div>
-        <div class="font-medium text-surface-900">{post.author_username ?? "匿名"}</div>
-        <div class="text-xs text-surface-400">{timeAgo(post.created_at)}</div>
-      </div>
-    </div>
-    <h1 class="mt-3 text-xl font-bold text-surface-900">{post.title}</h1>
-    <p class="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-surface-700">{post.content}</p>
-    {#if post.tags && post.tags.length > 0}
-      <div class="mt-3 flex flex-wrap gap-2">
-        {#each post.tags as tag}
+  <!-- Title outside timeline, aligned with cards -->
+  <div class="mb-6 ml-7">
+    <h1 class="text-xl font-bold text-surface-900">{postTitle}</h1>
+    {#if postTags && postTags.length > 0}
+      <div class="mt-2 flex flex-wrap gap-2">
+        {#each postTags as tag}
           <span class="rounded-full bg-surface-100 px-2.5 py-0.5 text-xs text-surface-600">{tag}</span>
         {/each}
       </div>
     {/if}
   </div>
 
-  <!-- Comment timeline -->
-  <div class="pt-4">
-    {#if comments.length === 0}
-      <p class="py-8 text-center text-sm text-surface-400">暂无回复，来写第一条吧</p>
-    {:else}
-      {#each comments as comment, i}
-        <div class="group relative">
-          <CommentItem {comment} isLast={i === comments.length - 1 && !$currentUser} />
-          {#if $currentUser}
-            <button
-              class="absolute bottom-6 left-10 text-xs text-surface-400 opacity-0 transition-opacity hover:text-primary-600 group-hover:opacity-100"
-              on:click={() => handleReplyClick(comment)}
-            >
-              回复
-            </button>
-          {/if}
-        </div>
+  <div class="relative">
+    <!-- Continuous timeline line behind all cards -->
+    <div class="absolute left-[36px] inset-y-0 w-0.5 bg-surface-100"></div>
+
+    <div>
+      {#each items as item, i (item.key)}
+        <TimelineItem
+          username={item.username}
+          createdAt={item.createdAt}
+          content={item.content}
+          replyingToUsername={item.replyingToUsername}
+          onReply={$currentUser && i > 0 ? () => handleReplyClick(comments[i - 1]) : null}
+        />
       {/each}
-    {/if}
+    </div>
   </div>
 
   <!-- Reply form -->
   {#if $currentUser}
-    <div class="border-t border-surface-200/50 pt-4">
+    <div class="mt-4 border-t border-surface-200/50 pt-4">
       {#if replyingTo}
         <div class="mb-2 flex items-center gap-2 text-xs text-surface-500">
           <span>回复 <span class="font-medium text-primary-600">@{replyingTo.author_username}</span></span>
@@ -157,7 +161,7 @@
       </div>
     </div>
   {:else}
-    <div class="border-t border-surface-200/50 pt-4 text-center">
+    <div class="mt-4 border-t border-surface-200/50 pt-4 text-center">
       <a href="/login" class="text-sm text-primary-600 hover:text-primary-700">登录后参与回复</a>
     </div>
   {/if}

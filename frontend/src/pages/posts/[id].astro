@@ -1,5 +1,6 @@
 ---
 import Layout from "../../layouts/Layout.astro";
+import AppBar from "../../components/AppBar.svelte";
 import PostDetail from "../../components/posts/PostDetail.svelte";
 
 export async function getStaticPaths() {
@@ -10,6 +11,7 @@ const { id } = Astro.params;
 ---
 
 <Layout>
+  <AppBar client:load />
   <main class="mx-auto max-w-3xl px-4 py-8">
     <PostDetail postId={id!} client:load />
   </main>
