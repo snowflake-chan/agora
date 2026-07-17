@@ -40,6 +40,10 @@
       <a href="/" class="text-2xl font-bold no-underline text-surface-900">
         Agora
       </a>
+      <span class="mx-3 text-surface-300">/</span>
+      <a href="/patches" class="text-sm font-medium text-surface-500 hover:text-surface-700 no-underline">
+        变更
+      </a>
     </AppBar.Headline>
 
     <AppBar.Trail>

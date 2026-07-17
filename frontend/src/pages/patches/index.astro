@@ -1,0 +1,18 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import AppBar from "../../components/AppBar.svelte";
+import PatchList from "../../components/patches/PatchList.svelte";
+---
+
+<Layout>
+  <AppBar client:load />
+  <main class="mx-auto max-w-3xl px-4 py-8">
+    <div class="mb-6 flex items-center justify-between">
+      <h1 class="text-xl font-bold">变更</h1>
+      <a href="/patches/new" class="btn preset-filled-primary-500 text-sm">发起变更</a>
+    </div>
+    <div class="rounded-xl border border-surface-200-800/50 bg-surface shadow-sm overflow-hidden">
+      <PatchList client:load />
+    </div>
+  </main>
+</Layout>

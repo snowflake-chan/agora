@@ -1,9 +1,10 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { getPost, listComments, createComment, type Post, type Comment } from "../../lib/posts";
+  import { getPost, listComments, createComment, deleteContent, type Post, type Comment } from "../../lib/posts";
   import { toaster } from "../../stores/toaster";
   import { currentUser } from "../../stores/auth";
   import TimelineItem from "./TimelineItem.svelte";
+  import ConfirmDialog from "../ConfirmDialog.svelte";
 
   export let postId: string;
 
@@ -13,6 +14,10 @@
   let replyText = "";
   let replyingTo: Comment | null = null;
   let submitting = false;
+
+  let showDeleteDialog = false;
+  let pendingDelete: "post" | "comment" | null = null;
+  let pendingDeleteIndex = 0;
 
   onMount(async () => {
     try {
@@ -38,6 +43,38 @@
       const ta = document.querySelector<HTMLTextAreaElement>("#reply-textarea");
       ta?.focus();
     }, 0);
+  }
+
+  function handleDelete() {
+    pendingDelete = "post";
+    showDeleteDialog = true;
+  }
+
+  function handleDeleteComment(i: number) {
+    pendingDelete = "comment";
+    pendingDeleteIndex = i;
+    showDeleteDialog = true;
+  }
+
+  async function confirmDelete() {
+    if (pendingDelete === "post") {
+      try {
+        await deleteContent(postId);
+        window.location.href = "/";
+      } catch {
+        toaster.error({ title: "删除失败" });
+      }
+    } else if (pendingDelete === "comment") {
+      const comment = comments[pendingDeleteIndex - 1];
+      if (!comment) return;
+      try {
+        await deleteContent(comment.id);
+        comments = comments.filter((c) => c.id !== comment.id);
+        if (post) post.reply_count--;
+      } catch {
+        toaster.error({ title: "删除失败" });
+      }
+    }
   }
 
   async function handleSubmitReply() {
@@ -121,6 +158,9 @@
           content={item.content}
           replyingToUsername={item.replyingToUsername}
           onReply={$currentUser && i > 0 ? () => handleReplyClick(comments[i - 1]) : null}
+          onDelete={i === 0
+            ? ($currentUser?.id === post?.author_id ? handleDelete : null)
+            : ($currentUser?.id === comments[i - 1]?.author_id ? () => handleDeleteComment(i) : null)}
         />
       {/each}
     </div>
@@ -128,20 +168,14 @@
 
   <!-- Reply form -->
   {#if $currentUser}
-    <div class="mt-4 border-t border-surface-200/50 pt-4">
+    <div class="mt-4 ml-7 pt-4">
       {#if replyingTo}
         <div class="mb-2 flex items-center gap-2 text-xs text-surface-500">
           <span>回复 <span class="font-medium text-primary-600">@{replyingTo.author_username}</span></span>
           <button class="text-surface-400-600 hover:text-surface-600-400" on:click={cancelReply}>取消</button>
         </div>
       {/if}
-      <div class="flex gap-3">
-        <div
-          class="mt-1 flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-200-800 text-[10px] font-bold text-surface-600-400"
-        >
-          {($currentUser.username ?? "?")[0].toUpperCase()}
-        </div>
-        <div class="flex-1">
+      <div class="flex-1">
           <textarea
             id="reply-textarea"
             bind:value={replyText}
@@ -157,12 +191,19 @@
               {submitting ? "发送中…" : "回复"}
             </button>
           </div>
-        </div>
       </div>
     </div>
   {:else}
-    <div class="mt-4 border-t border-surface-200/50 pt-4 text-center">
+    <div class="mt-4 ml-7 border-t border-surface-200/50 pt-4 text-center">
       <a href="/login" class="text-sm text-primary-600 hover:text-primary-700">登录后参与回复</a>
     </div>
   {/if}
 {/if}
+
+<ConfirmDialog
+  bind:open={showDeleteDialog}
+  title={pendingDelete === "post" ? "删除帖子" : "删除回复"}
+  description={pendingDelete === "post" ? "确认要删除这个帖子？此操作不可撤销。" : "确认要删除这条回复？此操作不可撤销。"}
+  confirmText="删除"
+  onConfirm={confirmDelete}
+/>

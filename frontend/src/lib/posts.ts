@@ -54,6 +54,11 @@ export async function listComments(postId: string): Promise<Comment[]> {
   return res.json();
 }
 
+export async function deleteContent(id: string): Promise<void> {
+  const res = await fetch(`${BASE}/posts/${id}`, { method: "DELETE", credentials: "include" });
+  if (!res.ok && res.status !== 204) throw new Error("删除失败");
+}
+
 export async function createComment(postId: string, data: { content: string; replying_id?: string }): Promise<Comment> {
   const res = await fetch(`${BASE}/posts/${postId}/comments`, {
     method: "POST",

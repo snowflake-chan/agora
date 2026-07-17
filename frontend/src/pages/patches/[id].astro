@@ -1,0 +1,18 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import AppBar from "../../components/AppBar.svelte";
+import PatchDetail from "../../components/patches/PatchDetail.svelte";
+
+export async function getStaticPaths() {
+  return [{ params: { id: "placeholder" } }];
+}
+
+const { id } = Astro.params;
+---
+
+<Layout>
+  <AppBar client:load />
+  <main class="mx-auto max-w-3xl px-4 py-8">
+    <PatchDetail patchId={id!} client:load />
+  </main>
+</Layout>

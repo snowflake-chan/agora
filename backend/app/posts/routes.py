@@ -1,6 +1,6 @@
 from math import ceil
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -153,24 +153,22 @@ async def get_post(
     )
 
 
-@router.delete("/{post_id}", status_code=204)
-async def delete_post(
-    post_id: str,
+@router.delete("/{content_id}", status_code=204)
+async def delete_content(
+    content_id: str,
     session: AsyncSession = Depends(get_session),
     user: User = Depends(current_user),
 ):
-    """Delete own post."""
-    stmt = select(ContentModel).where(
-        ContentModel.id == post_id, ContentModel.type == "post"
-    )
+    """Delete own content (post or comment)."""
+    stmt = select(ContentModel).where(ContentModel.id == content_id)
     result = await session.execute(stmt)
-    post = result.scalar_one_or_none()
-    if not post:
-        raise HTTPException(status_code=404, detail="POST_NOT_FOUND")
-    if post.author_id != user.id:
+    content = result.scalar_one_or_none()
+    if not content:
+        raise HTTPException(status_code=404, detail="CONTENT_NOT_FOUND")
+    if content.author_id != user.id:
         raise HTTPException(status_code=403, detail="FORBIDDEN")
 
-    await session.delete(post)
+    await session.delete(content)
     await session.commit()
 
 
@@ -279,3 +277,5 @@ async def create_comment(
         replying_to_username=None,
         created_at=comment.created_at,
     )
+
+

@@ -10,6 +10,7 @@
   export let tags: string[] | null = null;
   export let replyingToUsername: string | null = null;
   export let onReply: (() => void) | null = null;
+  export let onDelete: (() => void) | null = null;
 </script>
 
 <div class="relative z-10 mb-6 ml-7 markdown-container">
@@ -34,6 +35,11 @@
               {#if onReply}
                 <Menu.Item value="reply" onclick={onReply}>
                   <Menu.ItemText>回复</Menu.ItemText>
+                </Menu.Item>
+              {/if}
+              {#if onDelete}
+                <Menu.Item value="delete" onclick={onDelete}>
+                  <Menu.ItemText class="text-error-500">删除</Menu.ItemText>
                 </Menu.Item>
               {/if}
             </Menu.Content>
