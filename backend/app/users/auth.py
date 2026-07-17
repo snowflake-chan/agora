@@ -1,0 +1,90 @@
+from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi_users.authentication import Strategy
+from fastapi_users.password import PasswordHelper
+
+from app.schemas.user import LoginRequest, UserCreate, UserRead
+from app.db.models.user import User, get_user_db
+from app.users.backend import auth_backend, transport as cookie_transport
+
+router = APIRouter()
+password_helper = PasswordHelper()
+
+
+@router.post("/register", response_model=UserRead)
+async def register(
+    data: UserCreate,
+    response: Response,
+    user_db=Depends(get_user_db),
+    strategy: Strategy = Depends(auth_backend.get_strategy),
+) -> UserRead:
+    """Register a new user and auto-login with a cookie."""
+    existing = await user_db.get_by_email(data.email)
+    if existing:
+        raise HTTPException(status_code=409, detail="REGISTER_EMAIL_TAKEN")
+
+    if len(data.password) < 8:
+        raise HTTPException(status_code=422, detail="REGISTER_PASSWORD_TOO_SHORT")
+
+    user: User = await user_db.create(
+        {
+            "email": data.email,
+            "hashed_password": password_helper.hash(data.password),
+            "is_active": True,
+            "is_superuser": False,
+            "is_verified": False,
+        }
+    )
+
+    token = await strategy.write_token(user)
+    response.set_cookie(
+        key=cookie_transport.cookie_name,
+        value=token,
+        max_age=cookie_transport.cookie_max_age,
+        httponly=cookie_transport.cookie_httponly,
+        samesite="lax",
+        path="/",
+    )
+
+    return UserRead.model_validate(user)
+
+
+@router.post("/login", response_model=UserRead)
+async def login(
+    data: LoginRequest,
+    response: Response,
+    user_db=Depends(get_user_db),
+    strategy: Strategy = Depends(auth_backend.get_strategy),
+) -> UserRead:
+    """Authenticate with email & password, set session cookie."""
+    user: User | None = await user_db.get_by_email(data.email)
+    if not user:
+        raise HTTPException(status_code=401, detail="LOGIN_INVALID_CREDENTIALS")
+
+    verified, new_hash = password_helper.verify_and_update(
+        data.password, user.hashed_password
+    )
+    if not verified:
+        raise HTTPException(status_code=401, detail="LOGIN_INVALID_CREDENTIALS")
+    if new_hash:
+        await user_db.update(user, {"hashed_password": new_hash})
+
+    token = await strategy.write_token(user)
+    response.set_cookie(
+        key=cookie_transport.cookie_name,
+        value=token,
+        max_age=cookie_transport.cookie_max_age,
+        httponly=cookie_transport.cookie_httponly,
+        samesite="lax",
+        path="/",
+    )
+
+    return UserRead.model_validate(user)
+
+
+@router.post("/logout", status_code=204)
+async def logout(response: Response) -> None:
+    """Clear the session cookie."""
+    response.delete_cookie(
+        key=cookie_transport.cookie_name,
+        path="/",
+    )
