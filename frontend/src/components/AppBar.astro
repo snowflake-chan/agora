@@ -1,5 +1,6 @@
 ---
 import PillActions from "./PillActions.svelte";
+import NotificationBell from "./NotificationBell.svelte";
 ---
 
 <!-- Top header -->
@@ -9,6 +10,7 @@ import PillActions from "./PillActions.svelte";
       <img src="/favicon.svg" alt="" width="22" height="22" class="size-[22px]" />
       <span class="text-lg font-bold tracking-tight" style="color: var(--vercel-text);">Agora</span>
     </a>
+    <NotificationBell client:load />
   </div>
 </header>
 
