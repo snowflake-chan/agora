@@ -4,6 +4,7 @@
   import { getPatch, deletePatch, submitPatch, votePatch, listVotes, type Patch, type Vote } from "../../lib/patches";
   import { toaster } from "../../stores/toaster";
   import { currentUser } from "../../stores/auth";
+  import { GITHUB_REPO } from "../../lib/config";
   import AuthorMeta from "../AuthorMeta.svelte";
   import ConfirmDialog from "../ConfirmDialog.svelte";
 
@@ -112,7 +113,7 @@
         <span class="text-xs text-surface-500">{deadlineStr}</span>
       {/if}
       <a
-        href="https://github.com/{patch.pr_number}"
+        href="https://github.com/{GITHUB_REPO}/pull/{patch.pr_number}"
         target="_blank"
         class="text-sm text-primary-600 hover:text-primary-700"
       >
