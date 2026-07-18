@@ -1,18 +1,17 @@
 ---
 import Layout from "../layouts/Layout.astro";
 import AppBar from "../components/AppBar.svelte";
-import PostList from "../components/posts/PostList.svelte";
+import FeedList from "../components/FeedList.svelte";
 ---
 
 <Layout>
   <AppBar client:load />
   <main class="mx-auto max-w-3xl px-4 py-8">
     <div class="mb-6 flex items-center justify-between">
-      <h1 class="text-xl font-bold" style="color: var(--vercel-text);">最新帖子</h1>
-      <a href="/posts/new" class="btn btn-primary btn-sm">发帖</a>
+      <h1 class="text-xl font-bold" style="color: var(--vercel-text);">最新动态</h1>
     </div>
     <div class="card overflow-hidden">
-      <PostList client:load />
+      <FeedList client:load />
     </div>
   </main>
 </Layout>

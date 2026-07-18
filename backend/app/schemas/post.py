@@ -50,3 +50,25 @@ class CommentRead(BaseModel):
 class CommentCreate(BaseModel):
     content: str
     replying_id: UUID | None = None
+
+
+# ── Feed (unified timeline) ──
+
+class FeedItem(BaseModel):
+    id: UUID
+    type: str  # "post" | "patch"
+    title: str
+    content: str
+    author_id: UUID
+    author_username: str | None = None
+    created_at: datetime
+
+    # Post-specific
+    tags: list[str] | None = None
+    reply_count: int = 0
+
+    # Patch-specific
+    pr_number: int | None = None
+    status: str | None = None
+    for_count: int = 0
+    against_count: int = 0

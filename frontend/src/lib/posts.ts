@@ -59,6 +59,28 @@ export async function deleteContent(id: string): Promise<void> {
   if (!res.ok && res.status !== 204) throw new Error("删除失败");
 }
 
+export interface FeedItem {
+  id: string;
+  type: "post" | "patch";
+  title: string;
+  content: string;
+  author_id: string;
+  author_username: string | null;
+  created_at: string;
+  tags: string[] | null;
+  reply_count: number;
+  pr_number: number | null;
+  status: string | null;
+  for_count: number;
+  against_count: number;
+}
+
+export async function getFeed(page = 1): Promise<FeedItem[]> {
+  const res = await fetch(`${API_BASE}/posts/-/feed?page=${page}`, { credentials: "include" });
+  if (!res.ok) throw new Error("Failed to load feed");
+  return res.json();
+}
+
 export async function createComment(postId: string, data: { content: string; replying_id?: string }): Promise<Comment> {
   const res = await fetch(`${API_BASE}/posts/${postId}/comments`, {
     method: "POST",
