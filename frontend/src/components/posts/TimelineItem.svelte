@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { Menu } from "@skeletonlabs/skeleton-svelte";
   import { marked } from "marked";
   import { timeAgo } from "../../lib/utils";
 
@@ -11,51 +10,65 @@
   export let replyingToUsername: string | null = null;
   export let onReply: (() => void) | null = null;
   export let onDelete: (() => void) | null = null;
+
+  let menuOpen = false;
+
+  function handleClickOutside(e: MouseEvent) {
+    const target = e.target as HTMLElement;
+    if (!target.closest(".timeline-menu")) {
+      menuOpen = false;
+    }
+  }
 </script>
 
-<div class="relative z-10 mb-6 ml-7 markdown-container">
-  <!-- Card -->
-  <div class="rounded-md border border-surface-200-800 bg-surface">
+<svelte:window on:click={handleClickOutside} />
+
+<div class="relative mb-6 ml-7">
+  <div class="card">
     <!-- Header -->
-    <div class="flex items-center gap-2 rounded-t-md bg-surface-100-900 border-b border-surface-200-800 px-4 py-2">
-      <div
-        class="flex size-5 items-center justify-center rounded-full bg-surface-300-700 text-[9px] font-bold text-surface-600-400"
-      >
+    <div class="flex items-center gap-2 px-4 py-2 border-b" style="border-color: var(--vercel-border);">
+      <div class="avatar avatar-sm">
         {(username ?? "?")[0].toUpperCase()}
       </div>
-      <span class="text-sm font-medium text-surface-700-300">{username ?? "匿名"}</span>
-      <span class="text-xs text-surface-400-600">{timeAgo(createdAt)}</span>
-      <div class="ml-auto">
-        <Menu>
-          <Menu.Trigger class="flex size-6 items-center justify-center rounded-md text-surface-400-600 hover:bg-surface-200-800 hover:text-surface-600-400">
-            <span class="text-lg leading-none">⋮</span>
-          </Menu.Trigger>
-          <Menu.Positioner>
-            <Menu.Content class="min-w-28 rounded-md">
+      <span class="text-sm font-medium" style="color: var(--vercel-text);">{username ?? "匿名"}</span>
+      <span class="text-xs" style="color: var(--vercel-text-tertiary);">{timeAgo(createdAt)}</span>
+
+      {#if onReply || onDelete}
+        <div class="ml-auto timeline-menu relative">
+          <button
+            class="btn-icon"
+            style="width: 1.5rem; height: 1.5rem;"
+            on:click|stopPropagation={() => (menuOpen = !menuOpen)}
+          >
+            <span class="text-sm leading-none" style="color: var(--vercel-text-tertiary);">⋮</span>
+          </button>
+
+          {#if menuOpen}
+            <div class="menu-dropdown absolute right-0 top-full mt-1 z-50" style="min-width: 8rem;">
               {#if onReply}
-                <Menu.Item value="reply" onclick={onReply}>
-                  <Menu.ItemText>回复</Menu.ItemText>
-                </Menu.Item>
+                <button class="menu-item" on:click={() => { menuOpen = false; onReply(); }}>
+                  回复
+                </button>
               {/if}
               {#if onDelete}
-                <Menu.Item value="delete" onclick={onDelete}>
-                  <Menu.ItemText class="text-error-500">删除</Menu.ItemText>
-                </Menu.Item>
+                <button class="menu-item menu-item-danger" on:click={() => { menuOpen = false; onDelete(); }}>
+                  删除
+                </button>
               {/if}
-            </Menu.Content>
-          </Menu.Positioner>
-        </Menu>
-      </div>
+            </div>
+          {/if}
+        </div>
+      {/if}
     </div>
 
     <!-- Body -->
-    <div class="px-4 py-3 text-sm">
+    <div class="px-4 py-3 text-sm" style="color: var(--vercel-text-secondary);">
       {#if title}
-        <h1 class="mb-2 text-lg font-bold text-surface-900">{title}</h1>
-        <div class="mb-3 border-b border-surface-100"></div>
+        <h1 class="mb-2 text-lg font-bold" style="color: var(--vercel-text);">{title}</h1>
+        <hr class="divider mb-3" />
       {/if}
       {#if replyingToUsername}
-        <span class="mr-1 font-medium text-primary-600">@{replyingToUsername}</span>
+        <span class="mr-1 font-medium" style="color: var(--vercel-text);">@{replyingToUsername}</span>
       {/if}
       <div class="markdown-body">
         {@html marked.parse(content, { breaks: true, gfm: true })}
@@ -63,11 +76,10 @@
       {#if tags && tags.length > 0}
         <div class="mt-3 flex flex-wrap gap-2">
           {#each tags as tag}
-            <span class="rounded-full bg-surface-100 px-2.5 py-0.5 text-xs text-surface-600-400">{tag}</span>
+            <span class="badge badge-neutral">{tag}</span>
           {/each}
         </div>
       {/if}
     </div>
   </div>
 </div>
-

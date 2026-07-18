@@ -1,34 +1,560 @@
 @import "tailwindcss";
-@plugin "@tailwindcss/forms";
-
-@utility bg-surface {
-  background-color: var(--color-surface-50);
-  @variant dark {
-    background-color: var(--color-surface-950);
-  }
-}
-@import "@skeletonlabs/skeleton-svelte";
-@import "@skeletonlabs/skeleton";
-@import "@skeletonlabs/skeleton/themes/cerberus";
 @import "./markdown.css";
 
-/* Dark mode based on data-mode attribute */
-@custom-variant dark (&:where([data-mode="dark"], [data-mode="dark"] *));
+/* ── Vercel-inspired dark theme ── */
 
-/* Set color-scheme so light-dark() CSS function works correctly */
-[data-mode="dark"] { color-scheme: dark; }
-[data-mode="light"] { color-scheme: light; }
-
-/* Suppress default blue focus ring — Skeleton uses its own */
-*:focus {
-  outline: none !important;
+:root {
+  --vercel-bg: #0c0c0e;
+  --vercel-surface: #0e0e10;
+  --vercel-card: #151517;
+  --vercel-border: rgba(255, 255, 255, 0.07);
+  --vercel-border-hover: rgba(255, 255, 255, 0.12);
+  --vercel-text: #fafafa;
+  --vercel-text-secondary: #888888;
+  --vercel-text-tertiary: #666666;
+  --vercel-hover: rgba(255, 255, 255, 0.04);
+  --vercel-hover-strong: rgba(255, 255, 255, 0.07);
+  --vercel-radius: 8px;
+  --vercel-radius-lg: 12px;
+  --vercel-radius-sm: 6px;
+  --vercel-accent: #ffffff;
+  --vercel-danger: #ef4444;
+  --vercel-danger-hover: #dc2626;
+  --vercel-success: #22c55e;
+  --vercel-success-bg: rgba(34, 197, 94, 0.1);
+  --vercel-warning: #f59e0b;
+  --vercel-warning-bg: rgba(245, 158, 11, 0.1);
+  --vercel-info: #3b82f6;
+  --vercel-ring: rgba(255, 255, 255, 0.2);
 }
 
-/* Windows bugfix: https://skeleton.dev/docs/svelte/tailwind-components/forms */
-.select,
-.input,
-.textarea,
-.input-group {
-  background-color: var(--color-surface-50-950);
-  color: var(--color-surface-950-50);
+html {
+  background: linear-gradient(160deg, #0c0c0e 0%, #0a0a0c 40%, #0e0e11 100%);
+  color: var(--vercel-text);
+  font-family: 'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  min-height: 100vh;
+  background: linear-gradient(160deg, #0c0c0e 0%, #0a0a0c 40%, #0e0e11 100%);
+  color: var(--vercel-text);
+  padding-bottom: 3.5rem;
+}
+
+@media (min-width: 768px) {
+  body {
+    padding-bottom: 0;
+  }
+}
+
+/* ── Typography ── */
+h1, h2, h3, h4, h5, h6 {
+  color: var(--vercel-text);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+a {
+  color: var(--vercel-text-secondary);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+a:hover {
+  color: var(--vercel-text);
+}
+
+/* ── Buttons ── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border-radius: var(--vercel-radius-sm);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  line-height: 1.5;
+  white-space: nowrap;
+  text-decoration: none;
+  font-family: inherit;
+}
+
+.btn-primary {
+  background: var(--vercel-accent);
+  color: var(--vercel-bg);
+  border-color: var(--vercel-accent);
+}
+
+.btn-primary:hover {
+  background: #e5e5e5;
+  border-color: #e5e5e5;
+}
+
+.btn-secondary {
+  background: transparent;
+  color: var(--vercel-text);
+  border-color: var(--vercel-border);
+}
+
+.btn-secondary:hover {
+  border-color: var(--vercel-border-hover);
+  background: var(--vercel-hover);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--vercel-text-secondary);
+  border-color: transparent;
+}
+
+.btn-ghost:hover {
+  color: var(--vercel-text);
+  background: var(--vercel-hover);
+}
+
+.btn-danger {
+  background: var(--vercel-danger);
+  color: #fff;
+  border-color: var(--vercel-danger);
+}
+
+.btn-danger:hover {
+  background: var(--vercel-danger-hover);
+}
+
+.btn-sm {
+  padding: 0.375rem 0.75rem;
+  font-size: 0.8125rem;
+}
+
+.btn-icon {
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border-radius: var(--vercel-radius-sm);
+  background: transparent;
+  color: var(--vercel-text-secondary);
+  border: 1px solid transparent;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.btn-icon:hover {
+  color: var(--vercel-text);
+  background: var(--vercel-hover);
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── Inputs ── */
+.input {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  background: var(--vercel-card);
+  color: var(--vercel-text);
+  border: 1px solid var(--vercel-border);
+  border-radius: var(--vercel-radius-sm);
+  outline: none;
+  transition: border-color 0.15s ease;
+  font-family: inherit;
+}
+
+.input:focus {
+  border-color: var(--vercel-border-hover);
+  box-shadow: 0 0 0 2px var(--vercel-ring);
+}
+
+.input::placeholder {
+  color: var(--vercel-text-tertiary);
+}
+
+textarea.input {
+  resize: vertical;
+  min-height: 80px;
+  line-height: 1.6;
+}
+
+/* ── Cards ── */
+.card {
+  background: var(--vercel-card);
+  border: 1px solid var(--vercel-border);
+  border-radius: var(--vercel-radius);
+}
+
+.card-hover:hover {
+  border-color: var(--vercel-border-hover);
+  background: #1a1a1d;
+}
+
+/* ── Badges ── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border-radius: 9999px;
+  line-height: 1.5;
+}
+
+.badge-success {
+  background: var(--vercel-success-bg);
+  color: var(--vercel-success);
+}
+
+.badge-warning {
+  background: var(--vercel-warning-bg);
+  color: var(--vercel-warning);
+}
+
+.badge-info {
+  background: rgba(59, 130, 246, 0.1);
+  color: var(--vercel-info);
+}
+
+.badge-danger {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--vercel-danger);
+}
+
+.badge-neutral {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--vercel-text-secondary);
+}
+
+/* ── Dividers ── */
+.divider {
+  border: none;
+  border-top: 1px solid var(--vercel-border);
+}
+
+/* ── Container ── */
+.container-main {
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* ── Focus ── */
+*:focus-visible {
+  outline: 2px solid var(--vercel-ring);
+  outline-offset: 2px;
+}
+
+*:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* ── Selection ── */
+::selection {
+  background: rgba(255, 255, 255, 0.15);
+  color: var(--vercel-text);
+}
+
+/* ── Menu dropdown ── */
+.menu-dropdown {
+  background: #1a1a1a;
+  border: 1px solid var(--vercel-border);
+  border-radius: var(--vercel-radius);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+  min-width: 10rem;
+  overflow: hidden;
+  animation: menuIn 0.15s ease;
+}
+
+@keyframes menuIn {
+  from { opacity: 0; transform: translateY(-4px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8125rem;
+  color: var(--vercel-text-secondary);
+  cursor: pointer;
+  transition: all 0.1s ease;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+}
+
+.menu-item:hover {
+  background: var(--vercel-hover);
+  color: var(--vercel-text);
+}
+
+.menu-item-danger {
+  color: var(--vercel-danger);
+}
+
+.menu-item-danger:hover {
+  color: var(--vercel-danger);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+/* ── Toast ── */
+.toast-container {
+  position: fixed;
+  bottom: 1rem;
+  right: 1rem;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  background: #1a1a1a;
+  border: 1px solid var(--vercel-border);
+  border-radius: var(--vercel-radius);
+  padding: 0.75rem 1rem;
+  min-width: 18rem;
+  max-width: 24rem;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+  animation: toastIn 0.2s ease;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.toast-success {
+  border-left: 3px solid var(--vercel-success);
+}
+
+.toast-error {
+  border-left: 3px solid var(--vercel-danger);
+}
+
+.toast-info {
+  border-left: 3px solid var(--vercel-info);
+}
+
+.toast-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.toast-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--vercel-text);
+  margin-bottom: 0.125rem;
+}
+
+.toast-desc {
+  font-size: 0.75rem;
+  color: var(--vercel-text-secondary);
+  line-height: 1.4;
+}
+
+.toast-close {
+  flex-shrink: 0;
+  width: 1.5rem;
+  height: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--vercel-text-tertiary);
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 1rem;
+  transition: color 0.1s;
+}
+
+.toast-close:hover {
+  color: var(--vercel-text);
+}
+
+/* ── Avatar ── */
+.avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--vercel-text-secondary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.avatar-sm {
+  width: 1.5rem;
+  height: 1.5rem;
+  font-size: 0.625rem;
+}
+
+/* ── Progress bar ── */
+.progress-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+/* ── Timeline line ── */
+.timeline-line {
+  position: absolute;
+  left: 16px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--vercel-border);
+}
+
+/* ── Filter tabs ── */
+.filter-tab {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8125rem;
+  color: var(--vercel-text-secondary);
+  border: none;
+  background: none;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+
+.filter-tab:hover {
+  color: var(--vercel-text);
+}
+
+.filter-tab.active {
+  color: var(--vercel-text);
+  border-bottom-color: var(--vercel-text);
+}
+
+/* ── Loading spinner ── */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.spinner {
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 2px solid var(--vercel-border);
+  border-top-color: var(--vercel-text-secondary);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+/* ── Empty state ── */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1rem;
+  color: var(--vercel-text-tertiary);
+  font-size: 0.875rem;
+}
+
+/* ── Confirm dialog backdrop ── */
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  animation: fadeIn 0.15s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.dialog-panel {
+  background: #1a1a1a;
+  border: 1px solid var(--vercel-border);
+  border-radius: var(--vercel-radius-lg);
+  padding: 1.5rem;
+  max-width: 24rem;
+  width: 90%;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+  animation: dialogIn 0.15s ease;
+}
+
+@keyframes dialogIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.dialog-title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--vercel-text);
+  margin-bottom: 0.5rem;
+}
+
+.dialog-desc {
+  font-size: 0.8125rem;
+  color: var(--vercel-text-secondary);
+  line-height: 1.5;
+  margin-bottom: 1.25rem;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
 }

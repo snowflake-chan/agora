@@ -1,12 +1,19 @@
 <script lang="ts">
   import { marked } from "marked";
+  import { createEventDispatcher } from "svelte";
   import { createPatch } from "../../lib/patches";
   import { toaster } from "../../stores/toaster";
+
+  const dispatch = createEventDispatcher();
 
   let title = "";
   let prNumber: number | null = null;
   let content = "";
   let submitting = false;
+
+  function close() {
+    dispatch("close");
+  }
 
   async function handleSubmit() {
     if (!title.trim() || !content.trim() || !prNumber) return;
@@ -19,61 +26,100 @@
       });
       window.location.href = `/patches/${patch.id}`;
     } catch (e: any) {
-      toaster.error({ title: "发起失败", description: e.message ?? "请稍后重试" });
+      toaster.error("发起失败", e.message ?? "请稍后重试");
     } finally {
       submitting = false;
     }
   }
+
+  function handleBackdropClick(e: MouseEvent) {
+    if (e.target === e.currentTarget) close();
+  }
 </script>
 
-<div class="flex h-dvh flex-col bg-surface">
-  <!-- Top bar -->
-  <div class="flex items-center gap-3 border-b border-surface-200 px-6 py-3">
-    <input
-      bind:value={title}
-      class="input flex-1 border-0 bg-transparent px-0 text-xl font-bold placeholder:text-surface-300 focus:ring-0"
-      placeholder="标题"
-    />
-    <a href="/patches" class="btn preset-tonal text-sm">取消</a>
-    <button
-      class="btn preset-filled-primary-500 text-sm"
-      on:click={handleSubmit}
-      disabled={submitting || !title.trim() || !content.trim() || !prNumber}
-    >
-      {submitting ? "提交中…" : "发起"}
-    </button>
-  </div>
+<!-- svelte-ignore a11y_click_events_have_key_events -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div
+  class="fixed inset-0 z-50 flex items-center justify-center p-4"
+  style="background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);"
+  on:click={handleBackdropClick}
+>
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div
+    class="flex flex-col w-full h-[calc(100vh-2rem)] max-w-6xl rounded-xl overflow-hidden"
+    style="
+      background: rgba(22, 22, 26, 0.94);
+      border: 1px solid rgba(255,255,255,0.07);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      box-shadow: 0 8px 48px rgba(0,0,0,0.5);
+    "
+    on:click|stopPropagation
+  >
+    <!-- Header -->
+    <div class="flex items-center gap-4 border-b px-6 py-3" style="border-color: rgba(255,255,255,0.06);">
+      <div class="flex-1">
+        <input
+          bind:value={title}
+          class="w-full px-4 py-2.5 text-lg font-semibold rounded-lg placeholder:text-[#555] focus:outline-none"
+          style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); color: var(--vercel-text);"
+          placeholder="标题"
+        />
+      </div>
+      <button class="btn btn-ghost btn-sm" on:click={close}>取消</button>
+      <button
+        class="btn btn-primary btn-sm"
+        on:click={handleSubmit}
+        disabled={submitting || !title.trim() || !content.trim() || !prNumber}
+      >
+        {submitting ? "提交中..." : "发起"}
+      </button>
+    </div>
 
-  <!-- PR number input -->
-  <div class="flex items-center gap-2 border-b border-surface-200 px-6 py-3">
-    <span class="text-sm text-surface-500">https://github.com/</span>
-    <input
-      bind:value={prNumber}
-      type="number"
-      min="1"
-      class="input w-32 border-0 bg-transparent px-0 text-sm focus:ring-0"
-      placeholder="PR 编号"
-    />
-  </div>
+    <!-- PR number -->
+    <div class="flex items-center gap-2 border-b px-6 py-2.5" style="border-color: rgba(255,255,255,0.06);">
+      <span class="text-sm" style="color: var(--vercel-text-tertiary);">https://github.com/</span>
+      <input
+        bind:value={prNumber}
+        type="number"
+        min="1"
+        class="w-32 text-sm placeholder:text-[#555] focus:outline-none"
+        style="background: transparent; border: none; color: var(--vercel-text);"
+        placeholder="PR 编号"
+      />
+    </div>
 
-  <!-- Split pane -->
-  <div class="flex flex-1 overflow-hidden">
-    <!-- Editor -->
-    <textarea
-      bind:value={content}
-      class="w-1/2 resize-none border-0 border-r border-surface-200 bg-surface px-6 py-5 font-mono text-sm leading-relaxed placeholder:text-surface-300 focus:ring-0"
-      placeholder="描述变更内容，支持 Markdown 语法"
-    ></textarea>
+    <!-- Split pane: edit | preview -->
+    <div class="flex flex-1 overflow-hidden">
+      <!-- Left: editor -->
+      <div class="flex-1 flex flex-col border-r" style="border-color: rgba(255,255,255,0.06);">
+        <div class="px-4 py-2 text-xs font-medium border-b" style="color: var(--vercel-text-tertiary); border-color: rgba(255,255,255,0.06);">
+          编辑
+        </div>
+        <textarea
+          bind:value={content}
+          class="flex-1 w-full resize-none px-6 py-4 font-mono text-sm leading-relaxed placeholder:text-[#555] focus:outline-none"
+          style="background: transparent; color: var(--vercel-text);"
+          placeholder="描述变更内容，支持 Markdown 语法"
+        ></textarea>
+      </div>
 
-    <!-- Preview -->
-    <div class="w-1/2 overflow-y-auto px-6 py-5">
-      {#if content.trim()}
-        {#await marked.parse(content, { breaks: true, gfm: true }) then html}
-          <div class="markdown-body">{@html html}</div>
-        {/await}
-      {:else}
-        <p class="text-sm text-surface-300">预览</p>
-      {/if}
+      <!-- Right: preview -->
+      <div class="flex-1 flex flex-col">
+        <div class="px-4 py-2 text-xs font-medium border-b" style="color: var(--vercel-text-tertiary); border-color: rgba(255,255,255,0.06);">
+          预览
+        </div>
+        <div class="flex-1 overflow-y-auto px-6 py-4">
+          {#if content.trim()}
+            {#await marked.parse(content, { breaks: true, gfm: true }) then html}
+              <div class="markdown-body">{@html html}</div>
+            {/await}
+          {:else}
+            <p class="text-sm" style="color: var(--vercel-text-tertiary);">暂无内容</p>
+          {/if}
+        </div>
+      </div>
     </div>
   </div>
 </div>

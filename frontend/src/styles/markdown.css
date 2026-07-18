@@ -1,50 +1,61 @@
-/* Markdown 渲染样式 — 被 TimelineItem 和 PostForm 共用 */
+/* Markdown 渲染样式 — Vercel 暗色主题 */
 .markdown-body h1 {
   font-size: 1.5rem;
   font-weight: 700;
   margin-top: 1.5rem;
   margin-bottom: 0.75rem;
+  color: var(--vercel-text);
 }
 .markdown-body h2 {
   font-size: 1.25rem;
   font-weight: 600;
   margin-top: 1.25rem;
   margin-bottom: 0.5rem;
+  color: var(--vercel-text);
 }
 .markdown-body h3 {
   font-size: 1.125rem;
   font-weight: 600;
   margin-top: 1rem;
   margin-bottom: 0.5rem;
+  color: var(--vercel-text);
 }
 .markdown-body p {
   margin-bottom: 1rem;
   line-height: 1.7;
+  color: var(--vercel-text-secondary);
 }
 .markdown-body ul,
 .markdown-body ol {
   padding-left: 1.25rem;
   margin-bottom: 1rem;
+  color: var(--vercel-text-secondary);
 }
 .markdown-body ul { list-style-type: disc; }
 .markdown-body ol { list-style-type: decimal; }
 .markdown-body li { margin-bottom: 0.375rem; }
+.markdown-body li::marker {
+  color: var(--vercel-text-tertiary);
+}
 .markdown-body blockquote {
-  border-left: 3px solid var(--color-surface-300-700);
+  border-left: 2px solid rgba(255, 255, 255, 0.12);
   padding: 0.5rem 1rem;
   margin-bottom: 1rem;
-  color: var(--color-surface-500);
+  color: var(--vercel-text-tertiary);
   font-style: italic;
 }
 .markdown-body code {
-  border-radius: 0.25rem;
-  background: var(--color-surface-100-900);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
   padding: 0.125rem 0.375rem;
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
+  color: var(--vercel-text-secondary);
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
 }
 .markdown-body pre {
-  border-radius: 0.375rem;
-  background: var(--color-surface-100-900);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--vercel-border);
   padding: 1rem;
   margin-bottom: 1rem;
   overflow-x: auto;
@@ -52,15 +63,45 @@
 .markdown-body pre code {
   background: transparent;
   padding: 0;
+  border: none;
+  color: var(--vercel-text-secondary);
 }
 .markdown-body hr {
   margin: 1.5rem 0;
   border: none;
-  border-top: 1px solid var(--color-surface-200-800);
+  border-top: 1px solid var(--vercel-border);
 }
 .markdown-body a {
-  color: var(--color-primary-600);
+  color: var(--vercel-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 .markdown-body a:hover {
-  color: var(--color-primary-700);
+  color: var(--vercel-text-secondary);
+}
+.markdown-body img {
+  max-width: 100%;
+  border-radius: 6px;
+}
+.markdown-body strong {
+  color: var(--vercel-text);
+  font-weight: 600;
+}
+.markdown-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1rem;
+  font-size: 0.875rem;
+}
+.markdown-body th {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--vercel-border);
+  color: var(--vercel-text);
+  font-weight: 600;
+}
+.markdown-body td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--vercel-border);
+  color: var(--vercel-text-secondary);
 }
