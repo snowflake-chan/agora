@@ -50,6 +50,14 @@ body {
   }
 }
 
+/* The floating pill bar (灵动岛) is ~2.5rem tall and fixed to the viewport
+   bottom. Reserve generous space at the end of every main column so the last
+   card (and its "没有更多了" footer) sits fully above it, with extra empty
+   space below so the page can always scroll clear of the pill. */
+main {
+  padding-bottom: 8rem;
+}
+
 /* ── Typography ── */
 h1, h2, h3, h4, h5, h6 {
   color: var(--vercel-text);
@@ -509,7 +517,7 @@ textarea.input {
 .dialog-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 100;
+  z-index: 90;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -523,7 +531,9 @@ textarea.input {
   to { opacity: 1; }
 }
 
-.dialog-panel {
+/* Legacy confirm dialog panel — renamed so it doesn't clash with the
+   composer full-screen .dialog-panel used by PostForm / PatchForm. */
+.dialog-panel-confirm {
   background: #1a1a1a;
   border: 1px solid var(--vercel-border);
   border-radius: var(--vercel-radius-lg);
@@ -557,4 +567,153 @@ textarea.input {
   display: flex;
   justify-content: flex-end;
   gap: 0.5rem;
+}
+
+/* ============================================================
+   Apple-style non-linear motion layer
+   (visual language stays Vercel-monochrome; only easing changes)
+   ============================================================ */
+
+:root {
+  --apple-ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --apple-ease-soft: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ── Page enter (plays once on every full-page load) ──
+   IMPORTANT: only animate `opacity`. Using `transform`/`will-change:transform`
+   here would create a containing block, breaking `position: fixed` for the
+   floating pill bar (which would then scroll with the page). */
+.page-shell {
+  animation: pageEnter 0.45s var(--apple-ease-soft) both;
+}
+
+@keyframes pageEnter {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Respect reduced-motion users */
+@media (prefers-reduced-motion: reduce) {
+  .page-shell,
+  .pill-highlight,
+  .dialog-panel,
+  .dialog-panel-confirm,
+  .dialog-backdrop {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* ── Pill (Dynamic-Island) sliding selection indicator ── */
+.pill-track {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 2.75rem;
+  padding: 0 0.375rem;
+  gap: 0.125rem;
+}
+
+.pill-slot {
+  position: relative;
+  z-index: 1;
+}
+
+/* the moving highlight pill behind the active item */
+.pill-highlight {
+  position: absolute;
+  top: 0.25rem;
+  left: 0;
+  height: 2.25rem;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  box-shadow: 0 1px 8px rgba(0, 0, 0, 0.35);
+  /* JS sets width/translateX; this transition is the non-linear slide */
+  transition: transform 0.42s var(--apple-ease), width 0.42s var(--apple-ease),
+    background 0.3s ease, opacity 0.3s ease;
+  will-change: transform, width;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.pill-highlight.is-hidden {
+  opacity: 0;
+  transform: translateX(0) scale(0.6);
+}
+
+.pill-item {
+  /* keep existing base look, add selected emphasis */
+  transition: color 0.25s var(--apple-ease), background 0.25s var(--apple-ease);
+}
+
+.pill-item.is-active {
+  color: #fff;
+}
+
+.pill-item.is-active svg {
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.25));
+}
+
+/* ── Composer dialog: fly out from the Dynamic Island ──
+   Panel grows from small → large rising from the pill bar.
+   Backdrop glass: starts clear (blur 0) → blurs in. ── */
+
+.dialog-panel {
+  transform-origin: 50% 100%;
+  animation: dialogFlyOut 0.52s var(--apple-ease-soft) both;
+}
+
+@keyframes dialogFlyOut {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 48px, 0) scale(0.25);
+  }
+  35% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+/* Backdrop: clear glass → blurred + dimmed */
+.dialog-backdrop {
+  animation: glassFadeIn 0.48s var(--apple-ease-soft) both;
+}
+
+@keyframes glassFadeIn {
+  0% {
+    opacity: 0;
+    backdrop-filter: blur(0px);
+    -webkit-backdrop-filter: blur(0px);
+    background: rgba(0, 0, 0, 0);
+  }
+  100% {
+    opacity: 1;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    background: rgba(0, 0, 0, 0.45);
+  }
+}
+
+/* Close animation: reverse the glass fade */
+.dialog-backdrop.out {
+  animation: glassFadeOut 0.28s var(--apple-ease) both;
+}
+
+@keyframes glassFadeOut {
+  0% {
+    opacity: 1;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    background: rgba(0, 0, 0, 0.45);
+  }
+  100% {
+    opacity: 0;
+    backdrop-filter: blur(0px);
+    -webkit-backdrop-filter: blur(0px);
+    background: rgba(0, 0, 0, 0);
+  }
 }

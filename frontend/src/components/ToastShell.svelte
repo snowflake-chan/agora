@@ -39,7 +39,7 @@
             <div class="toast-desc">{toast.description}</div>
           {/if}
         </div>
-        <button class="toast-close" on:click={() => dismiss(toast.id)}>&times;</button>
+        <button class="toast-close" onclick={() => dismiss(toast.id)}>&times;</button>
       </div>
     {/each}
   </div>

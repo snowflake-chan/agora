@@ -142,6 +142,14 @@
 {:else if !post}
   <div class="empty-state">帖子不存在</div>
 {:else}
+  <!-- Back button -->
+  <button class="back-btn" onclick={() => window.history.back()}>
+    <svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+    </svg>
+    <span>返回</span>
+  </button>
+
   <div class="mb-6 ml-7">
     <h1 class="text-xl font-bold" style="color: var(--vercel-text);">{postTitle}</h1>
     {#if postTags && postTags.length > 0}
@@ -180,7 +188,7 @@
       {#if replyingTo}
         <div class="mb-2 flex items-center gap-2 text-xs" style="color: var(--vercel-text-tertiary);">
           <span>回复 <span class="font-medium" style="color: var(--vercel-text);">@{replyingTo.author_username}</span></span>
-          <button class="transition-colors" style="color: var(--vercel-text-tertiary);" on:mouseenter={(e) => e.currentTarget.style.color = 'var(--vercel-text)'} on:mouseleave={(e) => e.currentTarget.style.color = 'var(--vercel-text-tertiary)'} on:click={cancelReply}>取消</button>
+          <button class="transition-colors" style="color: var(--vercel-text-tertiary);" onmouseenter={(e) => e.currentTarget.style.color = 'var(--vercel-text)'} onmouseleave={(e) => e.currentTarget.style.color = 'var(--vercel-text-tertiary)'} onclick={cancelReply}>取消</button>
         </div>
       {/if}
       <div class="flex-1">
@@ -194,7 +202,7 @@
         <div class="mt-2 flex justify-end">
           <button
             class="btn btn-primary btn-sm"
-            on:click={handleSubmitReply}
+            onclick={handleSubmitReply}
             disabled={submitting || !replyText.trim()}
           >
             {submitting ? "发送中..." : "回复"}
@@ -204,7 +212,7 @@
     </div>
   {:else}
     <div class="mt-4 ml-7 pt-4 border-t text-center" style="border-color: var(--vercel-border);">
-      <a href="/login" class="text-sm transition-colors" style="color: var(--vercel-text-secondary);" on:mouseenter={(e) => e.currentTarget.style.color = 'var(--vercel-text)'} on:mouseleave={(e) => e.currentTarget.style.color = 'var(--vercel-text-secondary)'}>登录后参与回复</a>
+      <a href="/login" class="text-sm transition-colors" style="color: var(--vercel-text-secondary);" onmouseenter={(e) => e.currentTarget.style.color = 'var(--vercel-text)'} onmouseleave={(e) => e.currentTarget.style.color = 'var(--vercel-text-secondary)'}>登录后参与回复</a>
     </div>
   {/if}
 {/if}
@@ -216,3 +224,26 @@
   confirmText="删除"
   onConfirm={confirmDelete}
 />
+
+<style>
+  .back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.375rem 0.75rem;
+    margin-bottom: 1rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--vercel-text-secondary);
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .back-btn:hover {
+    color: var(--vercel-text);
+    background: rgba(255,255,255,0.08);
+    border-color: rgba(255,255,255,0.12);
+  }
+</style>

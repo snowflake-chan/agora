@@ -8,16 +8,16 @@
   import AuthorMeta from "../AuthorMeta.svelte";
   import ConfirmDialog from "../ConfirmDialog.svelte";
 
-  export let patchId: string;
+  let { patchId = "" }: { patchId: string } = $props();
 
-  let patch: Patch | null = null;
-  let votes: Vote[] = [];
-  let loading = true;
-  let currentUserVote: Vote | null = null;
+  let patch = $state<Patch | null>(null);
+  let votes = $state<Vote[]>([]);
+  let loading = $state(true);
+  let currentUserVote: Vote | null = $state(null);
 
-  let showVoteDialog = false;
-  let pendingChoice = "";
-  let showDeleteDialog = false;
+  let showVoteDialog = $state(false);
+  let pendingChoice = $state("");
+  let showDeleteDialog = $state(false);
 
   const STATUS_MAP: Record<string, { label: string; type: string }> = {
     draft: { label: "草稿", type: "neutral" },
@@ -28,8 +28,8 @@
     failed: { label: "合并失败", type: "danger" },
   };
 
-  $: statusInfo = patch ? STATUS_MAP[patch.status] ?? { label: patch.status, type: "neutral" } : { label: "", type: "neutral" };
-  $: deadlineStr = patch?.voting_ends_at ? formatDeadline(patch.voting_ends_at) : null;
+  let statusInfo = $derived(patch ? STATUS_MAP[patch.status] ?? { label: patch.status, type: "neutral" } : { label: "", type: "neutral" });
+  let deadlineStr = $derived(patch?.voting_ends_at ? formatDeadline(patch.voting_ends_at) : null);
 
   function formatDeadline(iso: string): string {
     const end = new Date(iso);
@@ -59,7 +59,7 @@
   async function handleDelete() {
     try {
       await deletePatch(patchId);
-      window.location.href = "/patches";
+      window.location.href = "/";
     } catch {
       toaster.error("删除失败");
     }
@@ -91,10 +91,14 @@
     }
   }
 
-  $: totalVotes = patch ? patch.for_count + patch.against_count + patch.abstain_count : 0;
-  $: forPct = patch && totalVotes > 0 ? Math.round((patch.for_count / totalVotes) * 100) : 0;
-  $: againstPct = patch && totalVotes > 0 ? Math.round((patch.against_count / totalVotes) * 100) : 0;
-  $: abstainPct = patch && totalVotes > 0 ? Math.round((patch.abstain_count / totalVotes) * 100) : 0;
+  function goBack() {
+    window.history.back();
+  }
+
+  let totalVotes = $derived(patch ? patch.for_count + patch.against_count + patch.abstain_count : 0);
+  let forPct = $derived(patch && totalVotes > 0 ? Math.round((patch.for_count / totalVotes) * 100) : 0);
+  let againstPct = $derived(patch && totalVotes > 0 ? Math.round((patch.against_count / totalVotes) * 100) : 0);
+  let abstainPct = $derived(patch && totalVotes > 0 ? Math.round((patch.abstain_count / totalVotes) * 100) : 0);
 </script>
 
 {#if loading}
@@ -105,6 +109,14 @@
 {:else if !patch}
   <div class="empty-state">变更不存在</div>
 {:else}
+  <!-- Back button -->
+  <button class="back-btn" onclick={goBack}>
+    <svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+    </svg>
+    <span>返回</span>
+  </button>
+
   <!-- Header -->
   <div class="mb-6">
     <div class="flex items-center gap-2">
@@ -119,8 +131,8 @@
         target="_blank"
         class="text-sm transition-colors"
         style="color: var(--vercel-text-secondary);"
-        on:mouseenter={(e) => e.currentTarget.style.color = 'var(--vercel-text)'}
-        on:mouseleave={(e) => e.currentTarget.style.color = 'var(--vercel-text-secondary)'}
+        onmouseenter={(e) => e.currentTarget.style.color = 'var(--vercel-text)'}
+        onmouseleave={(e) => e.currentTarget.style.color = 'var(--vercel-text-secondary)'}
       >
         PR #{patch.pr_number} ↗
       </a>
@@ -169,25 +181,25 @@
         <div class="flex gap-2">
           <button
             class="btn {currentUserVote?.choice === 'for' ? 'btn-primary' : 'btn-secondary'} btn-sm"
-            on:click={() => promptVote("for")}
+            onclick={() => promptVote("for")}
           >
             赞成
           </button>
           <button
             class="btn {currentUserVote?.choice === 'against' ? 'btn-primary' : 'btn-secondary'} btn-sm"
-            on:click={() => promptVote("against")}
+            onclick={() => promptVote("against")}
           >
             反对
           </button>
           <button
             class="btn {currentUserVote?.choice === 'abstain' ? 'btn-primary' : 'btn-secondary'} btn-sm"
-            on:click={() => promptVote("abstain")}
+            onclick={() => promptVote("abstain")}
           >
             弃权
           </button>
         </div>
       {:else}
-        <a href="/login" class="text-sm transition-colors" style="color: var(--vercel-text-secondary);" on:mouseenter={(e) => e.currentTarget.style.color = 'var(--vercel-text)'} on:mouseleave={(e) => e.currentTarget.style.color = 'var(--vercel-text-secondary)'}>登录后参与投票</a>
+        <a href="/login" class="text-sm transition-colors" style="color: var(--vercel-text-secondary);">登录后参与投票</a>
       {/if}
     </div>
   {/if}
@@ -211,10 +223,10 @@
   {#if $currentUser?.id === patch.author_id}
     <div class="mb-8 flex gap-2">
       {#if patch.status === "draft"}
-        <button class="btn btn-primary btn-sm" on:click={handleSubmit}>
+        <button class="btn btn-primary btn-sm" onclick={handleSubmit}>
           提交投票
         </button>
-        <button class="btn btn-danger btn-sm" on:click={() => (showDeleteDialog = true)}>
+        <button class="btn btn-danger btn-sm" onclick={() => (showDeleteDialog = true)}>
           删除
         </button>
       {/if}
@@ -254,3 +266,27 @@
   confirmText="确认"
   onConfirm={confirmVote}
 />
+
+<style>
+  .back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.375rem 0.75rem;
+    margin-bottom: 1rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--vercel-text-secondary);
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s var(--apple-ease);
+  }
+
+  .back-btn:hover {
+    color: var(--vercel-text);
+    background: rgba(255,255,255,0.08);
+    border-color: rgba(255,255,255,0.12);
+  }
+</style>

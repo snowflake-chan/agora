@@ -22,8 +22,8 @@
   href={`/patches/${patch.id}`}
   class="block px-4 py-4 border-b transition-colors"
   style="border-color: var(--vercel-border);"
-  on:mouseenter={(e) => e.currentTarget.style.background = '#141417'}
-  on:mouseleave={(e) => e.currentTarget.style.background = ''}
+  onmouseenter={(e) => e.currentTarget.style.background = '#141417'}
+  onmouseleave={(e) => e.currentTarget.style.background = ''}
 >
   <div class="flex items-start gap-3">
     <div class="min-w-0 flex-1">

@@ -1,0 +1,792 @@
+[31m[1m16:56:53[22m [ERROR][39m src/components/posts/PostDetail.svelte:9:2 Cannot use `export let` in runes mode — use `$props()` instead
+https://svelte.dev/e/legacy_export_invalid
+[31m[1m16:56:53[22m [ERROR][39m src/components/posts/PostDetail.svelte:9:2 Cannot use `export let` in runes mode — use `$props()` instead
+https://svelte.dev/e/legacy_export_invalid
+[31m[1m16:57:28[22m [ERROR][39m src/components/posts/PostDetail.svelte:9:2 Cannot use `export let` in runes mode — use `$props()` instead
+https://svelte.dev/e/legacy_export_invalid
+[31m[1m16:57:29[22m [ERROR][39m src/components/posts/PostDetail.svelte:9:2 Cannot use `export let` in runes mode — use `$props()` instead
+https://svelte.dev/e/legacy_export_invalid
+[31m[1m16:57:29[22m [ERROR][39m src/components/posts/PostDetail.svelte:9:2 Cannot use `export let` in runes mode — use `$props()` instead
+https://svelte.dev/e/legacy_export_invalid
+[31m[1m16:57:32[22m [ERROR] [vite][39m An error happened during full reload
+Failed to load url astro:server-app.js (resolved id: astro:server-app.js). Does the file exist?
+Error: Failed to load url astro:server-app.js (resolved id: astro:server-app.js). Does the file exist?
+    at loadAndTransform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:20087:31)
+[31m[1m16:57:34[22m [ERROR] [vite][39m An error happened during full reload
+src/components/posts/PostDetail.svelte:9:2 Cannot use `export let` in runes mode — use `$props()` instead
+https://svelte.dev/e/legacy_export_invalid
+
+[31m[1m16:57:34[22m [ERROR][39m src/components/posts/PostDetail.svelte:9:2 Cannot use `export let` in runes mode — use `$props()` instead
+https://svelte.dev/e/legacy_export_invalid
+[31m[1m16:57:34[22m [ERROR] [vite][39m An error happened during full reload
+src/components/patches/PatchDetail.svelte:11:2 Cannot use `export let` in runes mode — use `$props()` instead
+https://svelte.dev/e/legacy_export_invalid
+
+[31m[1m16:57:35[22m [ERROR][39m src/components/posts/PostDetail.svelte:9:2 Cannot use `export let` in runes mode — use `$props()` instead
+https://svelte.dev/e/legacy_export_invalid
+[31m[1m16:57:42[22m [ERROR][39m src/components/posts/PostDetail.svelte:9:2 Cannot use `export let` in runes mode — use `$props()` instead
+https://svelte.dev/e/legacy_export_invalid
+[31m[1m16:57:42[22m [ERROR] [vite][39m An error happened during full reload
+src/components/posts/PostDetail.svelte:9:2 Cannot use `export let` in runes mode — use `$props()` instead
+https://svelte.dev/e/legacy_export_invalid
+
+[31m[1m16:57:42[22m [ERROR] [vite][39m An error happened during full reload
+src/components/patches/PatchDetail.svelte:11:2 Cannot use `export let` in runes mode — use `$props()` instead
+https://svelte.dev/e/legacy_export_invalid
+
+[31m[1m16:57:43[22m [ERROR][39m src/components/posts/PostDetail.svelte:9:2 Cannot use `export let` in runes mode — use `$props()` instead
+https://svelte.dev/e/legacy_export_invalid
+[31m[1m16:57:45[22m [ERROR] [vite][39m An error happened during full reload
+src/components/posts/PostDetail.svelte:9:2 Cannot use `export let` in runes mode — use `$props()` instead
+https://svelte.dev/e/legacy_export_invalid
+
+[31m[1m16:57:45[22m [ERROR][39m src/components/posts/PostDetail.svelte:9:2 Cannot use `export let` in runes mode — use `$props()` instead
+https://svelte.dev/e/legacy_export_invalid
+[31m[1m16:57:45[22m [ERROR] [vite][39m An error happened during full reload
+src/components/patches/PatchDetail.svelte:11:2 Cannot use `export let` in runes mode — use `$props()` instead
+https://svelte.dev/e/legacy_export_invalid
+
+[31m[1m16:57:48[22m [ERROR] [vite][39m An error happened during full reload
+src/components/posts/PostDetail.svelte:9:2 Cannot use `export let` in runes mode — use `$props()` instead
+https://svelte.dev/e/legacy_export_invalid
+
+[31m[1m16:57:48[22m [ERROR][39m src/components/posts/PostDetail.svelte:9:2 Cannot use `export let` in runes mode — use `$props()` instead
+https://svelte.dev/e/legacy_export_invalid
+[31m[1m16:57:48[22m [ERROR] [vite][39m An error happened during full reload
+src/components/patches/PatchDetail.svelte:11:2 Cannot use `export let` in runes mode — use `$props()` instead
+https://svelte.dev/e/legacy_export_invalid
+
+[31m[1m16:57:51[22m [ERROR] [vite][39m An error happened during full reload
+src/components/posts/PostDetail.svelte:9:2 Cannot use `export let` in runes mode — use `$props()` instead
+https://svelte.dev/e/legacy_export_invalid
+
+[31m[1m16:57:51[22m [ERROR][39m src/components/posts/PostDetail.svelte:9:2 Cannot use `export let` in runes mode — use `$props()` instead
+https://svelte.dev/e/legacy_export_invalid
+[31m[1m16:57:51[22m [ERROR] [vite][39m An error happened during full reload
+src/components/patches/PatchDetail.svelte:11:2 Cannot use `export let` in runes mode — use `$props()` instead
+https://svelte.dev/e/legacy_export_invalid
+
+[31m[1m16:57:59[22m [ERROR][39m src/components/posts/PostDetail.svelte:9:2 Cannot use `export let` in runes mode — use `$props()` instead
+https://svelte.dev/e/legacy_export_invalid
+[31m[1m16:58:00[22m [ERROR][39m src/components/posts/PostDetail.svelte:9:2 Cannot use `export let` in runes mode — use `$props()` instead
+https://svelte.dev/e/legacy_export_invalid
+[31m[1m16:58:02[22m [ERROR][39m src/components/posts/PostDetail.svelte:9:2 Cannot use `export let` in runes mode — use `$props()` instead
+https://svelte.dev/e/legacy_export_invalid
+[31m[1m16:58:04[22m [ERROR][39m src/components/posts/PostDetail.svelte:9:2 Cannot use `export let` in runes mode — use `$props()` instead
+https://svelte.dev/e/legacy_export_invalid
+[31m[1m16:58:06[22m [ERROR][39m src/components/posts/PostDetail.svelte:9:2 Cannot use `export let` in runes mode — use `$props()` instead
+https://svelte.dev/e/legacy_export_invalid
+[31m[1m16:58:08[22m [ERROR][39m src/components/posts/PostDetail.svelte:9:2 Cannot use `export let` in runes mode — use `$props()` instead
+https://svelte.dev/e/legacy_export_invalid
+[31m[1m16:58:09[22m [ERROR][39m src/components/posts/PostDetail.svelte:9:2 Cannot use `export let` in runes mode — use `$props()` instead
+https://svelte.dev/e/legacy_export_invalid
+[31m[1m16:58:11[22m [ERROR][39m src/components/posts/PostDetail.svelte:9:2 Cannot use `export let` in runes mode — use `$props()` instead
+https://svelte.dev/e/legacy_export_invalid
+[31m[1m16:58:13[22m [ERROR][39m src/components/posts/PostDetail.svelte:9:2 Cannot use `export let` in runes mode — use `$props()` instead
+https://svelte.dev/e/legacy_export_invalid
+[31m[1m16:58:15[22m [ERROR][39m src/components/posts/PostDetail.svelte:9:2 Cannot use `export let` in runes mode — use `$props()` instead
+https://svelte.dev/e/legacy_export_invalid
+[31m[1m16:58:17[22m [ERROR][39m src/components/posts/PostDetail.svelte:9:2 Cannot use `export let` in runes mode — use `$props()` instead
+https://svelte.dev/e/legacy_export_invalid
+[31m[1m16:58:18[22m [ERROR][39m src/components/posts/PostDetail.svelte:9:2 Cannot use `export let` in runes mode — use `$props()` instead
+https://svelte.dev/e/legacy_export_invalid
+[31m[1m16:58:20[22m [ERROR][39m src/components/posts/PostDetail.svelte:9:2 Cannot use `export let` in runes mode — use `$props()` instead
+https://svelte.dev/e/legacy_export_invalid
+[31m[1m17:09:26[22m [ERROR][39m src/components/posts/PostDetail.svelte:191:88 Mixing old (on:mouseenter) and new syntaxes for event handling is not allowed. Use only the onmouseenter syntax
+https://svelte.dev/e/mixed_event_handler_syntaxes
+[31m[1m17:09:26[22m [ERROR][39m src/components/posts/PostDetail.svelte:191:88 Mixing old (on:mouseenter) and new syntaxes for event handling is not allowed. Use only the onmouseenter syntax
+https://svelte.dev/e/mixed_event_handler_syntaxes
+[31m[1m17:09:27[22m [ERROR][39m src/components/posts/PostDetail.svelte:191:88 Mixing old (on:mouseenter) and new syntaxes for event handling is not allowed. Use only the onmouseenter syntax
+https://svelte.dev/e/mixed_event_handler_syntaxes
+[31m[1m17:09:29[22m [ERROR][39m src/components/posts/PostDetail.svelte:191:88 Mixing old (on:mouseenter) and new syntaxes for event handling is not allowed. Use only the onmouseenter syntax
+https://svelte.dev/e/mixed_event_handler_syntaxes
+[31m[1m17:09:31[22m [ERROR][39m src/components/posts/PostDetail.svelte:191:88 Mixing old (on:mouseenter) and new syntaxes for event handling is not allowed. Use only the onmouseenter syntax
+https://svelte.dev/e/mixed_event_handler_syntaxes
+[31m[1m17:09:33[22m [ERROR][39m src/components/posts/PostDetail.svelte:191:88 Mixing old (on:mouseenter) and new syntaxes for event handling is not allowed. Use only the onmouseenter syntax
+https://svelte.dev/e/mixed_event_handler_syntaxes
+[31m[1m17:09:35[22m [ERROR][39m src/components/posts/PostDetail.svelte:191:88 Mixing old (on:mouseenter) and new syntaxes for event handling is not allowed. Use only the onmouseenter syntax
+https://svelte.dev/e/mixed_event_handler_syntaxes
+[31m[1m17:09:37[22m [ERROR][39m src/components/posts/PostDetail.svelte:191:88 Mixing old (on:mouseenter) and new syntaxes for event handling is not allowed. Use only the onmouseenter syntax
+https://svelte.dev/e/mixed_event_handler_syntaxes
+[31m[1m17:09:39[22m [ERROR][39m src/components/posts/PostDetail.svelte:191:88 Mixing old (on:mouseenter) and new syntaxes for event handling is not allowed. Use only the onmouseenter syntax
+https://svelte.dev/e/mixed_event_handler_syntaxes
+[31m[1m17:09:41[22m [ERROR][39m src/components/posts/PostDetail.svelte:191:88 Mixing old (on:mouseenter) and new syntaxes for event handling is not allowed. Use only the onmouseenter syntax
+https://svelte.dev/e/mixed_event_handler_syntaxes
+[31m[1m17:09:43[22m [ERROR][39m src/components/posts/PostDetail.svelte:191:88 Mixing old (on:mouseenter) and new syntaxes for event handling is not allowed. Use only the onmouseenter syntax
+https://svelte.dev/e/mixed_event_handler_syntaxes
+[31m[1m17:09:44[22m [ERROR][39m src/components/posts/PostDetail.svelte:191:88 Mixing old (on:mouseenter) and new syntaxes for event handling is not allowed. Use only the onmouseenter syntax
+https://svelte.dev/e/mixed_event_handler_syntaxes
+[31m[1m17:09:45[22m [ERROR][39m src/components/posts/PostDetail.svelte:191:88 Mixing old (on:mouseenter) and new syntaxes for event handling is not allowed. Use only the onmouseenter syntax
+https://svelte.dev/e/mixed_event_handler_syntaxes
+[31m[1m17:09:47[22m [ERROR][39m src/components/posts/PostDetail.svelte:191:88 Mixing old (on:mouseenter) and new syntaxes for event handling is not allowed. Use only the onmouseenter syntax
+https://svelte.dev/e/mixed_event_handler_syntaxes
+[31m[1m17:09:50[22m [ERROR][39m src/components/posts/PostDetail.svelte:191:88 Mixing old (on:mouseenter) and new syntaxes for event handling is not allowed. Use only the onmouseenter syntax
+https://svelte.dev/e/mixed_event_handler_syntaxes
+[31m[1m17:09:50[22m [ERROR][39m src/components/posts/PostDetail.svelte:191:88 Mixing old (on:mouseenter) and new syntaxes for event handling is not allowed. Use only the onmouseenter syntax
+https://svelte.dev/e/mixed_event_handler_syntaxes
+[31m[1m17:09:51[22m [ERROR][39m src/components/posts/PostDetail.svelte:191:88 Mixing old (on:mouseenter) and new syntaxes for event handling is not allowed. Use only the onmouseenter syntax
+https://svelte.dev/e/mixed_event_handler_syntaxes
+[31m[1m17:09:51[22m [ERROR] [vite][39m [31mInternal server error: Failed to resolve import "../stores/nav" from "src/components/PillActions.svelte?astro-retry=1784365791830". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte?astro-retry=1784365791830[39m:10:27
+[33m  7  |  import { PlusIcon, GitBranchIcon, LogOutIcon, UserIcon } from "@lucide/svelte";
+  8  |  import { initAuth, currentUser, logout } from "../stores/auth";
+  9  |  import { mainView } from "../stores/nav";
+     |                            ^
+  10 |  import PostForm from "./posts/PostForm.svelte";
+  11 |  import PatchForm from "./patches/PatchForm.svelte";[39m
+      at TransformPluginContext._formatLog (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30366:39)
+      at TransformPluginContext.error (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30363:14)
+      at normalizeUrl (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27393:18)
+      at async file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27456:30
+      at async Promise.all (index 5)
+      at async TransformPluginContext.transform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27424:4)
+      at async EnvironmentPluginContainer.transform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30151:14)
+      at async loadAndTransform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:20098:26)
+[31m[1m17:09:51[22m [ERROR] [vite][39m [31mInternal server error: Failed to resolve import "../stores/nav" from "src/components/PillActions.svelte?astro-retry=1784365791832". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte?astro-retry=1784365791832[39m:10:27
+[33m  7  |  import { PlusIcon, GitBranchIcon, LogOutIcon, UserIcon } from "@lucide/svelte";
+  8  |  import { initAuth, currentUser, logout } from "../stores/auth";
+  9  |  import { mainView } from "../stores/nav";
+     |                            ^
+  10 |  import PostForm from "./posts/PostForm.svelte";
+  11 |  import PatchForm from "./patches/PatchForm.svelte";[39m
+      at TransformPluginContext._formatLog (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30366:39)
+      at TransformPluginContext.error (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30363:14)
+      at normalizeUrl (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27393:18)
+      at async file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27456:30
+      at async Promise.all (index 5)
+      at async TransformPluginContext.transform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27424:4)
+      at async EnvironmentPluginContainer.transform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30151:14)
+      at async loadAndTransform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:20098:26)
+[31m[1m17:09:54[22m [ERROR][39m src/components/posts/PostDetail.svelte:191:88 Mixing old (on:mouseenter) and new syntaxes for event handling is not allowed. Use only the onmouseenter syntax
+https://svelte.dev/e/mixed_event_handler_syntaxes
+[31m[1m17:09:54[22m [ERROR] [vite][39m [31mInternal server error: Failed to resolve import "../stores/nav" from "src/components/PillActions.svelte?astro-retry=1784365794381". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte?astro-retry=1784365794381[39m:10:27
+[33m  7  |  import { PlusIcon, GitBranchIcon, LogOutIcon, UserIcon } from "@lucide/svelte";
+  8  |  import { initAuth, currentUser, logout } from "../stores/auth";
+  9  |  import { mainView } from "../stores/nav";
+     |                            ^
+  10 |  import PostForm from "./posts/PostForm.svelte";
+  11 |  import PatchForm from "./patches/PatchForm.svelte";[39m
+      at TransformPluginContext._formatLog (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30366:39)
+      at TransformPluginContext.error (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30363:14)
+      at normalizeUrl (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27393:18)
+      at async file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27456:30
+      at async Promise.all (index 5)
+      at async TransformPluginContext.transform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27424:4)
+      at async EnvironmentPluginContainer.transform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30151:14)
+      at async loadAndTransform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:20098:26)
+[31m[1m17:09:54[22m [ERROR] [vite][39m [31mInternal server error: Failed to resolve import "../stores/nav" from "src/components/PillActions.svelte?astro-retry=1784365794385". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte?astro-retry=1784365794385[39m:10:27
+[33m  7  |  import { PlusIcon, GitBranchIcon, LogOutIcon, UserIcon } from "@lucide/svelte";
+  8  |  import { initAuth, currentUser, logout } from "../stores/auth";
+  9  |  import { mainView } from "../stores/nav";
+     |                            ^
+  10 |  import PostForm from "./posts/PostForm.svelte";
+  11 |  import PatchForm from "./patches/PatchForm.svelte";[39m
+      at TransformPluginContext._formatLog (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30366:39)
+      at TransformPluginContext.error (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30363:14)
+      at normalizeUrl (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27393:18)
+      at async file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27456:30
+      at async Promise.all (index 5)
+      at async TransformPluginContext.transform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27424:4)
+      at async EnvironmentPluginContainer.transform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30151:14)
+      at async loadAndTransform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:20098:26)
+[31m[1m17:09:56[22m [ERROR][39m src/components/posts/PostDetail.svelte:191:88 Mixing old (on:mouseenter) and new syntaxes for event handling is not allowed. Use only the onmouseenter syntax
+https://svelte.dev/e/mixed_event_handler_syntaxes
+[31m[1m17:09:56[22m [ERROR] [vite][39m [31mInternal server error: Failed to resolve import "../stores/nav" from "src/components/PillActions.svelte?astro-retry=1784365796336". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte?astro-retry=1784365796336[39m:10:27
+[33m  7  |  import { PlusIcon, GitBranchIcon, LogOutIcon, UserIcon } from "@lucide/svelte";
+  8  |  import { initAuth, currentUser, logout } from "../stores/auth";
+  9  |  import { mainView } from "../stores/nav";
+     |                            ^
+  10 |  import PostForm from "./posts/PostForm.svelte";
+  11 |  import PatchForm from "./patches/PatchForm.svelte";[39m
+      at TransformPluginContext._formatLog (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30366:39)
+      at TransformPluginContext.error (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30363:14)
+      at normalizeUrl (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27393:18)
+      at async file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27456:30
+      at async Promise.all (index 5)
+      at async TransformPluginContext.transform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27424:4)
+      at async EnvironmentPluginContainer.transform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30151:14)
+      at async loadAndTransform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:20098:26)
+[31m[1m17:09:56[22m [ERROR] [vite][39m [31mInternal server error: Failed to resolve import "../stores/nav" from "src/components/PillActions.svelte?astro-retry=1784365796340". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte?astro-retry=1784365796340[39m:10:27
+[33m  7  |  import { PlusIcon, GitBranchIcon, LogOutIcon, UserIcon } from "@lucide/svelte";
+  8  |  import { initAuth, currentUser, logout } from "../stores/auth";
+  9  |  import { mainView } from "../stores/nav";
+     |                            ^
+  10 |  import PostForm from "./posts/PostForm.svelte";
+  11 |  import PatchForm from "./patches/PatchForm.svelte";[39m
+      at TransformPluginContext._formatLog (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30366:39)
+      at TransformPluginContext.error (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30363:14)
+      at normalizeUrl (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27393:18)
+      at async file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27456:30
+      at async Promise.all (index 5)
+      at async TransformPluginContext.transform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27424:4)
+      at async EnvironmentPluginContainer.transform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30151:14)
+      at async loadAndTransform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:20098:26)
+[31m[1m17:09:58[22m [ERROR][39m src/components/posts/PostDetail.svelte:191:88 Mixing old (on:mouseenter) and new syntaxes for event handling is not allowed. Use only the onmouseenter syntax
+https://svelte.dev/e/mixed_event_handler_syntaxes
+[31m[1m17:09:58[22m [ERROR] [vite][39m [31mInternal server error: Failed to resolve import "../stores/nav" from "src/components/PillActions.svelte?astro-retry=1784365798377". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte?astro-retry=1784365798377[39m:10:27
+[33m  7  |  import { PlusIcon, GitBranchIcon, LogOutIcon, UserIcon } from "@lucide/svelte";
+  8  |  import { initAuth, currentUser, logout } from "../stores/auth";
+  9  |  import { mainView } from "../stores/nav";
+     |                            ^
+  10 |  import PostForm from "./posts/PostForm.svelte";
+  11 |  import PatchForm from "./patches/PatchForm.svelte";[39m
+      at TransformPluginContext._formatLog (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30366:39)
+      at TransformPluginContext.error (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30363:14)
+      at normalizeUrl (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27393:18)
+      at async file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27456:30
+      at async Promise.all (index 5)
+      at async TransformPluginContext.transform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27424:4)
+      at async EnvironmentPluginContainer.transform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30151:14)
+      at async loadAndTransform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:20098:26)
+[31m[1m17:09:58[22m [ERROR] [vite][39m [31mInternal server error: Failed to resolve import "../stores/nav" from "src/components/PillActions.svelte?astro-retry=1784365798387". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte?astro-retry=1784365798387[39m:10:27
+[33m  7  |  import { PlusIcon, GitBranchIcon, LogOutIcon, UserIcon } from "@lucide/svelte";
+  8  |  import { initAuth, currentUser, logout } from "../stores/auth";
+  9  |  import { mainView } from "../stores/nav";
+     |                            ^
+  10 |  import PostForm from "./posts/PostForm.svelte";
+  11 |  import PatchForm from "./patches/PatchForm.svelte";[39m
+      at TransformPluginContext._formatLog (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30366:39)
+      at TransformPluginContext.error (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30363:14)
+      at normalizeUrl (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27393:18)
+      at async file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27456:30
+      at async Promise.all (index 5)
+      at async TransformPluginContext.transform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27424:4)
+      at async EnvironmentPluginContainer.transform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30151:14)
+      at async loadAndTransform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:20098:26)
+[31m[1m17:10:00[22m [ERROR][39m src/components/posts/PostDetail.svelte:191:88 Mixing old (on:mouseenter) and new syntaxes for event handling is not allowed. Use only the onmouseenter syntax
+https://svelte.dev/e/mixed_event_handler_syntaxes
+[31m[1m17:10:00[22m [ERROR] [vite][39m [31mInternal server error: Failed to resolve import "../stores/nav" from "src/components/PillActions.svelte?astro-retry=1784365800354". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte?astro-retry=1784365800354[39m:10:27
+[33m  7  |  import { PlusIcon, GitBranchIcon, LogOutIcon, UserIcon } from "@lucide/svelte";
+  8  |  import { initAuth, currentUser, logout } from "../stores/auth";
+  9  |  import { mainView } from "../stores/nav";
+     |                            ^
+  10 |  import PostForm from "./posts/PostForm.svelte";
+  11 |  import PatchForm from "./patches/PatchForm.svelte";[39m
+      at TransformPluginContext._formatLog (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30366:39)
+      at TransformPluginContext.error (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30363:14)
+      at normalizeUrl (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27393:18)
+      at async file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27456:30
+      at async Promise.all (index 5)
+      at async TransformPluginContext.transform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27424:4)
+      at async EnvironmentPluginContainer.transform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30151:14)
+      at async loadAndTransform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:20098:26)
+[31m[1m17:10:00[22m [ERROR] [vite][39m [31mInternal server error: Failed to resolve import "../stores/nav" from "src/components/PillActions.svelte?astro-retry=1784365800372". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte?astro-retry=1784365800372[39m:10:27
+[33m  7  |  import { PlusIcon, GitBranchIcon, LogOutIcon, UserIcon } from "@lucide/svelte";
+  8  |  import { initAuth, currentUser, logout } from "../stores/auth";
+  9  |  import { mainView } from "../stores/nav";
+     |                            ^
+  10 |  import PostForm from "./posts/PostForm.svelte";
+  11 |  import PatchForm from "./patches/PatchForm.svelte";[39m
+      at TransformPluginContext._formatLog (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30366:39)
+      at TransformPluginContext.error (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30363:14)
+      at normalizeUrl (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27393:18)
+      at async file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27456:30
+      at async Promise.all (index 5)
+      at async TransformPluginContext.transform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27424:4)
+      at async EnvironmentPluginContainer.transform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30151:14)
+      at async loadAndTransform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:20098:26)
+[31m[1m17:10:02[22m [ERROR][39m src/components/posts/PostDetail.svelte:191:88 Mixing old (on:mouseenter) and new syntaxes for event handling is not allowed. Use only the onmouseenter syntax
+https://svelte.dev/e/mixed_event_handler_syntaxes
+[31m[1m17:10:02[22m [ERROR] [vite][39m [31mInternal server error: Failed to resolve import "../stores/nav" from "src/components/PillActions.svelte?astro-retry=1784365802367". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte?astro-retry=1784365802367[39m:10:27
+[33m  7  |  import { PlusIcon, GitBranchIcon, LogOutIcon, UserIcon } from "@lucide/svelte";
+  8  |  import { initAuth, currentUser, logout } from "../stores/auth";
+  9  |  import { mainView } from "../stores/nav";
+     |                            ^
+  10 |  import PostForm from "./posts/PostForm.svelte";
+  11 |  import PatchForm from "./patches/PatchForm.svelte";[39m
+      at TransformPluginContext._formatLog (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30366:39)
+      at TransformPluginContext.error (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30363:14)
+      at normalizeUrl (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27393:18)
+      at async file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27456:30
+      at async Promise.all (index 5)
+      at async TransformPluginContext.transform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27424:4)
+      at async EnvironmentPluginContainer.transform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30151:14)
+      at async loadAndTransform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:20098:26)
+[31m[1m17:10:02[22m [ERROR] [vite][39m [31mInternal server error: Failed to resolve import "../stores/nav" from "src/components/PillActions.svelte?astro-retry=1784365802369". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte?astro-retry=1784365802369[39m:10:27
+[33m  7  |  import { PlusIcon, GitBranchIcon, LogOutIcon, UserIcon } from "@lucide/svelte";
+  8  |  import { initAuth, currentUser, logout } from "../stores/auth";
+  9  |  import { mainView } from "../stores/nav";
+     |                            ^
+  10 |  import PostForm from "./posts/PostForm.svelte";
+  11 |  import PatchForm from "./patches/PatchForm.svelte";[39m
+      at TransformPluginContext._formatLog (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30366:39)
+      at TransformPluginContext.error (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30363:14)
+      at normalizeUrl (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27393:18)
+      at async file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27456:30
+      at async Promise.all (index 5)
+      at async TransformPluginContext.transform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27424:4)
+      at async EnvironmentPluginContainer.transform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30151:14)
+      at async loadAndTransform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:20098:26)
+[31m[1m17:10:04[22m [ERROR][39m src/components/posts/PostDetail.svelte:191:88 Mixing old (on:mouseenter) and new syntaxes for event handling is not allowed. Use only the onmouseenter syntax
+https://svelte.dev/e/mixed_event_handler_syntaxes
+[31m[1m17:10:04[22m [ERROR] [vite][39m [31mInternal server error: Failed to resolve import "../stores/nav" from "src/components/PillActions.svelte?astro-retry=1784365804349". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte?astro-retry=1784365804349[39m:10:27
+[33m  7  |  import { PlusIcon, GitBranchIcon, LogOutIcon, UserIcon } from "@lucide/svelte";
+  8  |  import { initAuth, currentUser, logout } from "../stores/auth";
+  9  |  import { mainView } from "../stores/nav";
+     |                            ^
+  10 |  import PostForm from "./posts/PostForm.svelte";
+  11 |  import PatchForm from "./patches/PatchForm.svelte";[39m
+      at TransformPluginContext._formatLog (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30366:39)
+      at TransformPluginContext.error (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30363:14)
+      at normalizeUrl (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27393:18)
+      at async file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27456:30
+      at async Promise.all (index 5)
+      at async TransformPluginContext.transform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27424:4)
+      at async EnvironmentPluginContainer.transform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30151:14)
+      at async loadAndTransform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:20098:26)
+[31m[1m17:10:04[22m [ERROR] [vite][39m [31mInternal server error: Failed to resolve import "../stores/nav" from "src/components/PillActions.svelte?astro-retry=1784365804365". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte?astro-retry=1784365804365[39m:10:27
+[33m  7  |  import { PlusIcon, GitBranchIcon, LogOutIcon, UserIcon } from "@lucide/svelte";
+  8  |  import { initAuth, currentUser, logout } from "../stores/auth";
+  9  |  import { mainView } from "../stores/nav";
+     |                            ^
+  10 |  import PostForm from "./posts/PostForm.svelte";
+  11 |  import PatchForm from "./patches/PatchForm.svelte";[39m
+      at TransformPluginContext._formatLog (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30366:39)
+      at TransformPluginContext.error (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30363:14)
+      at normalizeUrl (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27393:18)
+      at async file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27456:30
+      at async Promise.all (index 5)
+      at async TransformPluginContext.transform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27424:4)
+      at async EnvironmentPluginContainer.transform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30151:14)
+      at async loadAndTransform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:20098:26)
+[31m[1m17:10:06[22m [ERROR][39m src/components/posts/PostDetail.svelte:191:88 Mixing old (on:mouseenter) and new syntaxes for event handling is not allowed. Use only the onmouseenter syntax
+https://svelte.dev/e/mixed_event_handler_syntaxes
+[31m[1m17:10:06[22m [ERROR] [vite][39m [31mInternal server error: Failed to resolve import "../stores/nav" from "src/components/PillActions.svelte?astro-retry=1784365806319". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte?astro-retry=1784365806319[39m:10:27
+[33m  7  |  import { PlusIcon, GitBranchIcon, LogOutIcon, UserIcon } from "@lucide/svelte";
+  8  |  import { initAuth, currentUser, logout } from "../stores/auth";
+  9  |  import { mainView } from "../stores/nav";
+     |                            ^
+  10 |  import PostForm from "./posts/PostForm.svelte";
+  11 |  import PatchForm from "./patches/PatchForm.svelte";[39m
+      at TransformPluginContext._formatLog (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30366:39)
+      at TransformPluginContext.error (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30363:14)
+      at normalizeUrl (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27393:18)
+      at async file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27456:30
+      at async Promise.all (index 5)
+      at async TransformPluginContext.transform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27424:4)
+      at async EnvironmentPluginContainer.transform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30151:14)
+      at async loadAndTransform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:20098:26)
+[31m[1m17:10:06[22m [ERROR] [vite][39m [31mInternal server error: Failed to resolve import "../stores/nav" from "src/components/PillActions.svelte?astro-retry=1784365806335". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte?astro-retry=1784365806335[39m:10:27
+[33m  7  |  import { PlusIcon, GitBranchIcon, LogOutIcon, UserIcon } from "@lucide/svelte";
+  8  |  import { initAuth, currentUser, logout } from "../stores/auth";
+  9  |  import { mainView } from "../stores/nav";
+     |                            ^
+  10 |  import PostForm from "./posts/PostForm.svelte";
+  11 |  import PatchForm from "./patches/PatchForm.svelte";[39m
+      at TransformPluginContext._formatLog (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30366:39)
+      at TransformPluginContext.error (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30363:14)
+      at normalizeUrl (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27393:18)
+      at async file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27456:30
+      at async Promise.all (index 5)
+      at async TransformPluginContext.transform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27424:4)
+      at async EnvironmentPluginContainer.transform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30151:14)
+      at async loadAndTransform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:20098:26)
+[31m[1m17:10:08[22m [ERROR][39m src/components/posts/PostDetail.svelte:191:88 Mixing old (on:mouseenter) and new syntaxes for event handling is not allowed. Use only the onmouseenter syntax
+https://svelte.dev/e/mixed_event_handler_syntaxes
+[31m[1m17:10:08[22m [ERROR] [vite][39m [31mInternal server error: Failed to resolve import "../stores/nav" from "src/components/PillActions.svelte?astro-retry=1784365808353". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte?astro-retry=1784365808353[39m:10:27
+[33m  7  |  import { PlusIcon, GitBranchIcon, LogOutIcon, UserIcon } from "@lucide/svelte";
+  8  |  import { initAuth, currentUser, logout } from "../stores/auth";
+  9  |  import { mainView } from "../stores/nav";
+     |                            ^
+  10 |  import PostForm from "./posts/PostForm.svelte";
+  11 |  import PatchForm from "./patches/PatchForm.svelte";[39m
+      at TransformPluginContext._formatLog (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30366:39)
+      at TransformPluginContext.error (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30363:14)
+      at normalizeUrl (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27393:18)
+      at async file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27456:30
+      at async Promise.all (index 5)
+      at async TransformPluginContext.transform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27424:4)
+      at async EnvironmentPluginContainer.transform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30151:14)
+      at async loadAndTransform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:20098:26)
+[31m[1m17:10:08[22m [ERROR] [vite][39m [31mInternal server error: Failed to resolve import "../stores/nav" from "src/components/PillActions.svelte?astro-retry=1784365808359". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte?astro-retry=1784365808359[39m:10:27
+[33m  7  |  import { PlusIcon, GitBranchIcon, LogOutIcon, UserIcon } from "@lucide/svelte";
+  8  |  import { initAuth, currentUser, logout } from "../stores/auth";
+  9  |  import { mainView } from "../stores/nav";
+     |                            ^
+  10 |  import PostForm from "./posts/PostForm.svelte";
+  11 |  import PatchForm from "./patches/PatchForm.svelte";[39m
+      at TransformPluginContext._formatLog (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30366:39)
+      at TransformPluginContext.error (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30363:14)
+      at normalizeUrl (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27393:18)
+      at async file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27456:30
+      at async Promise.all (index 5)
+      at async TransformPluginContext.transform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27424:4)
+      at async EnvironmentPluginContainer.transform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30151:14)
+      at async loadAndTransform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:20098:26)
+[31m[1m17:10:10[22m [ERROR][39m src/components/posts/PostDetail.svelte:191:88 Mixing old (on:mouseenter) and new syntaxes for event handling is not allowed. Use only the onmouseenter syntax
+https://svelte.dev/e/mixed_event_handler_syntaxes
+[31m[1m17:10:10[22m [ERROR] [vite][39m [31mInternal server error: Failed to resolve import "../stores/nav" from "src/components/PillActions.svelte?astro-retry=1784365810333". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte?astro-retry=1784365810333[39m:10:27
+[33m  7  |  import { PlusIcon, GitBranchIcon, LogOutIcon, UserIcon } from "@lucide/svelte";
+  8  |  import { initAuth, currentUser, logout } from "../stores/auth";
+  9  |  import { mainView } from "../stores/nav";
+     |                            ^
+  10 |  import PostForm from "./posts/PostForm.svelte";
+  11 |  import PatchForm from "./patches/PatchForm.svelte";[39m
+      at TransformPluginContext._formatLog (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30366:39)
+      at TransformPluginContext.error (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30363:14)
+      at normalizeUrl (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27393:18)
+      at async file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27456:30
+      at async Promise.all (index 5)
+      at async TransformPluginContext.transform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27424:4)
+      at async EnvironmentPluginContainer.transform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30151:14)
+      at async loadAndTransform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:20098:26)
+[31m[1m17:10:10[22m [ERROR] [vite][39m [31mInternal server error: Failed to resolve import "../stores/nav" from "src/components/PillActions.svelte?astro-retry=1784365810347". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mC:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte?astro-retry=1784365810347[39m:10:27
+[33m  7  |  import { PlusIcon, GitBranchIcon, LogOutIcon, UserIcon } from "@lucide/svelte";
+  8  |  import { initAuth, currentUser, logout } from "../stores/auth";
+  9  |  import { mainView } from "../stores/nav";
+     |                            ^
+  10 |  import PostForm from "./posts/PostForm.svelte";
+  11 |  import PatchForm from "./patches/PatchForm.svelte";[39m
+      at TransformPluginContext._formatLog (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30366:39)
+      at TransformPluginContext.error (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30363:14)
+      at normalizeUrl (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27393:18)
+      at async file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27456:30
+      at async Promise.all (index 5)
+      at async TransformPluginContext.transform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:27424:4)
+      at async EnvironmentPluginContainer.transform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:30151:14)
+      at async loadAndTransform (file:///C:/Users/Natsume/Desktop/agora/frontend/node_modules/.pnpm/vite@8.1.4_esbuild@0.28.1_jiti@2.7.0/node_modules/vite/dist/node/chunks/node.js:20098:26)
+[31m[1m17:10:11[22m [ERROR] [vite][39m [31mInternal server error: C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:77:11 `$mainView` is an illegal variable name. To reference a global variable called `$mainView`, use `globalThis.$mainView`
+https://svelte.dev/e/global_reference_invalid[39m
+  Plugin: [35mvite-plugin-svelte:compile[39m
+  File: [36mC:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte[39m:77:11
+[33m   75 |    // Current in-page view (kept in sync with the shared nav store).
+   76 |    function routeKey(): "posts" | "patches" {
+   77 |      return $mainView === "patches" ? "patches" : "posts";
+                             ^
+   78 |    }
+   79 |  [39m
+[31m[1m17:10:11[22m [ERROR] [vite][39m [31mInternal server error: C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:77:11 `$mainView` is an illegal variable name. To reference a global variable called `$mainView`, use `globalThis.$mainView`
+https://svelte.dev/e/global_reference_invalid[39m
+  Plugin: [35mvite-plugin-svelte:compile[39m
+  File: [36mC:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte[39m:77:11
+[33m   75 |    // Current in-page view (kept in sync with the shared nav store).
+   76 |    function routeKey(): "posts" | "patches" {
+   77 |      return $mainView === "patches" ? "patches" : "posts";
+                             ^
+   78 |    }
+   79 |  [39m
+[31m[1m17:10:12[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:77:11 `$mainView` is an illegal variable name. To reference a global variable called `$mainView`, use `globalThis.$mainView`
+https://svelte.dev/e/global_reference_invalid
+[31m[1m17:10:12[22m [ERROR] [vite][39m [31mInternal server error: C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:77:11 `$mainView` is an illegal variable name. To reference a global variable called `$mainView`, use `globalThis.$mainView`
+https://svelte.dev/e/global_reference_invalid[39m
+  Plugin: [35mvite-plugin-svelte:compile[39m
+  File: [36mC:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte[39m:77:11
+[33m   75 |    // Current in-page view (kept in sync with the shared nav store).
+   76 |    function routeKey(): "posts" | "patches" {
+   77 |      return $mainView === "patches" ? "patches" : "posts";
+                             ^
+   78 |    }
+   79 |  [39m
+[31m[1m17:10:12[22m [ERROR] [vite][39m [31mInternal server error: C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:77:11 `$mainView` is an illegal variable name. To reference a global variable called `$mainView`, use `globalThis.$mainView`
+https://svelte.dev/e/global_reference_invalid[39m
+  Plugin: [35mvite-plugin-svelte:compile[39m
+  File: [36mC:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte[39m:77:11
+[33m   75 |    // Current in-page view (kept in sync with the shared nav store).
+   76 |    function routeKey(): "posts" | "patches" {
+   77 |      return $mainView === "patches" ? "patches" : "posts";
+                             ^
+   78 |    }
+   79 |  [39m
+[31m[1m17:10:14[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:77:11 `$mainView` is an illegal variable name. To reference a global variable called `$mainView`, use `globalThis.$mainView`
+https://svelte.dev/e/global_reference_invalid
+[31m[1m17:10:14[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:77:11 `$mainView` is an illegal variable name. To reference a global variable called `$mainView`, use `globalThis.$mainView`
+https://svelte.dev/e/global_reference_invalid
+[31m[1m17:10:14[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:77:11 `$mainView` is an illegal variable name. To reference a global variable called `$mainView`, use `globalThis.$mainView`
+https://svelte.dev/e/global_reference_invalid
+[31m[1m17:10:14[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:77:11 `$mainView` is an illegal variable name. To reference a global variable called `$mainView`, use `globalThis.$mainView`
+https://svelte.dev/e/global_reference_invalid
+[31m[1m17:10:16[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:77:11 `$mainView` is an illegal variable name. To reference a global variable called `$mainView`, use `globalThis.$mainView`
+https://svelte.dev/e/global_reference_invalid
+[31m[1m17:10:16[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:77:11 `$mainView` is an illegal variable name. To reference a global variable called `$mainView`, use `globalThis.$mainView`
+https://svelte.dev/e/global_reference_invalid
+[31m[1m17:10:16[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:77:11 `$mainView` is an illegal variable name. To reference a global variable called `$mainView`, use `globalThis.$mainView`
+https://svelte.dev/e/global_reference_invalid
+[31m[1m17:10:18[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:69:11 `$mainView` is an illegal variable name. To reference a global variable called `$mainView`, use `globalThis.$mainView`
+https://svelte.dev/e/global_reference_invalid
+[31m[1m17:10:18[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:69:11 `$mainView` is an illegal variable name. To reference a global variable called `$mainView`, use `globalThis.$mainView`
+https://svelte.dev/e/global_reference_invalid
+[31m[1m17:10:18[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:69:11 `$mainView` is an illegal variable name. To reference a global variable called `$mainView`, use `globalThis.$mainView`
+https://svelte.dev/e/global_reference_invalid
+[31m[1m17:10:20[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:69:11 `$mainView` is an illegal variable name. To reference a global variable called `$mainView`, use `globalThis.$mainView`
+https://svelte.dev/e/global_reference_invalid
+[31m[1m17:10:20[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:69:11 `$mainView` is an illegal variable name. To reference a global variable called `$mainView`, use `globalThis.$mainView`
+https://svelte.dev/e/global_reference_invalid
+[31m[1m17:10:21[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:69:11 `$mainView` is an illegal variable name. To reference a global variable called `$mainView`, use `globalThis.$mainView`
+https://svelte.dev/e/global_reference_invalid
+[31m[1m17:10:22[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:69:11 `$mainView` is an illegal variable name. To reference a global variable called `$mainView`, use `globalThis.$mainView`
+https://svelte.dev/e/global_reference_invalid
+[31m[1m17:10:22[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:69:11 `$mainView` is an illegal variable name. To reference a global variable called `$mainView`, use `globalThis.$mainView`
+https://svelte.dev/e/global_reference_invalid
+[31m[1m17:10:23[22m [ERROR][39m src/components/posts/PostDetail.svelte:191:88 Mixing old (on:mouseenter) and new syntaxes for event handling is not allowed. Use only the onmouseenter syntax
+https://svelte.dev/e/mixed_event_handler_syntaxes
+[31m[1m17:10:30[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:30[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:31[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:35[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:35[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:35[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:35[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:35[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:35[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:35[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:37[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:37[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:38[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:39[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:39[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:39[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:39[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:39[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:39[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:39[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:41[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:41[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:42[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:43[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:43[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:44[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:45[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:45[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:45[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:46[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:46[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:47[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:47[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:47[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:49[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:49[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:50[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:51[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:51[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:51[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:51[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:51[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:51[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:52[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:54[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:54[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:55[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:56[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:56[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:56[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:57[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:57[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:58[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:58[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:10:58[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:00[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:00[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:00[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:00[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:00[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:00[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:00[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:03[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:03[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:03[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:04[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:04[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:04[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:06[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:06[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:06[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:08[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:08[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:09[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:10[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:10[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:11[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:12[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:12[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:12[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:12[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:12[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:14[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:14[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:15[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:16[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:16[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:17[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:18[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:18[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:19[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:20[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:20[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:21[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:22[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:22[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:22[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:22[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:22[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:23[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:25[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:25[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:25[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:27[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:27[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:28[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:29[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:29[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:131:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:30[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:153:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:30[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:153:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:30[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:153:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:32[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:153:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:11:32[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:153:2 `</button>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:14:08[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:164:2 `</a>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:14:08[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:164:2 `</a>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
+[31m[1m17:14:08[22m [ERROR][39m C:/Users/Natsume/Desktop/agora/frontend/src/components/PillActions.svelte:164:2 `</a>` attempted to close an element that was not open
+https://svelte.dev/e/element_invalid_closing_tag
