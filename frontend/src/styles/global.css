@@ -451,7 +451,7 @@ textarea.input {
 /* ── Timeline line ── */
 .timeline-line {
   position: absolute;
-  left: 16px;
+  left: 36px;
   top: 0;
   bottom: 0;
   width: 1px;
