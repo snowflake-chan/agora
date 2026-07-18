@@ -1,6 +1,7 @@
 <script lang="ts">
   import { marked } from "marked";
   import { createEventDispatcher } from "svelte";
+  import { GITHUB_REPO } from "../../lib/config";
   import { createPatch } from "../../lib/patches";
   import { toaster } from "../../stores/toaster";
 
@@ -59,7 +60,7 @@
 
   <!-- PR number input -->
   <div class="flex items-center gap-2 border-b px-6 py-2.5" style="border-color: var(--vercel-border);">
-    <span class="text-sm" style="color: var(--vercel-text-tertiary);">https://github.com/</span>
+    <span class="text-sm" style="color: var(--vercel-text-tertiary);">{GITHUB_REPO}#</span>
     <input
       bind:value={prNumber}
       type="number"
