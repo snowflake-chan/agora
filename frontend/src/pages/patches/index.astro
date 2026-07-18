@@ -1,18 +1,16 @@
 ---
-import Layout from "../../layouts/Layout.astro";
-import AppBar from "../../components/AppBar.astro";
-import PatchList from "../../components/patches/PatchList.svelte";
+// Redirect to home page; the MainView component reads localStorage to
+// pre-select the patches view so the transition is seamless.
 ---
 
-<Layout>
-  <AppBar />
-  <main class="mx-auto max-w-3xl px-4 py-8">
-    <div class="mb-6 flex items-center justify-between">
-      <h1 class="text-xl font-bold" style="color: var(--vercel-text);">变更</h1>
-      <a href="/patches/new" class="btn btn-primary btn-sm">发起变更</a>
-    </div>
-    <div class="card overflow-hidden">
-      <PatchList client:load />
-    </div>
-  </main>
-</Layout>
+<html lang="zh-CN">
+  <head>
+    <meta http-equiv="refresh" content="0; url=/" />
+    <script is:inline>
+      try { localStorage.setItem("agora:initView", "patches"); } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <p style="color:#888;font-family:sans-serif;padding:2rem">正在跳转到首页…</p>
+  </body>
+</html>

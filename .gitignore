@@ -2,6 +2,9 @@
 .venv/
 __pycache__/
 
+# ------ Local dev tools (portable runtimes) ------
+_tools/
+
 # ------ Frontend ------
 
 # build output

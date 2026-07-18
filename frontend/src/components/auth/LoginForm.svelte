@@ -23,7 +23,7 @@
   }
 </script>
 
-<form on:submit|preventDefault={handleSubmit} class="flex flex-col gap-4">
+<form onsubmit={(e) => { e.preventDefault(); handleSubmit(); }} class="flex flex-col gap-4">
   <label class="flex flex-col gap-1.5">
     <span class="text-sm font-medium" style="color: var(--vercel-text-secondary);">邮箱</span>
     <input
@@ -52,6 +52,6 @@
 
   <p class="text-center text-sm" style="color: var(--vercel-text-tertiary);">
     还没有账号？
-    <a href="/register" class="font-medium transition-colors" style="color: var(--vercel-text-secondary);" on:mouseenter={(e) => e.currentTarget.style.color = 'var(--vercel-text)'} on:mouseleave={(e) => e.currentTarget.style.color = 'var(--vercel-text-secondary)'}>注册</a>
+    <a href="/register" class="font-medium transition-colors" style="color: var(--vercel-text-secondary);" onmouseenter={(e) => e.currentTarget.style.color = 'var(--vercel-text)'} onmouseleave={(e) => e.currentTarget.style.color = 'var(--vercel-text-secondary)'}>注册</a>
   </p>
 </form>

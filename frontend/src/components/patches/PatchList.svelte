@@ -3,7 +3,7 @@
   import { listPatches, type Patch } from "../../lib/patches";
   import PatchCard from "./PatchCard.svelte";
 
-  export let initialStatus: string | undefined = undefined;
+  let { initialStatus = undefined as string | undefined }: { initialStatus?: string } = $props();
 
   let patches: Patch[] = [];
   let loading = true;
@@ -43,7 +43,7 @@
     <button
       class="filter-tab"
       class:active={activeFilter === f.value}
-      on:click={() => switchFilter(f.value)}
+      onclick={() => switchFilter(f.value)}
     >
       {f.label}
     </button>

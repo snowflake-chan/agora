@@ -1,8 +1,10 @@
 <script lang="ts">
   import { marked } from "marked";
   import { createEventDispatcher } from "svelte";
+  import { fly } from "svelte/transition";
   import { createPost } from "../../lib/posts";
   import { toaster } from "../../stores/toaster";
+  import { appleEase } from "../../lib/motion";
 
   const dispatch = createEventDispatcher();
 
@@ -40,14 +42,13 @@
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div use:portal
-  class="fixed inset-0 z-50 flex items-center justify-center p-4"
-  style="background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);"
-  on:click={handleBackdropClick}
+  class="fixed inset-0 z-50 flex items-center justify-center p-4 dialog-backdrop"
+  onclick={handleBackdropClick}
 >
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
-    class="flex flex-col w-full h-[calc(100vh-2rem)] max-w-6xl rounded-xl overflow-hidden"
+    class="dialog-panel flex flex-col w-full h-[calc(100vh-1rem)] max-w-[1400px] rounded-xl overflow-hidden"
     style="
       background: rgba(22, 22, 26, 0.94);
       border: 1px solid rgba(255,255,255,0.07);
@@ -55,7 +56,8 @@
       -webkit-backdrop-filter: blur(24px);
       box-shadow: 0 8px 48px rgba(0,0,0,0.5);
     "
-    on:click|stopPropagation
+    onclick={(e) => e.stopPropagation()}
+    out:fly={{ y: 36, duration: 300, easing: appleEase }}
   >
     <!-- Header -->
     <div class="flex items-center gap-4 border-b px-6 py-3" style="border-color: rgba(255,255,255,0.06);">
@@ -67,10 +69,10 @@
           placeholder="标题"
         />
       </div>
-      <button class="btn btn-ghost btn-sm" on:click={close}>取消</button>
+      <button class="btn btn-ghost btn-sm" onclick={close}>取消</button>
       <button
         class="btn btn-primary btn-sm"
-        on:click={handleSubmit}
+        onclick={handleSubmit}
         disabled={submitting || !title.trim() || !content.trim()}
       >
         {submitting ? "发布中..." : "发布"}

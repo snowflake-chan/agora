@@ -12,8 +12,8 @@
   href={`/posts/${post.id}`}
   class="block px-4 py-4 border-b transition-colors"
   style="border-color: var(--vercel-border);"
-  on:mouseenter={(e) => e.currentTarget.style.background = '#141417'}
-  on:mouseleave={(e) => e.currentTarget.style.background = ''}
+  onmouseenter={(e) => e.currentTarget.style.background = '#141417'}
+  onmouseleave={(e) => e.currentTarget.style.background = ''}
 >
   <h2 class="text-base font-semibold" style="color: var(--vercel-text);">
     {post.title}
