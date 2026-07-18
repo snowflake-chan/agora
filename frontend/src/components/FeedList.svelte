@@ -1,33 +1,36 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, afterUpdate } from "svelte";
   import { getFeed, type FeedItem } from "../lib/posts";
   import FeedCard from "./FeedCard.svelte";
 
   let items: FeedItem[] = [];
   let loading = true;
-  let loadingMore = false;
   let page = 1;
   let hasMore = true;
+  let busy = false;
   let sentinel: HTMLDivElement;
+  let observer: IntersectionObserver | null = null;
 
   onMount(async () => {
     await loadPage();
     loading = false;
+  });
 
-    // IntersectionObserver for infinite scroll
-    const observer = new IntersectionObserver(async (entries) => {
-      if (entries[0].isIntersecting && hasMore && !loadingMore) {
-        await loadPage();
-      }
-    }, { rootMargin: "200px" });
-
-    observer.observe(sentinel);
-
-    return () => observer.disconnect();
+  afterUpdate(() => {
+    // Set up observer once sentinel exists and we're not loading
+    if (sentinel && !observer && !loading) {
+      observer = new IntersectionObserver(async (entries) => {
+        if (entries[0].isIntersecting && hasMore && !busy) {
+          await loadPage();
+        }
+      }, { rootMargin: "200px" });
+      observer.observe(sentinel);
+    }
   });
 
   async function loadPage() {
-    loadingMore = page > 1;
+    if (busy) return;
+    busy = true;
     try {
       const next = await getFeed(page);
       if (next.length === 0) {
@@ -39,7 +42,7 @@
     } catch {
       // ignore
     } finally {
-      loadingMore = false;
+      busy = false;
     }
   }
 </script>
@@ -56,12 +59,11 @@
     <FeedCard {item} />
   {/each}
 
-  <!-- sentinel for infinite scroll -->
   <div
     bind:this={sentinel}
     class="flex justify-center py-6 text-sm text-surface-400"
   >
-    {#if loadingMore}
+    {#if busy}
       加载中…
     {:else if !hasMore}
       没有更多了
