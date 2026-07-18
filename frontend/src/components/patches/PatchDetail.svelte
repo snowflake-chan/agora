@@ -15,21 +15,20 @@
   let loading = true;
   let currentUserVote: Vote | null = null;
 
-  // Dialogs
   let showVoteDialog = false;
   let pendingChoice = "";
   let showDeleteDialog = false;
 
-  const STATUS_MAP: Record<string, { label: string; cls: string }> = {
-    draft: { label: "草稿", cls: "bg-surface-300 text-surface-700" },
-    voting: { label: "投票中", cls: "bg-warning-500 text-white" },
-    passed: { label: "通过待合并", cls: "bg-info-500 text-white" },
-    merged: { label: "已合并", cls: "bg-success-500 text-white" },
-    rejected: { label: "未通过", cls: "bg-error-500 text-white" },
-    failed: { label: "合并失败", cls: "bg-error-500 text-white" },
+  const STATUS_MAP: Record<string, { label: string; type: string }> = {
+    draft: { label: "草稿", type: "neutral" },
+    voting: { label: "投票中", type: "warning" },
+    passed: { label: "通过待合并", type: "info" },
+    merged: { label: "已合并", type: "success" },
+    rejected: { label: "未通过", type: "danger" },
+    failed: { label: "合并失败", type: "danger" },
   };
 
-  $: statusInfo = patch ? STATUS_MAP[patch.status] ?? { label: patch.status, cls: "" } : { label: "", cls: "" };
+  $: statusInfo = patch ? STATUS_MAP[patch.status] ?? { label: patch.status, type: "neutral" } : { label: "", type: "neutral" };
   $: deadlineStr = patch?.voting_ends_at ? formatDeadline(patch.voting_ends_at) : null;
 
   function formatDeadline(iso: string): string {
@@ -51,7 +50,7 @@
       const myVote = v.find((v) => v.voter_id === $currentUser?.id);
       if (myVote) currentUserVote = myVote;
     } catch {
-      toaster.error({ title: "错误", description: "无法加载变更" });
+      toaster.error("错误", "无法加载变更");
     } finally {
       loading = false;
     }
@@ -62,16 +61,16 @@
       await deletePatch(patchId);
       window.location.href = "/patches";
     } catch {
-      toaster.error({ title: "删除失败" });
+      toaster.error("删除失败");
     }
   }
 
   async function handleSubmit() {
     try {
       patch = await submitPatch(patchId);
-      toaster.success({ title: "已提交投票", description: "窗口期 3 天" });
+      toaster.success("已提交投票", "窗口期 3 天");
     } catch (e: any) {
-      toaster.error({ title: "提交失败", description: e.message ?? "" });
+      toaster.error("提交失败", e.message ?? "");
     }
   }
 
@@ -86,76 +85,76 @@
       currentUserVote = v;
       votes = [...votes.filter((v) => v.voter_id !== $currentUser?.id), v];
       patch = await getPatch(patchId);
-      toaster.success({ title: "投票成功" });
+      toaster.success("投票成功");
     } catch (e: any) {
-      toaster.error({ title: "投票失败", description: e.message ?? "" });
+      toaster.error("投票失败", e.message ?? "");
     }
   }
 
   $: totalVotes = patch ? patch.for_count + patch.against_count + patch.abstain_count : 0;
-  $: forPct = totalVotes > 0 ? Math.round((patch!.for_count / totalVotes) * 100) : 0;
-  $: againstPct = totalVotes > 0 ? Math.round((patch!.against_count / totalVotes) * 100) : 0;
-  $: abstainPct = totalVotes > 0 ? Math.round((patch!.abstain_count / totalVotes) * 100) : 0;
+  $: forPct = patch && totalVotes > 0 ? Math.round((patch.for_count / totalVotes) * 100) : 0;
+  $: againstPct = patch && totalVotes > 0 ? Math.round((patch.against_count / totalVotes) * 100) : 0;
+  $: abstainPct = patch && totalVotes > 0 ? Math.round((patch.abstain_count / totalVotes) * 100) : 0;
 </script>
 
 {#if loading}
-  <div class="flex justify-center py-12 text-sm text-surface-400-600">加载中…</div>
+  <div class="empty-state">
+    <div class="spinner mb-3"></div>
+    加载中...
+  </div>
 {:else if !patch}
-  <div class="flex justify-center py-12 text-sm text-surface-500">变更不存在</div>
+  <div class="empty-state">变更不存在</div>
 {:else}
   <!-- Header -->
   <div class="mb-6">
     <div class="flex items-center gap-2">
-      <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium {statusInfo.cls}">
+      <span class="badge badge-{statusInfo.type}">
         {statusInfo.label}
       </span>
       {#if patch.status === "voting" && deadlineStr}
-        <span class="text-xs text-surface-500">{deadlineStr}</span>
+        <span class="text-xs" style="color: var(--vercel-text-tertiary);">{deadlineStr}</span>
       {/if}
       <a
         href="https://github.com/{GITHUB_REPO}/pull/{patch.pr_number}"
         target="_blank"
-        class="text-sm text-primary-600 hover:text-primary-700"
+        class="text-sm transition-colors"
+        style="color: var(--vercel-text-secondary);"
+        on:mouseenter={(e) => e.currentTarget.style.color = 'var(--vercel-text)'}
+        on:mouseleave={(e) => e.currentTarget.style.color = 'var(--vercel-text-secondary)'}
       >
         PR #{patch.pr_number} ↗
       </a>
     </div>
-    <h1 class="mt-2 text-xl font-bold text-surface-900-100">{patch.title}</h1>
+    <h1 class="mt-2 text-xl font-bold" style="color: var(--vercel-text);">{patch.title}</h1>
     <div class="mt-1">
       <AuthorMeta username={patch.author_username ?? "匿名"} createdAt={patch.created_at} />
     </div>
   </div>
 
   <!-- Content (rendered markdown) -->
-  <div class="mb-8 rounded-md border border-surface-200-800 bg-surface p-4">
-    {#await marked.parse(patch.content, { breaks: true, gfm: true }) then html}
-      <div class="markdown-body">{@html html}</div>
-    {/await}
+  <div class="card p-4 mb-8">
+    <div class="markdown-body">{@html marked.parse(patch.content, { breaks: true, gfm: true })}</div>
   </div>
 
   <!-- Vote panel -->
   {#if patch.status === "voting"}
-    <div class="mb-8 rounded-md border border-surface-200-800 bg-surface p-4">
-      <h3 class="mb-3 text-sm font-semibold text-surface-900-100">投票</h3>
+    <div class="card p-4 mb-8">
+      <h3 class="mb-3 text-sm font-semibold" style="color: var(--vercel-text);">投票</h3>
 
       {#if deadlineStr && deadlineStr !== "已截止"}
-        <p class="mb-3 text-xs text-surface-500">{deadlineStr}，截止后自动计票</p>
+        <p class="mb-3 text-xs" style="color: var(--vercel-text-tertiary);">{deadlineStr}，截止后自动计票</p>
       {/if}
 
-      <!-- Vote bars -->
-      <div class="mb-4 flex h-2 overflow-hidden rounded-full bg-surface-200">
-        {#if forPct > 0}
-          <div class="bg-success-500 transition-all" style="width: {forPct}%"></div>
-        {/if}
-        {#if againstPct > 0}
-          <div class="bg-error-500 transition-all" style="width: {againstPct}%"></div>
-        {/if}
-        {#if abstainPct > 0}
-          <div class="bg-surface-400 transition-all" style="width: {abstainPct}%"></div>
-        {/if}
-      </div>
+      <!-- Vote bar -->
+      {#if totalVotes > 0}
+        <div class="flex h-2 mb-4 rounded-full overflow-hidden" style="background: rgba(255,255,255,0.06);">
+          <div style="width: {forPct}%; background: var(--vercel-success); transition: width 0.3s;"></div>
+          <div style="width: {againstPct}%; background: var(--vercel-danger); transition: width 0.3s;"></div>
+          <div style="width: {abstainPct}%; background: rgba(255,255,255,0.1); transition: width 0.3s;"></div>
+        </div>
+      {/if}
 
-      <div class="mb-4 flex justify-between text-xs text-surface-500">
+      <div class="mb-4 flex justify-between text-xs" style="color: var(--vercel-text-tertiary);">
         <span>赞成 {patch.for_count}</span>
         <span>反对 {patch.against_count}</span>
         <span>弃权 {patch.abstain_count}</span>
@@ -163,43 +162,43 @@
 
       {#if $currentUser}
         {#if currentUserVote}
-          <div class="mb-3 text-sm text-surface-600">
-            你的投票：<span class="font-medium">{currentUserVote.choice === "for" ? "赞成" : currentUserVote.choice === "against" ? "反对" : "弃权"}</span>
+          <div class="mb-3 text-sm" style="color: var(--vercel-text-secondary);">
+            你的投票：<span class="font-medium" style="color: var(--vercel-text);">{currentUserVote.choice === "for" ? "赞成" : currentUserVote.choice === "against" ? "反对" : "弃权"}</span>
           </div>
         {/if}
         <div class="flex gap-2">
           <button
-            class="btn {currentUserVote?.choice === 'for' ? 'preset-filled-success-500' : 'preset-tonal'} text-sm"
+            class="btn {currentUserVote?.choice === 'for' ? 'btn-primary' : 'btn-secondary'} btn-sm"
             on:click={() => promptVote("for")}
           >
             赞成
           </button>
           <button
-            class="btn {currentUserVote?.choice === 'against' ? 'preset-filled-error-500' : 'preset-tonal'} text-sm"
+            class="btn {currentUserVote?.choice === 'against' ? 'btn-primary' : 'btn-secondary'} btn-sm"
             on:click={() => promptVote("against")}
           >
             反对
           </button>
           <button
-            class="btn {currentUserVote?.choice === 'abstain' ? 'preset-filled-surface-300' : 'preset-tonal'} text-sm"
+            class="btn {currentUserVote?.choice === 'abstain' ? 'btn-primary' : 'btn-secondary'} btn-sm"
             on:click={() => promptVote("abstain")}
           >
             弃权
           </button>
         </div>
       {:else}
-        <a href="/login" class="text-sm text-primary-600 hover:text-primary-700">登录后参与投票</a>
+        <a href="/login" class="text-sm transition-colors" style="color: var(--vercel-text-secondary);" on:mouseenter={(e) => e.currentTarget.style.color = 'var(--vercel-text)'} on:mouseleave={(e) => e.currentTarget.style.color = 'var(--vercel-text-secondary)'}>登录后参与投票</a>
       {/if}
     </div>
   {/if}
 
   <!-- Results panel -->
   {#if patch.status === "merged" || patch.status === "rejected" || patch.status === "failed" || patch.status === "passed"}
-    <div class="mb-8 rounded-md border border-surface-200-800 bg-surface p-4">
-      <h3 class="mb-3 text-sm font-semibold text-surface-900-100">
+    <div class="card p-4 mb-8">
+      <h3 class="mb-3 text-sm font-semibold" style="color: var(--vercel-text);">
         {patch.status === "merged" ? "已合并" : patch.status === "rejected" ? "未通过" : patch.status === "failed" ? "合并失败" : "已通过"}
       </h3>
-      <div class="flex gap-4 text-sm text-surface-500">
+      <div class="flex gap-4 text-sm" style="color: var(--vercel-text-secondary);">
         <span>赞成 {patch.for_count}</span>
         <span>反对 {patch.against_count}</span>
         <span>弃权 {patch.abstain_count}</span>
@@ -212,10 +211,10 @@
   {#if $currentUser?.id === patch.author_id}
     <div class="mb-8 flex gap-2">
       {#if patch.status === "draft"}
-        <button class="btn preset-filled-primary-500 text-sm" on:click={handleSubmit}>
+        <button class="btn btn-primary btn-sm" on:click={handleSubmit}>
           提交投票
         </button>
-        <button class="btn preset-filled-error-500 text-sm" on:click={() => (showDeleteDialog = true)}>
+        <button class="btn btn-danger btn-sm" on:click={() => (showDeleteDialog = true)}>
           删除
         </button>
       {/if}
@@ -224,14 +223,14 @@
 
   <!-- Vote list -->
   {#if votes.length > 0}
-    <div class="rounded-md border border-surface-200-800 bg-surface">
-      <h3 class="border-b border-surface-200-800 px-4 py-2 text-sm font-semibold text-surface-900-100">
+    <div class="card mb-8">
+      <h3 class="px-4 py-2 text-sm font-semibold border-b" style="color: var(--vercel-text); border-color: var(--vercel-border);">
         投票记录
       </h3>
       {#each votes as v (v.id)}
-        <div class="flex items-center justify-between border-b border-surface-200-800/50 px-4 py-2 text-sm last:border-0">
-          <span class="text-surface-700-300">{v.voter_username ?? "匿名"}</span>
-          <span class="text-xs {v.choice === 'for' ? 'text-success-500' : v.choice === 'against' ? 'text-error-500' : 'text-surface-400'}">
+        <div class="flex items-center justify-between px-4 py-2 text-sm border-b last:border-0" style="border-color: var(--vercel-border);">
+          <span style="color: var(--vercel-text-secondary);">{v.voter_username ?? "匿名"}</span>
+          <span class="text-xs" style="color: {v.choice === 'for' ? 'var(--vercel-success)' : v.choice === 'against' ? 'var(--vercel-danger)' : 'var(--vercel-text-tertiary)'};">
             {v.choice === "for" ? "赞成" : v.choice === "against" ? "反对" : "弃权"}
           </span>
         </div>
@@ -240,7 +239,6 @@
   {/if}
 {/if}
 
-<!-- Confirm dialogs -->
 <ConfirmDialog
   bind:open={showDeleteDialog}
   title="删除变更"

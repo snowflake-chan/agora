@@ -10,7 +10,7 @@
     try {
       posts = await listPosts();
     } catch {
-      // ignore — show empty
+      // ignore
     } finally {
       loading = false;
     }
@@ -18,11 +18,14 @@
 </script>
 
 {#if loading}
-  <div class="flex justify-center py-12 text-sm text-surface-400">加载中…</div>
+  <div class="empty-state">
+    <div class="spinner mb-3"></div>
+    加载中...
+  </div>
 {:else if posts.length === 0}
-  <div class="flex flex-col items-center justify-center py-12 text-sm text-surface-400">
+  <div class="empty-state">
     <p>还没有帖子</p>
-    <a href="/posts/new" class="mt-2 text-primary-600 hover:text-primary-700">发布第一条</a>
+    <a href="/posts/new" class="btn btn-ghost btn-sm mt-3">发布第一条</a>
   </div>
 {:else}
   {#each posts as post (post.id)}

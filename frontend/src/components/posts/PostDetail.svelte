@@ -25,7 +25,7 @@
       post = p;
       comments = c;
     } catch {
-      toaster.error({ title: "错误", description: "无法加载帖子" });
+      toaster.error("错误", "无法加载帖子");
     } finally {
       loading = false;
     }
@@ -62,7 +62,7 @@
         await deleteContent(postId);
         window.location.href = "/";
       } catch {
-        toaster.error({ title: "删除失败" });
+        toaster.error("删除失败");
       }
     } else if (pendingDelete === "comment") {
       const comment = comments[pendingDeleteIndex - 1];
@@ -72,7 +72,7 @@
         comments = comments.filter((c) => c.id !== comment.id);
         if (post) post.reply_count--;
       } catch {
-        toaster.error({ title: "删除失败" });
+        toaster.error("删除失败");
       }
     }
   }
@@ -90,13 +90,12 @@
       replyingTo = null;
       if (post) post.reply_count++;
     } catch (e: any) {
-      toaster.error({ title: "错误", description: e.message ?? "回复失败" });
+      toaster.error("错误", e.message ?? "回复失败");
     } finally {
       submitting = false;
     }
   }
 
-  // Flatten post + comments into a single timeline
   let postTitle = "";
   let postTags: string[] | null = null;
   let items: Array<{
@@ -130,25 +129,26 @@
 </script>
 
 {#if loading}
-  <div class="flex justify-center py-12 text-sm text-surface-400-600">加载中…</div>
+  <div class="empty-state">
+    <div class="spinner mb-3"></div>
+    加载中...
+  </div>
 {:else if !post}
-  <div class="flex justify-center py-12 text-sm text-surface-500">帖子不存在</div>
+  <div class="empty-state">帖子不存在</div>
 {:else}
-  <!-- Title outside timeline, aligned with cards -->
   <div class="mb-6 ml-7">
-    <h1 class="text-xl font-bold text-surface-900-100">{postTitle}</h1>
+    <h1 class="text-xl font-bold" style="color: var(--vercel-text);">{postTitle}</h1>
     {#if postTags && postTags.length > 0}
       <div class="mt-2 flex flex-wrap gap-2">
         {#each postTags as tag}
-          <span class="rounded-full bg-surface-100-900 px-2.5 py-0.5 text-xs text-surface-600-400">{tag}</span>
+          <span class="badge badge-neutral">{tag}</span>
         {/each}
       </div>
     {/if}
   </div>
 
   <div class="relative">
-    <!-- Continuous timeline line behind all cards -->
-    <div class="absolute left-[36px] inset-y-0 w-0.5 bg-surface-100-900"></div>
+    <div class="timeline-line"></div>
 
     <div>
       {#each items as item, i (item.key)}
@@ -168,34 +168,35 @@
 
   <!-- Reply form -->
   {#if $currentUser}
-    <div class="mt-4 ml-7 pt-4">
+    <div class="mt-4 ml-7 pt-4 border-t" style="border-color: var(--vercel-border);">
       {#if replyingTo}
-        <div class="mb-2 flex items-center gap-2 text-xs text-surface-500">
-          <span>回复 <span class="font-medium text-primary-600">@{replyingTo.author_username}</span></span>
-          <button class="text-surface-400-600 hover:text-surface-600-400" on:click={cancelReply}>取消</button>
+        <div class="mb-2 flex items-center gap-2 text-xs" style="color: var(--vercel-text-tertiary);">
+          <span>回复 <span class="font-medium" style="color: var(--vercel-text);">@{replyingTo.author_username}</span></span>
+          <button class="transition-colors" style="color: var(--vercel-text-tertiary);" on:mouseenter={(e) => e.currentTarget.style.color = 'var(--vercel-text)'} on:mouseleave={(e) => e.currentTarget.style.color = 'var(--vercel-text-tertiary)'} on:click={cancelReply}>取消</button>
         </div>
       {/if}
       <div class="flex-1">
-          <textarea
-            id="reply-textarea"
-            bind:value={replyText}
-            class="input min-h-[80px] resize-y text-sm"
-            placeholder="写下你的回复…"
-          ></textarea>
-          <div class="mt-2 flex justify-end">
-            <button
-              class="btn preset-filled-primary-500 text-sm"
-              on:click={handleSubmitReply}
-              disabled={submitting || !replyText.trim()}
-            >
-              {submitting ? "发送中…" : "回复"}
-            </button>
-          </div>
+        <textarea
+          id="reply-textarea"
+          bind:value={replyText}
+          class="input"
+          style="min-height: 80px; resize: vertical;"
+          placeholder="写下你的回复..."
+        ></textarea>
+        <div class="mt-2 flex justify-end">
+          <button
+            class="btn btn-primary btn-sm"
+            on:click={handleSubmitReply}
+            disabled={submitting || !replyText.trim()}
+          >
+            {submitting ? "发送中..." : "回复"}
+          </button>
+        </div>
       </div>
     </div>
   {:else}
-    <div class="mt-4 ml-7 border-t border-surface-200/50 pt-4 text-center">
-      <a href="/login" class="text-sm text-primary-600 hover:text-primary-700">登录后参与回复</a>
+    <div class="mt-4 ml-7 pt-4 border-t text-center" style="border-color: var(--vercel-border);">
+      <a href="/login" class="text-sm transition-colors" style="color: var(--vercel-text-secondary);" on:mouseenter={(e) => e.currentTarget.style.color = 'var(--vercel-text)'} on:mouseleave={(e) => e.currentTarget.style.color = 'var(--vercel-text-secondary)'}>登录后参与回复</a>
     </div>
   {/if}
 {/if}

@@ -16,45 +16,42 @@
       await login(email, password);
       window.location.href = "/";
     } catch (e: any) {
-      toaster.error({
-        title: "登录失败",
-        description: ERROR_MAP[e.code] ?? e.code ?? "请稍后重试",
-      });
+      toaster.error("登录失败", ERROR_MAP[e.code] ?? e.code ?? "请稍后重试");
     } finally {
       loading = false;
     }
   }
 </script>
 
-<form on:submit|preventDefault={handleSubmit} class="flex flex-col gap-5">
-  <label class="label">
-    <span class="label-text">邮箱</span>
+<form on:submit|preventDefault={handleSubmit} class="flex flex-col gap-4">
+  <label class="flex flex-col gap-1.5">
+    <span class="text-sm font-medium" style="color: var(--vercel-text-secondary);">邮箱</span>
     <input
       type="email"
       bind:value={email}
-      class="input placeholder:text-surface-400"
+      class="input"
       placeholder="you@example.com"
       required
     />
   </label>
 
-  <label class="label">
-    <span class="label-text">密码</span>
+  <label class="flex flex-col gap-1.5">
+    <span class="text-sm font-medium" style="color: var(--vercel-text-secondary);">密码</span>
     <input
       type="password"
       bind:value={password}
-      class="input placeholder:text-surface-400"
+      class="input"
       placeholder="••••••••"
       required
     />
   </label>
 
-  <button type="submit" class="btn preset-filled-primary-500" disabled={loading}>
-    {#if loading}登录中…{:else}登录{/if}
+  <button type="submit" class="btn btn-primary" disabled={loading}>
+    {loading ? "登录中..." : "登录"}
   </button>
 
-  <p class="text-center text-sm text-surface-500">
+  <p class="text-center text-sm" style="color: var(--vercel-text-tertiary);">
     还没有账号？
-    <a href="/register" class="font-medium text-primary-600 hover:text-primary-700">注册</a>
+    <a href="/register" class="font-medium transition-colors" style="color: var(--vercel-text-secondary);" on:mouseenter={(e) => e.currentTarget.style.color = 'var(--vercel-text)'} on:mouseleave={(e) => e.currentTarget.style.color = 'var(--vercel-text-secondary)'}>注册</a>
   </p>
 </form>

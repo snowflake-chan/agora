@@ -3,53 +3,58 @@
   import { stripMarkdown } from "../lib/utils";
   import AuthorMeta from "./AuthorMeta.svelte";
 
-  export let item: FeedItem;
+  let { item }: { item: FeedItem } = $props();
 
   const STATUS_MAP: Record<string, { label: string; cls: string }> = {
-    draft: { label: "草稿", cls: "bg-surface-300 text-surface-700" },
-    voting: { label: "投票中", cls: "bg-warning-500 text-white" },
-    passed: { label: "通过待合并", cls: "bg-info-500 text-white" },
-    merged: { label: "已合并", cls: "bg-success-500 text-white" },
-    rejected: { label: "未通过", cls: "bg-error-500 text-white" },
-    failed: { label: "合并失败", cls: "bg-error-500 text-white" },
+    draft: { label: "草稿", cls: "badge-neutral" },
+    voting: { label: "投票中", cls: "badge-warning" },
+    passed: { label: "通过待合并", cls: "badge-info" },
+    merged: { label: "已合并", cls: "badge-success" },
+    rejected: { label: "未通过", cls: "badge-danger" },
+    failed: { label: "合并失败", cls: "badge-danger" },
   };
 
-  $: snippet = stripMarkdown(item.content);
-  $: href = item.type === "post" ? `/posts/${item.id}` : `/patches/${item.id}`;
-  $: statusInfo = item.type === "patch" && item.status ? STATUS_MAP[item.status] : null;
+  let snippet = $derived(stripMarkdown(item.content));
+  let href = $derived(item.type === "post" ? `/posts/${item.id}` : `/patches/${item.id}`);
+  let statusInfo = $derived(
+    item.type === "patch" && item.status ? STATUS_MAP[item.status] : null
+  );
 </script>
 
 <a
   href={href}
-  class="group block border-b border-surface-200-800/50 px-4 py-4 transition-colors hover:bg-surface"
+  class="block px-4 py-4 border-b transition-colors"
+  style="border-color: var(--vercel-border);"
+  on:mouseenter={(e) => e.currentTarget.style.background = '#141417'}
+  on:mouseleave={(e) => e.currentTarget.style.background = ''}
 >
   <div class="flex items-center gap-2">
     {#if item.type === "patch"}
       {#if statusInfo}
-        <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium {statusInfo.cls}">
+        <span class="badge {statusInfo.cls}">
           {statusInfo.label}
         </span>
       {/if}
       {#if item.pr_number}
-        <span class="text-xs text-surface-400">PR #{item.pr_number}</span>
+        <span class="text-xs" style="color: var(--vercel-text-tertiary);">PR #{item.pr_number}</span>
       {/if}
     {:else}
-      <span class="inline-flex items-center rounded-full bg-surface-200 px-2 py-0.5 text-xs text-surface-600">
+      <span class="badge badge-neutral">
         帖子
       </span>
     {/if}
   </div>
 
-  <h2 class="mt-1 text-base font-semibold text-surface-900-100 group-hover:text-primary-700">
+  <h2 class="mt-1 text-base font-semibold" style="color: var(--vercel-text);">
     {item.title}
   </h2>
 
-  <p class="mt-1 line-clamp-2 text-sm text-surface-500">
+  <p class="mt-1 line-clamp-2 text-sm" style="color: var(--vercel-text-secondary);">
     {snippet}
   </p>
 
   <div class="mt-2 flex items-center justify-between gap-2">
-    <div class="flex items-center gap-3 text-xs text-surface-400-600">
+    <div class="flex items-center gap-3 text-xs" style="color: var(--vercel-text-tertiary);">
       {#if item.type === "post" && item.tags && item.tags.length > 0}
         <span>{item.tags.join(", ")}</span>
       {/if}
