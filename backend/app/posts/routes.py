@@ -6,10 +6,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
 from app.db.models.content import Content as ContentModel
+from app.db.models.patch import Patch as PatchModel
 from app.db.models.user import User
 from app.schemas.post import (
     CommentCreate,
     CommentRead,
+    FeedItem,
     PostCreate,
     PostRead,
     PostUpdate,
@@ -153,7 +155,7 @@ async def get_post(
     )
 
 
-@router.delete("/{content_id}", status_code=204)
+@router.delete("/{post_id}", status_code=204)
 async def delete_content(
     content_id: str,
     session: AsyncSession = Depends(get_session),
@@ -279,3 +281,54 @@ async def create_comment(
     )
 
 
+# ── Feed (unified timeline) ──
+
+
+@router.get("/-/feed", response_model=list[FeedItem])
+async def get_feed(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    session: AsyncSession = Depends(get_session),
+):
+    """Unified feed of posts and patches, newest first."""
+    offset = (page - 1) * page_size
+
+    # Fetch recent posts
+    posts = (
+        await session.execute(
+            select(ContentModel)
+            .where(ContentModel.type == "post")
+            .order_by(ContentModel.created_at.desc())
+            .limit(1000)
+        )
+    ).scalars().all()
+
+    # Fetch recent patches
+    patches = (
+        await session.execute(
+            select(PatchModel)
+            .order_by(PatchModel.created_at.desc())
+            .limit(1000)
+        )
+    ).scalars().all()
+
+    # Merge & sort by created_at desc
+    items: list[FeedItem] = []
+
+    for p in posts:
+        items.append(FeedItem(
+            id=p.id, type="post", title=p.title or "", content=p.content,
+            author_id=p.author_id, author_username=p.author.username,
+            created_at=p.created_at, tags=p.tags, reply_count=0,
+        ))
+
+    for p in patches:
+        items.append(FeedItem(
+            id=p.id, type="patch", title=p.title, content=p.content,
+            author_id=p.author_id, author_username=p.author.username,
+            created_at=p.created_at,
+            pr_number=p.pr_number, status=p.status,
+        ))
+
+    items.sort(key=lambda x: x.created_at, reverse=True)
+    return items[offset:offset + page_size]
