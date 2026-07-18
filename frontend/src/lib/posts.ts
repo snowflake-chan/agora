@@ -1,6 +1,6 @@
 import type { User } from "./auth";
 
-const BASE = "/api/v1";
+import { API_BASE } from "./config";
 
 export interface Post {
   id: string;
@@ -26,19 +26,19 @@ export interface Comment {
 }
 
 export async function listPosts(page = 1): Promise<Post[]> {
-  const res = await fetch(`${BASE}/posts?page=${page}`, { credentials: "include" });
+  const res = await fetch(`${API_BASE}/posts?page=${page}`, { credentials: "include" });
   if (!res.ok) throw new Error("Failed to load posts");
   return res.json();
 }
 
 export async function getPost(id: string): Promise<Post> {
-  const res = await fetch(`${BASE}/posts/${id}`, { credentials: "include" });
+  const res = await fetch(`${API_BASE}/posts/${id}`, { credentials: "include" });
   if (!res.ok) throw new Error("Post not found");
   return res.json();
 }
 
 export async function createPost(data: { title: string; content: string; tags?: string[] }): Promise<Post> {
-  const res = await fetch(`${BASE}/posts`, {
+  const res = await fetch(`${API_BASE}/posts`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -49,18 +49,18 @@ export async function createPost(data: { title: string; content: string; tags?: 
 }
 
 export async function listComments(postId: string): Promise<Comment[]> {
-  const res = await fetch(`${BASE}/posts/${postId}/comments`, { credentials: "include" });
+  const res = await fetch(`${API_BASE}/posts/${postId}/comments`, { credentials: "include" });
   if (!res.ok) throw new Error("Failed to load comments");
   return res.json();
 }
 
 export async function deleteContent(id: string): Promise<void> {
-  const res = await fetch(`${BASE}/posts/${id}`, { method: "DELETE", credentials: "include" });
+  const res = await fetch(`${API_BASE}/posts/${id}`, { method: "DELETE", credentials: "include" });
   if (!res.ok && res.status !== 204) throw new Error("删除失败");
 }
 
 export async function createComment(postId: string, data: { content: string; replying_id?: string }): Promise<Comment> {
-  const res = await fetch(`${BASE}/posts/${postId}/comments`, {
+  const res = await fetch(`${API_BASE}/posts/${postId}/comments`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),

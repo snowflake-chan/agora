@@ -1,4 +1,4 @@
-const BASE = "/api/v1";
+import { API_BASE } from "./config";
 
 export interface User {
   id: string;
@@ -19,7 +19,7 @@ export class ApiError extends Error {
 }
 
 export async function login(email: string, password: string): Promise<User> {
-  const res = await fetch(`${BASE}/auth/login`, {
+  const res = await fetch(`${API_BASE}/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
@@ -30,7 +30,7 @@ export async function login(email: string, password: string): Promise<User> {
 }
 
 export async function register(email: string, username: string, password: string): Promise<User> {
-  const res = await fetch(`${BASE}/auth/register`, {
+  const res = await fetch(`${API_BASE}/auth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, username, password }),
@@ -41,7 +41,7 @@ export async function register(email: string, username: string, password: string
 }
 
 export async function logout(): Promise<void> {
-  await fetch(`${BASE}/auth/logout`, {
+  await fetch(`${API_BASE}/auth/logout`, {
     method: "POST",
     credentials: "include",
   });
@@ -49,7 +49,7 @@ export async function logout(): Promise<void> {
 
 export async function getMe(): Promise<User | null> {
   try {
-    const res = await fetch(`${BASE}/users/me`, { credentials: "include" });
+    const res = await fetch(`${API_BASE}/users/me`, { credentials: "include" });
     if (!res.ok) return null;
     return res.json();
   } catch {

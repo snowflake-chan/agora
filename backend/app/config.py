@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     JWT_SECRET: str = ""
     GITHUB_TOKEN: str = ""
     GITHUB_REPO: str = ""
+    CORS_ORIGIN: str = ""
 
     model_config = SettingsConfigDict(
         env_file="../.env"

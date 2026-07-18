@@ -14,6 +14,7 @@ class PatchRead(BaseModel):
     status: str
     author_id: UUID
     author_username: str | None = None
+    voting_ends_at: datetime | None = None
     for_count: int = 0
     against_count: int = 0
     abstain_count: int = 0
