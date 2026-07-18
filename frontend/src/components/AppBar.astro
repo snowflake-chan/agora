@@ -1,0 +1,103 @@
+---
+import UserAvatar from "./UserAvatar.svelte";
+import PillActions from "./PillActions.svelte";
+---
+
+<!-- Top header -->
+<header class="appbar-top">
+  <div class="flex h-12 items-center justify-between px-4">
+    <a href="/" class="flex items-center gap-2">
+      <img src="/favicon.svg" alt="" width="22" height="22" class="size-[22px]" />
+      <span class="text-lg font-bold tracking-tight" style="color: var(--vercel-text);">Agora</span>
+    </a>
+    <div class="flex items-center gap-2">
+      <UserAvatar client:load />
+    </div>
+  </div>
+</header>
+
+<!-- Floating pill navigation -->
+<nav class="pill-bar">
+  <div class="flex items-center h-11 px-1.5 gap-0.5">
+    <a href="/" class="pill-item" title="帖子">
+      <svg class="size-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+      <span class="pill-tooltip">帖子</span>
+    </a>
+    <a href="/patches" class="pill-item" title="变更">
+      <svg class="size-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+      <span class="pill-tooltip">变更</span>
+    </a>
+    <PillActions client:load />
+  </div>
+</nav>
+
+<style is:global>
+  .appbar-top {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    background: rgba(12, 12, 14, 0.78);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+
+  .pill-bar {
+    position: fixed;
+    bottom: 4px;
+    left: 50%;
+    z-index: 40;
+    transform: translateX(-50%);
+    background: rgba(20, 20, 22, 0.85);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 9999px;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    box-shadow: 0 2px 16px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.03);
+  }
+
+  .pill-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 9999px;
+    color: #fff;
+    transition: all 0.15s ease;
+    cursor: pointer;
+    text-decoration: none;
+    background: transparent;
+    border: 0;
+    font-family: inherit;
+  }
+
+  .pill-item:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.12);
+  }
+
+  .pill-tooltip {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%) translateY(2px);
+    padding: 0.25rem 0.5rem;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    color: var(--vercel-text);
+    background: rgba(30, 30, 30, 0.95);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 4px;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: all 0.15s ease;
+  }
+
+  .pill-item:hover .pill-tooltip {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+</style>
