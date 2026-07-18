@@ -36,11 +36,16 @@
   function handleBackdropClick(e: MouseEvent) {
     if (e.target === e.currentTarget) close();
   }
+
+  function portal(node: HTMLElement) {
+    document.body.appendChild(node);
+    return { destroy() { node.remove(); } };
+  }
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div
+<div use:portal
   class="fixed inset-0 z-50 flex items-center justify-center p-4"
   style="background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);"
   on:click={handleBackdropClick}
