@@ -1,9 +1,17 @@
 <script lang="ts">
-  export let open = false;
-  export let title = "确认";
-  export let description = "";
-  export let confirmText = "确定";
-  export let onConfirm: () => void = () => {};
+  let {
+    open = $bindable(false),
+    title = "确认",
+    description = "",
+    confirmText = "确定",
+    onConfirm = () => {},
+  }: {
+    open: boolean;
+    title: string;
+    description: string;
+    confirmText: string;
+    onConfirm: () => void;
+  } = $props();
 
   function handleConfirm() {
     onConfirm();
@@ -20,23 +28,17 @@
 {#if open}
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-    on:click={handleBackdropClick}
-  >
+  <div class="dialog-backdrop" on:click={handleBackdropClick}>
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div
-      class="max-w-sm rounded-lg border border-surface-200-800 bg-surface p-6 shadow-xl"
-      on:click|stopPropagation
-    >
-      <h3 class="text-base font-semibold text-surface-900-100">{title}</h3>
+    <div class="dialog-panel" on:click|stopPropagation>
+      <h3 class="dialog-title">{title}</h3>
       {#if description}
-        <p class="mt-2 text-sm text-surface-500">{description}</p>
+        <p class="dialog-desc">{description}</p>
       {/if}
-      <div class="mt-5 flex justify-end gap-2">
-        <button class="btn preset-tonal text-sm" on:click={() => (open = false)}>取消</button>
-        <button class="btn preset-filled-error-500 text-sm" on:click={handleConfirm}>{confirmText}</button>
+      <div class="dialog-actions">
+        <button class="btn btn-ghost btn-sm" on:click={() => (open = false)}>取消</button>
+        <button class="btn btn-danger btn-sm" on:click={handleConfirm}>{confirmText}</button>
       </div>
     </div>
   </div>

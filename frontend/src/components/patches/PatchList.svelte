@@ -38,12 +38,11 @@
 </script>
 
 <!-- Filter tabs -->
-<div class="flex gap-1 border-b border-surface-200-800/50 px-4 pt-2">
+<div class="flex gap-1 px-4 pt-2 border-b" style="border-color: var(--vercel-border);">
   {#each FILTERS as f}
     <button
-      class="px-3 py-2 text-sm transition-colors {activeFilter === f.value
-        ? 'border-b-2 border-primary-500 font-medium text-primary-600'
-        : 'text-surface-500 hover:text-surface-700'}"
+      class="filter-tab"
+      class:active={activeFilter === f.value}
       on:click={() => switchFilter(f.value)}
     >
       {f.label}
@@ -52,11 +51,14 @@
 </div>
 
 {#if loading}
-  <div class="flex justify-center py-12 text-sm text-surface-400">加载中…</div>
+  <div class="empty-state">
+    <div class="spinner mb-3"></div>
+    加载中...
+  </div>
 {:else if patches.length === 0}
-  <div class="flex flex-col items-center justify-center py-12 text-sm text-surface-400">
+  <div class="empty-state">
     <p>还没有变更</p>
-    <a href="/patches/new" class="mt-2 text-primary-600 hover:text-primary-700">发起第一个</a>
+    <a href="/patches/new" class="btn btn-ghost btn-sm mt-3">发起第一个</a>
   </div>
 {:else}
   {#each patches as patch (patch.id)}

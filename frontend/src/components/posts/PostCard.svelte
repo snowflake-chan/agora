@@ -3,25 +3,28 @@
   import { stripMarkdown } from "../../lib/utils";
   import AuthorMeta from "../AuthorMeta.svelte";
 
-  export let post: Post;
+  let { post }: { post: Post } = $props();
 
-  $: snippet = stripMarkdown(post.content);
+  let snippet = $derived(stripMarkdown(post.content));
 </script>
 
 <a
   href={`/posts/${post.id}`}
-  class="group block border-b border-surface-200-800/50 px-4 py-4 transition-colors hover:bg-surface"
+  class="block px-4 py-4 border-b transition-colors"
+  style="border-color: var(--vercel-border);"
+  on:mouseenter={(e) => e.currentTarget.style.background = '#141417'}
+  on:mouseleave={(e) => e.currentTarget.style.background = ''}
 >
-  <h2 class="text-base font-semibold text-surface-900-100 group-hover:text-primary-700">
+  <h2 class="text-base font-semibold" style="color: var(--vercel-text);">
     {post.title}
   </h2>
 
-  <p class="mt-1 line-clamp-2 text-sm text-surface-500">
+  <p class="mt-1 line-clamp-2 text-sm" style="color: var(--vercel-text-secondary);">
     {snippet}
   </p>
 
   <div class="mt-2 flex items-center justify-between gap-2">
-    <div class="flex items-center gap-3 text-xs text-surface-400-600">
+    <div class="flex items-center gap-3 text-xs" style="color: var(--vercel-text-tertiary);">
       {#if post.tags && post.tags.length > 0}
         <span>{post.tags.join(", ")}</span>
       {/if}
