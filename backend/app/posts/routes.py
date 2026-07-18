@@ -6,6 +6,7 @@ from app.db import get_session
 from app.db.models.content import Content as ContentModel
 from app.db.models.patch import Patch as PatchModel
 from app.db.models.user import User
+from app.notifications.service import create_notification
 from app.schemas.post import (
     CommentCreate,
     CommentRead,
@@ -319,6 +320,32 @@ async def create_comment(
     session.add(comment)
     await session.commit()
     await session.refresh(comment)
+
+    # ── Notifications ──
+    # Notify post author (unless commenting on your own post)
+    if post.author_id != user.id:
+        await create_notification(
+            recipient_id=post.author_id,
+            type="reply",
+            title="新回复",
+            message=f"{user.nickname or user.username} 回复了你的帖子《{post.title or ''}》",
+            link=f"/posts/{post.id}",
+        )
+
+    # Notify replied-to comment author (if replying to a specific comment)
+    if data.replying_id:
+        reply_stmt = select(ContentModel.author_id).where(
+            ContentModel.id == data.replying_id
+        )
+        reply_author_id = await session.scalar(reply_stmt)
+        if reply_author_id and reply_author_id != user.id:
+            await create_notification(
+                recipient_id=reply_author_id,
+                type="reply",
+                title="新回复",
+                message=f"{user.nickname or user.username} 回复了你的评论",
+                link=f"/posts/{post.id}",
+            )
 
     return CommentRead(
         id=comment.id,

@@ -11,6 +11,7 @@ from app.db import get_session
 from app.db.models.patch import Patch as PatchModel
 from app.db.models.vote import Vote as VoteModel
 from app.db.models.user import User
+from app.notifications.service import create_notification
 from app.schemas.patch import (
     PatchCreate,
     PatchRead,
@@ -53,41 +54,83 @@ async def _tally(session: AsyncSession, patch: PatchModel) -> bool:
     if total > 0 and counts["for"] > total / 2:
         patch.status = "passed"
         await session.commit()
-        # Merge PR + deploy in background — don't block the HTTP response
         asyncio.create_task(_do_merge_and_deploy(str(patch.id), patch.pr_number))
     else:
         patch.status = "rejected"
         await session.commit()
 
+    # Notify voters + author (fire-and-forget)
+    asyncio.create_task(
+        _notify_patch_voters(str(patch.id), patch.title, patch.status)
+    )
+
     return True
 
 
-async def _do_merge_and_deploy(patch_id: str, pr_number: int) -> None:
+async def _notify_patch_voters(patch_id: str, patch_title: str, result: str) -> None:
+    """Notify all voters + author of a patch vote result (background, own session)."""
+    from app.db import async_session as _async_session
+
+    info = {
+        "passed": ("vote_passed", "投票通过", f"变更《{patch_title}》投票已通过"),
+        "rejected": ("vote_rejected", "投票未通过", f"变更《{patch_title}》投票未通过"),
+        "merged": ("patch_merged", "变更已合并", f"变更《{patch_title}》已合并到主分支"),
+        "failed": ("patch_failed", "变更合并失败", f"变更《{patch_title}》合并失败，请检查"),
+    }
+    notif_type, title, message = info.get(result, ("unknown", "变更状态更新", ""))
+    try:
+        async with _async_session() as session:
+            vote_stmt = select(VoteModel.voter_id).where(VoteModel.patch_id == patch_id)
+            vote_result = await session.execute(vote_stmt)
+            voter_ids = [row[0] for row in vote_result]
+            patch_stmt = select(PatchModel.author_id).where(PatchModel.id == patch_id)
+            author_id = await session.scalar(patch_stmt)
+            recipients = set(voter_ids)
+            if author_id:
+                recipients.add(author_id)
+        for rid in recipients:
+            await create_notification(
+                recipient_id=rid, type=notif_type,
+                title=title, message=message,
+                link=f"/patches/{patch_id}",
+            )
+    except Exception as e:
+        print(f"[notif] patch voters error: {e}")
+
+
+async def _do_merge_and_deploy(patch_id: str, pr_number: int, patch_title: str | None = None) -> None:
     """Merge PR via GitHub and trigger deploy (background task, own session)."""
     from app.db import async_session as _async_session
 
     try:
         await merge_pr(pr_number)
-        # Update status to merged
         async with _async_session() as session:
             stmt = select(PatchModel).where(PatchModel.id == patch_id)
             result = await session.execute(stmt)
             patch = result.scalar_one()
+            patch_title = patch.title
             patch.status = "merged"
             await session.commit()
-        # Trigger deploy after successful merge
         await _trigger_deploy()
+        # Notify voters + author
+        asyncio.create_task(
+            _notify_patch_voters(patch_id, patch_title, "merged")
+        )
     except Exception:
-        # Update status to failed
         try:
             async with _async_session() as session:
                 stmt = select(PatchModel).where(PatchModel.id == patch_id)
                 result = await session.execute(stmt)
                 patch = result.scalar_one()
+                patch_title = patch.title
                 patch.status = "failed"
                 await session.commit()
         except Exception:
-            pass
+            patch_title = patch_title or "未知"
+        # Notify voters + author
+        asyncio.create_task(
+            _notify_patch_voters(patch_id, patch_title, "failed")
+        )
 
 
 async def _auto_tally(session: AsyncSession, patch: PatchModel) -> bool:
@@ -342,6 +385,16 @@ async def vote_patch(
 
     await session.commit()
     await session.refresh(vote)
+
+    # Notify patch author (unless voting on your own patch)
+    if patch.author_id != user.id:
+        await create_notification(
+            recipient_id=patch.author_id,
+            type="vote",
+            title="新投票",
+            message=f"{user.nickname or user.username} 对你的变更投了「{data.choice}」",
+            link=f"/patches/{patch.id}",
+        )
 
     return VoteRead(
         id=vote.id,
