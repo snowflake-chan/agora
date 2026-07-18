@@ -92,9 +92,9 @@
   }
 
   $: totalVotes = patch ? patch.for_count + patch.against_count + patch.abstain_count : 0;
-  $: forPct = totalVotes > 0 ? Math.round((patch!.for_count / totalVotes) * 100) : 0;
-  $: againstPct = totalVotes > 0 ? Math.round((patch!.against_count / totalVotes) * 100) : 0;
-  $: abstainPct = totalVotes > 0 ? Math.round((patch!.abstain_count / totalVotes) * 100) : 0;
+  $: forPct = patch && totalVotes > 0 ? Math.round((patch.for_count / totalVotes) * 100) : 0;
+  $: againstPct = patch && totalVotes > 0 ? Math.round((patch.against_count / totalVotes) * 100) : 0;
+  $: abstainPct = patch && totalVotes > 0 ? Math.round((patch.abstain_count / totalVotes) * 100) : 0;
 </script>
 
 {#if loading}
@@ -133,9 +133,7 @@
 
   <!-- Content (rendered markdown) -->
   <div class="card p-4 mb-8">
-    {#await marked.parse(patch.content, { breaks: true, gfm: true }) then html}
-      <div class="markdown-body">{@html html}</div>
-    {/await}
+    <div class="markdown-body">{@html marked.parse(patch.content, { breaks: true, gfm: true })}</div>
   </div>
 
   <!-- Vote panel -->
@@ -147,19 +145,7 @@
         <p class="mb-3 text-xs" style="color: var(--vercel-text-tertiary);">{deadlineStr}，截止后自动计票</p>
       {/if}
 
-      <!-- Vote bars -->
-      <div class="progress-bar mb-4" style="height: 6px; border-radius: 3px;">
-        {#if forPct > 0}
-          <div class="progress-fill" style="width: {forPct}%; background: var(--vercel-success);"></div>
-        {/if}
-        {#if againstPct > 0}
-          <div class="progress-fill" style="width: {againstPct}%; background: var(--vercel-danger);"></div>
-        {/if}
-        {#if abstainPct > 0}
-          <div class="progress-fill" style="width: {abstainPct}%; background: rgba(255,255,255,0.15);"></div>
-        {/if}
-      </div>
-      <!-- Note: this stacked bar approach is simplified - see note below -->
+      <!-- Vote bar -->
       {#if totalVotes > 0}
         <div class="flex h-2 mb-4 rounded-full overflow-hidden" style="background: rgba(255,255,255,0.06);">
           <div style="width: {forPct}%; background: var(--vercel-success); transition: width 0.3s;"></div>

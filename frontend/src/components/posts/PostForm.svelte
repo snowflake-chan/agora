@@ -94,9 +94,7 @@
         </div>
         <div class="flex-1 overflow-y-auto px-6 py-4">
           {#if content.trim()}
-            {#await marked.parse(content, { breaks: true, gfm: true }) then html}
-              <div class="markdown-body">{@html html}</div>
-            {/await}
+            <div class="markdown-body">{@html marked.parse(content, { breaks: true, gfm: true })}</div>
           {:else}
             <p class="text-sm" style="color: var(--vercel-text-tertiary);">暂无内容</p>
           {/if}

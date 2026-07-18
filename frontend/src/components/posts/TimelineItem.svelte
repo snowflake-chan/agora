@@ -2,14 +2,25 @@
   import { marked } from "marked";
   import { timeAgo } from "../../lib/utils";
 
-  export let username: string;
-  export let createdAt: string;
-  export let content: string;
-  export let title: string | null = null;
-  export let tags: string[] | null = null;
-  export let replyingToUsername: string | null = null;
-  export let onReply: (() => void) | null = null;
-  export let onDelete: (() => void) | null = null;
+  let {
+    username,
+    createdAt,
+    content,
+    title = null,
+    tags = null,
+    replyingToUsername = null,
+    onReply = null,
+    onDelete = null,
+  }: {
+    username: string;
+    createdAt: string;
+    content: string;
+    title: string | null;
+    tags: string[] | null;
+    replyingToUsername: string | null;
+    onReply: (() => void) | null;
+    onDelete: (() => void) | null;
+  } = $props();
 
   let menuOpen = false;
 

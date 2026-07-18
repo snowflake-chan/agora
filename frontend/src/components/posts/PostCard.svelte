@@ -3,9 +3,9 @@
   import { stripMarkdown } from "../../lib/utils";
   import AuthorMeta from "../AuthorMeta.svelte";
 
-  export let post: Post;
+  let { post }: { post: Post } = $props();
 
-  $: snippet = stripMarkdown(post.content);
+  let snippet = $derived(stripMarkdown(post.content));
 </script>
 
 <a

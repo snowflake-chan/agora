@@ -1,9 +1,17 @@
 <script lang="ts">
-  export let open = false;
-  export let title = "确认";
-  export let description = "";
-  export let confirmText = "确定";
-  export let onConfirm: () => void = () => {};
+  let {
+    open = $bindable(false),
+    title = "确认",
+    description = "",
+    confirmText = "确定",
+    onConfirm = () => {},
+  }: {
+    open: boolean;
+    title: string;
+    description: string;
+    confirmText: string;
+    onConfirm: () => void;
+  } = $props();
 
   function handleConfirm() {
     onConfirm();

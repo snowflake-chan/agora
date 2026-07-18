@@ -3,7 +3,7 @@
   import { stripMarkdown } from "../../lib/utils";
   import AuthorMeta from "../AuthorMeta.svelte";
 
-  export let patch: Patch;
+  let { patch }: { patch: Patch } = $props();
 
   const STATUS_MAP: Record<string, { label: string; type: string }> = {
     draft: { label: "草稿", type: "neutral" },
@@ -14,8 +14,8 @@
     failed: { label: "合并失败", type: "danger" },
   };
 
-  $: statusInfo = STATUS_MAP[patch.status] ?? { label: patch.status, type: "neutral" };
-  $: snippet = stripMarkdown(patch.content);
+  let statusInfo = $derived(STATUS_MAP[patch.status] ?? { label: patch.status, type: "neutral" });
+  let snippet = $derived(stripMarkdown(patch.content));
 </script>
 
 <a
