@@ -1,4 +1,8 @@
 services:
+  redis:
+    image: redis:7-alpine
+    # No ports or volumes — internal access only, volatile Pub/Sub + counters
+
   postgres:
     image: postgres:16-alpine
     environment:
@@ -16,6 +20,8 @@ services:
   backend:
     build: ./backend
     depends_on:
+      redis:
+        condition: service_started
       postgres:
         condition: service_healthy
     environment:
@@ -24,6 +30,12 @@ services:
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       GITHUB_REPO: ${GITHUB_REPO:-}
       CORS_ORIGIN: ""
+      DEPLOY_ENABLED: ${DEPLOY_ENABLED:-true}
+      REPO_DIR: /repo
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - .:/repo
     # No ports exposed — accessed via nginx
 
   frontend:

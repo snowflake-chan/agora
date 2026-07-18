@@ -5,6 +5,7 @@ WORKDIR /app
 # Install system deps for psycopg2 if needed, but we use asyncpg
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    docker.io \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
