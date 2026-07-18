@@ -74,10 +74,6 @@
 
     <!-- Body -->
     <div class="px-4 py-3 text-sm" style="color: var(--vercel-text-secondary);">
-      {#if title}
-        <h1 class="mb-2 text-lg font-bold" style="color: var(--vercel-text);">{title}</h1>
-        <hr class="divider mb-3" />
-      {/if}
       {#if replyingToUsername}
         <span class="mr-1 font-medium" style="color: var(--vercel-text);">@{replyingToUsername}</span>
       {/if}

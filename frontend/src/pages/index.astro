@@ -1,11 +1,11 @@
 ---
 import Layout from "../layouts/Layout.astro";
-import AppBar from "../components/AppBar.svelte";
+import AppBar from "../components/AppBar.astro";
 import FeedList from "../components/FeedList.svelte";
 ---
 
 <Layout>
-  <AppBar client:load />
+  <AppBar />
   <main class="mx-auto max-w-3xl px-4 py-8">
     <div class="mb-6 flex items-center justify-between">
       <h1 class="text-xl font-bold" style="color: var(--vercel-text);">最新动态</h1>

@@ -28,8 +28,8 @@
   on:mouseenter={(e) => e.currentTarget.style.background = '#141417'}
   on:mouseleave={(e) => e.currentTarget.style.background = ''}
 >
-  <div class="flex items-center gap-2">
-    {#if item.type === "patch"}
+  {#if item.type === "patch"}
+    <div class="flex items-center gap-2">
       {#if statusInfo}
         <span class="badge {statusInfo.cls}">
           {statusInfo.label}
@@ -38,12 +38,8 @@
       {#if item.pr_number}
         <span class="text-xs" style="color: var(--vercel-text-tertiary);">PR #{item.pr_number}</span>
       {/if}
-    {:else}
-      <span class="badge badge-neutral">
-        帖子
-      </span>
-    {/if}
-  </div>
+    </div>
+  {/if}
 
   <h2 class="mt-1 text-base font-semibold" style="color: var(--vercel-text);">
     {item.title}

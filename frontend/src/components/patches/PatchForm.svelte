@@ -1,6 +1,7 @@
 <script lang="ts">
   import { marked } from "marked";
   import { createEventDispatcher } from "svelte";
+  import { GITHUB_REPO } from "../../lib/config";
   import { createPatch } from "../../lib/patches";
   import { toaster } from "../../stores/toaster";
 
@@ -35,11 +36,16 @@
   function handleBackdropClick(e: MouseEvent) {
     if (e.target === e.currentTarget) close();
   }
+
+  function portal(node: HTMLElement) {
+    document.body.appendChild(node);
+    return { destroy() { node.remove(); } };
+  }
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div
+<div use:portal
   class="fixed inset-0 z-50 flex items-center justify-center p-4"
   style="background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);"
   on:click={handleBackdropClick}
@@ -79,7 +85,7 @@
 
     <!-- PR number -->
     <div class="flex items-center gap-2 border-b px-6 py-2.5" style="border-color: rgba(255,255,255,0.06);">
-      <span class="text-sm" style="color: var(--vercel-text-tertiary);">https://github.com/</span>
+      <span class="text-sm" style="color: var(--vercel-text-tertiary);">{GITHUB_REPO}#</span>
       <input
         bind:value={prNumber}
         type="number"
@@ -112,7 +118,9 @@
         </div>
         <div class="flex-1 overflow-y-auto px-6 py-4">
           {#if content.trim()}
-            <div class="markdown-body">{@html marked.parse(content, { breaks: true, gfm: true })}</div>
+            {#await marked.parse(content, { breaks: true, gfm: true }) then html}
+              <div class="markdown-body">{@html html}</div>
+            {/await}
           {:else}
             <p class="text-sm" style="color: var(--vercel-text-tertiary);">暂无内容</p>
           {/if}
