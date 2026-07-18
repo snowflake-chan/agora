@@ -104,6 +104,8 @@
     createdAt: string;
     content: string;
     replyingToUsername: string | null;
+    title: string | null;
+    tags: string[] | null;
   }> = [];
 
   $: if (post) {
@@ -116,6 +118,8 @@
         createdAt: post.created_at,
         content: post.content,
         replyingToUsername: null,
+        title: post.title,
+        tags: post.tags,
       },
       ...comments.map((c) => ({
         key: c.id,
@@ -123,6 +127,8 @@
         createdAt: c.created_at,
         content: c.content,
         replyingToUsername: c.replying_to_username,
+        title: null,
+        tags: null,
       })),
     ];
   }
@@ -156,6 +162,8 @@
           username={item.username}
           createdAt={item.createdAt}
           content={item.content}
+          title={item.title}
+          tags={item.tags}
           replyingToUsername={item.replyingToUsername}
           onReply={$currentUser && i > 0 ? () => handleReplyClick(comments[i - 1]) : null}
           onDelete={i === 0
