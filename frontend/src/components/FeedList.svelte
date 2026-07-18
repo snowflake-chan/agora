@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, afterUpdate } from "svelte";
+  import { onMount, tick } from "svelte";
   import { getFeed, type FeedItem } from "../lib/posts";
   import FeedCard from "./FeedCard.svelte";
 
@@ -12,38 +12,31 @@
   let observer: IntersectionObserver | null = null;
 
   onMount(async () => {
-    await loadPage();
+    await loadOnce();
     loading = false;
+    await tick();
+    if (!sentinel || observer) return;
+    observer = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting && hasMore && !busy) {
+        loadOnce();
+      }
+    }, { rootMargin: "300px" });
+    observer.observe(sentinel);
   });
 
-  afterUpdate(() => {
-    // Set up observer once sentinel exists and we're not loading
-    if (sentinel && !observer && !loading) {
-      observer = new IntersectionObserver(async (entries) => {
-        if (entries[0].isIntersecting && hasMore && !busy) {
-          await loadPage();
-        }
-      }, { rootMargin: "200px" });
-      observer.observe(sentinel);
-    }
-  });
-
-  async function loadPage() {
-    if (busy) return;
+  /** Load the current page, then increment. Each page# runs at most once. */
+  let loaded = new Set<number>();
+  async function loadOnce() {
+    if (loaded.has(page) || busy) return;
+    loaded.add(page);
     busy = true;
     try {
-      const next = await getFeed(page);
-      if (next.length === 0) {
-        hasMore = false;
-        return;
-      }
+      let next = await getFeed(page);
+      if (next.length === 0) { hasMore = false; return; }
       items = [...items, ...next];
       page++;
-    } catch {
-      // ignore
-    } finally {
-      busy = false;
-    }
+    } catch { /* ignore */ }
+    finally { busy = false; }
   }
 </script>
 

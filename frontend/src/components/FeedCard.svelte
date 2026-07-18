@@ -23,8 +23,8 @@
   href={href}
   class="group block border-b border-surface-200-800/50 px-4 py-4 transition-colors hover:bg-surface"
 >
-  <div class="flex items-center gap-2">
-    {#if item.type === "patch"}
+  {#if item.type === "patch"}
+    <div class="flex items-center gap-2">
       {#if statusInfo}
         <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium {statusInfo.cls}">
           {statusInfo.label}
@@ -33,12 +33,8 @@
       {#if item.pr_number}
         <span class="text-xs text-surface-400">PR #{item.pr_number}</span>
       {/if}
-    {:else}
-      <span class="inline-flex items-center rounded-full bg-surface-200 px-2 py-0.5 text-xs text-surface-600">
-        帖子
-      </span>
-    {/if}
-  </div>
+    </div>
+  {/if}
 
   <h2 class="mt-1 text-base font-semibold text-surface-900-100 group-hover:text-primary-700">
     {item.title}
