@@ -24,6 +24,11 @@ services:
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       GITHUB_REPO: ${GITHUB_REPO:-}
       CORS_ORIGIN: ""
+      DEPLOY_ENABLED: ${DEPLOY_ENABLED:-true}
+      REPO_DIR: /repo
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - .:/repo
     # No ports exposed — accessed via nginx
 
   frontend:

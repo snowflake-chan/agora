@@ -1,9 +1,12 @@
+import asyncio
+import os
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.db import get_session
 from app.db.models.patch import Patch as PatchModel
 from app.db.models.vote import Vote as VoteModel
@@ -42,26 +45,49 @@ async def _get_vote_counts(
     return counts
 
 
-async def _tally_and_merge(
-    session: AsyncSession, patch: PatchModel
-) -> bool:
-    """Tally votes and merge if passed. Returns True if status changed."""
+async def _tally(session: AsyncSession, patch: PatchModel) -> bool:
+    """Tally votes. If passed, background merge+deploy. Returns True if status changed."""
     counts = await _get_vote_counts(session, str(patch.id))
     total = counts["for"] + counts["against"] + counts["abstain"]
 
     if total > 0 and counts["for"] > total / 2:
         patch.status = "passed"
         await session.commit()
-        try:
-            await merge_pr(patch.pr_number)
-            patch.status = "merged"
-        except Exception:
-            patch.status = "failed"
+        # Merge PR + deploy in background — don't block the HTTP response
+        asyncio.create_task(_do_merge_and_deploy(str(patch.id), patch.pr_number))
     else:
         patch.status = "rejected"
+        await session.commit()
 
-    await session.commit()
     return True
+
+
+async def _do_merge_and_deploy(patch_id: str, pr_number: int) -> None:
+    """Merge PR via GitHub and trigger deploy (background task, own session)."""
+    from app.db import async_session as _async_session
+
+    try:
+        await merge_pr(pr_number)
+        # Update status to merged
+        async with _async_session() as session:
+            stmt = select(PatchModel).where(PatchModel.id == patch_id)
+            result = await session.execute(stmt)
+            patch = result.scalar_one()
+            patch.status = "merged"
+            await session.commit()
+        # Trigger deploy after successful merge
+        await _trigger_deploy()
+    except Exception:
+        # Update status to failed
+        try:
+            async with _async_session() as session:
+                stmt = select(PatchModel).where(PatchModel.id == patch_id)
+                result = await session.execute(stmt)
+                patch = result.scalar_one()
+                patch.status = "failed"
+                await session.commit()
+        except Exception:
+            pass
 
 
 async def _auto_tally(session: AsyncSession, patch: PatchModel) -> bool:
@@ -70,8 +96,34 @@ async def _auto_tally(session: AsyncSession, patch: PatchModel) -> bool:
         return False
     if patch.voting_ends_at > datetime.now(patch.voting_ends_at.tzinfo):
         return False
-    await _tally_and_merge(session, patch)
+    await _tally(session, patch)
     return True
+
+
+async def _trigger_deploy() -> None:
+    """Run deploy.sh asynchronously (fire-and-forget)."""
+    if not settings.DEPLOY_ENABLED:
+        return
+
+    try:
+        process = await asyncio.create_subprocess_exec(
+            "/bin/bash", "/repo/deploy.sh",
+            env={**os.environ, "REPO_DIR": settings.REPO_DIR},
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        # Don't await — fire and forget
+        # Log completion in background
+        async def _log_deploy(proc: asyncio.subprocess.Process) -> None:
+            stdout, stderr = await proc.communicate()
+            if proc.returncode == 0:
+                print(f"[deploy] OK: {stdout.decode(errors='replace')}")
+            else:
+                print(f"[deploy] FAILED (exit={proc.returncode}): {stderr.decode(errors='replace')}")
+
+        asyncio.ensure_future(_log_deploy(process))
+    except Exception as e:
+        print(f"[deploy] ERROR launching deploy: {e}")
 
 
 def _patch_to_read(patch: PatchModel, counts: dict[str, int] | None = None) -> PatchRead:
