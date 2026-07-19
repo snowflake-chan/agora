@@ -65,6 +65,6 @@
       {/if}
     </div>
 
-    <AuthorMeta username={item.author_username ?? "匿名"} createdAt={item.created_at} />
+    <AuthorMeta username={item.author_username ?? "匿名"} userId={item.author_id} createdAt={item.created_at} />
   </div>
 </a>

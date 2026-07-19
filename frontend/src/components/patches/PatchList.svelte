@@ -5,9 +5,11 @@
 
   let { initialStatus = undefined as string | undefined }: { initialStatus?: string } = $props();
 
-  let patches: Patch[] = [];
-  let loading = true;
-  let activeFilter = initialStatus ?? "";
+  // ---- reactive state (all use $state for Svelte 5 runes mode) ----
+  let patches = $state<Patch[]>([]);
+  let loading = $state(true);
+  let error = $state<string | null>(null);
+  let activeFilter = $state(initialStatus ?? "");
 
   const FILTERS: { label: string; value: string }[] = [
     { label: "全部", value: "" },
@@ -16,24 +18,38 @@
     { label: "未通过", value: "rejected" },
   ];
 
-  onMount(async () => {
-    await loadPatches();
+  // ---- data loading ----
+  let abortCtrl: AbortController | null = null;
+
+  onMount(() => {
+    loadPatches();
   });
 
   async function loadPatches() {
+    // Cancel any in-flight request so rapid filter switching works correctly.
+    abortCtrl?.abort();
+    abortCtrl = new AbortController();
+
     loading = true;
+    error = null;
+
     try {
-      patches = await listPatches(1, activeFilter || undefined);
-    } catch {
+      patches = await listPatches(1, activeFilter || undefined, abortCtrl.signal);
+    } catch (e: any) {
+      if (e?.name === "AbortError") return; // cancelled, leaving previous state
       patches = [];
+      error = e instanceof Error ? e.message : "加载失败，请确认后端服务已启动";
     } finally {
-      loading = false;
+      // Only clear loading if this is still the active controller.
+      if (abortCtrl && !abortCtrl.signal.aborted) {
+        loading = false;
+      }
     }
   }
 
-  async function switchFilter(value: string) {
+  function switchFilter(value: string) {
     activeFilter = value;
-    await loadPatches();
+    loadPatches();
   }
 </script>
 
@@ -54,6 +70,11 @@
   <div class="empty-state">
     <div class="spinner mb-3"></div>
     加载中...
+  </div>
+{:else if error}
+  <div class="empty-state">
+    <p style="color: var(--vercel-danger);">{error}</p>
+    <button class="btn btn-ghost btn-sm mt-3" onclick={() => loadPatches()}>重试</button>
   </div>
 {:else if patches.length === 0}
   <div class="empty-state">

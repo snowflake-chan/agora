@@ -21,6 +21,13 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+*_uvicorn.log
+*_uvicorn_err.log
+*_dev.out.log
+*_dev.err.log
+dev.log
+pip_full.log
+*.log
 
 # environment variables
 .env

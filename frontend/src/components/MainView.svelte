@@ -24,10 +24,7 @@
       in:fly={{ y: 12, duration: 320, easing: appleEase }}
       out:fade={{ duration: 140 }}
     >
-      <div class="mb-6 flex items-center justify-between">
-        <h1 class="view-title">变更</h1>
-        <a href="/patches/new" class="btn btn-primary btn-sm">发起变更</a>
-      </div>
+      <h1 class="view-title">变更</h1>
       <div class="card overflow-hidden">
         <PatchList />
       </div>

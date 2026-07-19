@@ -4,6 +4,7 @@
 
   let {
     username,
+    userId = null,
     createdAt,
     content,
     title = null,
@@ -13,6 +14,7 @@
     onDelete = null,
   }: {
     username: string;
+    userId: string | null;
     createdAt: string;
     content: string;
     title: string | null;
@@ -23,6 +25,7 @@
   } = $props();
 
   let menuOpen = false;
+  let profileHref = $derived(userId ? `/users/${userId}` : "#");
 
   function handleClickOutside(e: MouseEvent) {
     const target = e.target as HTMLElement;
@@ -38,10 +41,10 @@
   <div class="card">
     <!-- Header -->
     <div class="flex items-center gap-2 px-4 py-2 border-b" style="border-color: var(--vercel-border);">
-      <div class="avatar avatar-sm">
+      <a href={profileHref} class="avatar avatar-sm no-underline hover:opacity-80 transition-opacity" style="cursor: {userId ? 'pointer' : 'default'};">
         {(username ?? "?")[0].toUpperCase()}
-      </div>
-      <span class="text-sm font-medium" style="color: var(--vercel-text);">{username ?? "匿名"}</span>
+      </a>
+      <a href={profileHref} class="text-sm font-medium no-underline hover:underline" style="color: var(--vercel-text); cursor: {userId ? 'pointer' : 'default'};">{username ?? "匿名"}</a>
       <span class="text-xs" style="color: var(--vercel-text-tertiary);">{timeAgo(createdAt)}</span>
 
       {#if onReply || onDelete}
