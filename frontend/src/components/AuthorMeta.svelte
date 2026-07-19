@@ -6,7 +6,7 @@
   let profileHref = $derived(userId ? `/users/${userId}` : "#");
 </script>
 
-<div class="flex shrink-0 items-center gap-1.5 text-xs" style="color: var(--vercel-text-tertiary);">
+<div class="relative z-10 flex shrink-0 items-center gap-1.5 text-xs" style="color: var(--vercel-text-tertiary);">
   <a href={profileHref} class="avatar avatar-sm no-underline hover:opacity-80 transition-opacity" style="cursor: {userId ? 'pointer' : 'default'};">
     {(username ?? "?")[0].toUpperCase()}
   </a>

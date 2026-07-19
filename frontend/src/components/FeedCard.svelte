@@ -21,9 +21,8 @@
   );
 </script>
 
-<a
-  href={href}
-  class="block px-4 py-4 border-b transition-colors"
+<article
+  class="feed-card relative px-4 py-4 border-b transition-colors"
   style="border-color: var(--vercel-border);"
   onmouseenter={(e) => e.currentTarget.style.background = '#141417'}
   onmouseleave={(e) => e.currentTarget.style.background = ''}
@@ -41,8 +40,10 @@
     </div>
   {/if}
 
-  <h2 class="mt-1 text-base font-semibold" style="color: var(--vercel-text);">
-    {item.title}
+  <h2 class="mt-1 text-base font-semibold">
+    <a class="card-link" href={href} style="color: var(--vercel-text);">
+      {item.title}
+    </a>
   </h2>
 
   <p class="mt-1 line-clamp-2 text-sm" style="color: var(--vercel-text-secondary);">
@@ -67,4 +68,21 @@
 
     <AuthorMeta username={item.author_username ?? "匿名"} userId={item.author_id} createdAt={item.created_at} />
   </div>
-</a>
+</article>
+
+<style>
+  .card-link::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+  }
+
+  .feed-card:has(.card-link:focus-visible) {
+    outline: 2px solid var(--vercel-text);
+    outline-offset: -2px;
+  }
+
+  .card-link:focus-visible {
+    outline: none;
+  }
+</style>

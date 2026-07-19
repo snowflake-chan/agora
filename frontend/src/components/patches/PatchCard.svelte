@@ -18,9 +18,8 @@
   let snippet = $derived(stripMarkdown(patch.content));
 </script>
 
-<a
-  href={`/patches/${patch.id}`}
-  class="block px-4 py-4 border-b transition-colors"
+<article
+  class="patch-card relative px-4 py-4 border-b transition-colors"
   style="border-color: var(--vercel-border);"
   onmouseenter={(e) => e.currentTarget.style.background = '#141417'}
   onmouseleave={(e) => e.currentTarget.style.background = ''}
@@ -33,8 +32,10 @@
         </span>
         <span class="text-xs" style="color: var(--vercel-text-tertiary);">#{patch.pr_number}</span>
       </div>
-      <h2 class="mt-1 text-base font-semibold" style="color: var(--vercel-text);">
-        {patch.title}
+      <h2 class="mt-1 text-base font-semibold">
+        <a class="card-link" href={`/patches/${patch.id}`} style="color: var(--vercel-text);">
+          {patch.title}
+        </a>
       </h2>
       <p class="mt-1 line-clamp-2 text-sm" style="color: var(--vercel-text-secondary);">{snippet}</p>
     </div>
@@ -48,4 +49,21 @@
     </div>
     <AuthorMeta username={patch.author_username ?? "匿名"} userId={patch.author_id} createdAt={patch.created_at} />
   </div>
-</a>
+</article>
+
+<style>
+  .card-link::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+  }
+
+  .patch-card:has(.card-link:focus-visible) {
+    outline: 2px solid var(--vercel-text);
+    outline-offset: -2px;
+  }
+
+  .card-link:focus-visible {
+    outline: none;
+  }
+</style>
