@@ -7,6 +7,7 @@
     type Notification,
   } from "../lib/notifications";
   import { timeAgo } from "../lib/utils";
+  import { currentUser, initAuth } from "../stores/auth";
   import { toaster } from "../stores/toaster";
 
   let items = $state<Notification[]>([]);
@@ -17,6 +18,11 @@
   let following = $derived(items.filter((item) => item.type.startsWith("following_")));
 
   onMount(async () => {
+    await initAuth();
+    if (!$currentUser) {
+      window.location.replace("/login?returnTo=%2Fnotifications");
+      return;
+    }
     try {
       const result = await listNotifications(1);
       items = result.items;
@@ -40,18 +46,18 @@
   }
 </script>
 
-<header class="notification-header">
-  <div>
-    <p>Inbox</p>
-    <h1>通知</h1>
-    <span>{unread > 0 ? `${unread} 条未读` : "已全部读完"}</span>
-  </div>
-  {#if unread > 0}<button onclick={readAll}>全部标为已读</button>{/if}
-</header>
-
 {#if loading}
   <div class="empty-state"><div class="spinner"></div></div>
 {:else}
+  <header class="notification-header">
+    <div>
+      <p>Inbox</p>
+      <h1>通知</h1>
+      <span>{unread > 0 ? `${unread} 条未读` : "已全部读完"}</span>
+    </div>
+    {#if unread > 0}<button onclick={readAll}>全部标为已读</button>{/if}
+  </header>
+
   <div class="notification-grid">
     <section aria-labelledby="direct-title">
       <div class="section-heading">

@@ -1,5 +1,7 @@
 """Integration tests for traceable patch discussions."""
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from uuid import uuid4
 
 import httpx
@@ -8,26 +10,30 @@ import httpx
 BASE = "http://localhost:8000"
 
 
-def _authenticated_client() -> httpx.Client:
-    client = httpx.Client()
-    uid = uuid4().hex[:8]
-    email = f"discussion-{uid}@test.dev"
-    password = "testpass123"
-    registered = client.post(
-        f"{BASE}/api/v1/auth/register",
-        json={
-            "email": email,
-            "username": f"discussion-{uid}",
-            "password": password,
-        },
-    )
-    assert registered.status_code == 200, registered.text
-    logged_in = client.post(
-        f"{BASE}/api/v1/auth/login",
-        json={"email": email, "password": password},
-    )
-    assert logged_in.status_code == 200, logged_in.text
-    return client
+@contextmanager
+def _authenticated_client() -> Iterator[httpx.Client]:
+    with httpx.Client() as client:
+        uid = uuid4().hex[:8]
+        email = f"discussion-{uid}@test.dev"
+        password = "testpass123"
+        registered = client.post(
+            f"{BASE}/api/v1/auth/register",
+            json={
+                "email": email,
+                "username": f"discussion-{uid}",
+                "password": password,
+            },
+        )
+        assert registered.status_code == 200, registered.text
+        logged_in = client.post(
+            f"{BASE}/api/v1/auth/login",
+            json={"email": email, "password": password},
+        )
+        assert logged_in.status_code == 200, logged_in.text
+        token = logged_in.cookies.get("Authorization")
+        assert token
+        client.headers["Cookie"] = f"Authorization={token}"
+        yield client
 
 
 def test_patch_comments_are_traceable_and_reactable():
@@ -77,3 +83,9 @@ def test_patch_comment_requires_auth():
             json={"content": "No session"},
         )
         assert missing.status_code == 401
+
+
+def test_malformed_patch_id_is_rejected():
+    with httpx.Client() as client:
+        response = client.get(f"{BASE}/api/v1/patches/not-a-uuid")
+        assert response.status_code == 422

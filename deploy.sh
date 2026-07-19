@@ -1,5 +1,5 @@
 #!/bin/bash
-# Auto-deploy after a governance PR is merged.
+# Auto-deploy after an approved governance PR is merged.
 #
 # The backend container must not run Compose directly: Compose is a client-side
 # orchestrator and would be killed midway through recreating its own container.

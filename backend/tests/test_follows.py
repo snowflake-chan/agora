@@ -28,6 +28,9 @@ def _account(prefix: str) -> tuple[httpx.Client, dict]:
         json={"email": email, "password": password},
     )
     assert login.status_code == 200, login.text
+    token = login.cookies.get("Authorization")
+    assert token
+    client.headers["Cookie"] = f"Authorization={token}"
     return client, user
 
 

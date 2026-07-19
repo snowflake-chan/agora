@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
@@ -233,7 +235,7 @@ async def get_feed(
 
 @router.get("/{post_id}", response_model=PostRead)
 async def get_post(
-    post_id: str,
+    post_id: UUID,
     session: AsyncSession = Depends(get_session),
     user: User | None = Depends(optional_current_user),
 ):
@@ -281,7 +283,7 @@ async def get_post(
 
 
 async def _post_like_state(
-    session: AsyncSession, post_id: str, user_id
+    session: AsyncSession, post_id: UUID, user_id
 ) -> PostLikeRead:
     like_count = await session.scalar(
         select(func.count(PostLike.id)).where(PostLike.post_id == post_id)
@@ -298,7 +300,7 @@ async def _post_like_state(
 
 @router.put("/{post_id}/like", response_model=PostLikeRead)
 async def like_post(
-    post_id: str,
+    post_id: UUID,
     session: AsyncSession = Depends(get_session),
     user: User = Depends(current_user),
 ):
@@ -322,7 +324,7 @@ async def like_post(
 
 @router.delete("/{post_id}/like", response_model=PostLikeRead)
 async def unlike_post(
-    post_id: str,
+    post_id: UUID,
     session: AsyncSession = Depends(get_session),
     user: User = Depends(current_user),
 ):
@@ -346,7 +348,7 @@ async def unlike_post(
 
 @router.delete("/{content_id}", status_code=204)
 async def delete_content(
-    content_id: str,
+    content_id: UUID,
     session: AsyncSession = Depends(get_session),
     user: User = Depends(current_user),
 ):
@@ -368,7 +370,7 @@ async def delete_content(
 
 @router.get("/{post_id}/comments", response_model=list[CommentRead])
 async def list_comments(
-    post_id: str,
+    post_id: UUID,
     session: AsyncSession = Depends(get_session),
     user: User | None = Depends(optional_current_user),
 ):
@@ -462,7 +464,7 @@ async def list_comments(
 
 @router.post("/{post_id}/comments", response_model=CommentRead, status_code=201)
 async def create_comment(
-    post_id: str,
+    post_id: UUID,
     data: CommentCreate,
     session: AsyncSession = Depends(get_session),
     user: User = Depends(current_user),

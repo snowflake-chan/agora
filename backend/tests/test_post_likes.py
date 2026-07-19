@@ -69,6 +69,10 @@ def test_like_requires_auth_and_a_real_post():
             f"{BASE}/api/v1/posts/{uuid4()}/like", headers=headers
         )
         assert missing.status_code == 404
+        malformed = client.put(
+            f"{BASE}/api/v1/posts/not-a-uuid/like", headers=headers
+        )
+        assert malformed.status_code == 422
 
     with httpx.Client() as anonymous:
         unauthenticated = anonymous.put(f"{BASE}/api/v1/posts/{post_id}/like")

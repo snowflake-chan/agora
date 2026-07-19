@@ -1,6 +1,7 @@
 import asyncio
 import os
 from datetime import datetime, timedelta, timezone
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
@@ -33,7 +34,7 @@ VOTING_PERIOD_DAYS = 3
 
 
 async def _get_vote_counts(
-    session: AsyncSession, patch_id: str
+    session: AsyncSession, patch_id: UUID | str
 ) -> dict[str, int]:
     """Return for_count, against_count, abstain_count for a patch."""
     rows = (
@@ -338,7 +339,7 @@ async def create_patch(
 
 @router.get("/{patch_id}", response_model=PatchRead)
 async def get_patch(
-    patch_id: str,
+    patch_id: UUID,
     session: AsyncSession = Depends(get_session),
 ):
     """Get a single patch. Auto-tallies if voting period has ended."""
@@ -361,7 +362,7 @@ async def get_patch(
 
 @router.delete("/{patch_id}", status_code=204)
 async def delete_patch(
-    patch_id: str,
+    patch_id: UUID,
     session: AsyncSession = Depends(get_session),
     user: User = Depends(current_user),
 ):
@@ -382,7 +383,7 @@ async def delete_patch(
 
 @router.post("/{patch_id}/submit", response_model=PatchRead)
 async def submit_patch(
-    patch_id: str,
+    patch_id: UUID,
     session: AsyncSession = Depends(get_session),
     user: User = Depends(current_user),
 ):
@@ -411,7 +412,7 @@ async def submit_patch(
 
 @router.post("/{patch_id}/vote", response_model=VoteRead, status_code=201)
 async def vote_patch(
-    patch_id: str,
+    patch_id: UUID,
     data: VoteCreate,
     session: AsyncSession = Depends(get_session),
     user: User = Depends(current_user),
@@ -474,7 +475,7 @@ async def vote_patch(
 
 @router.get("/{patch_id}/votes", response_model=list[VoteRead])
 async def list_votes(
-    patch_id: str,
+    patch_id: UUID,
     session: AsyncSession = Depends(get_session),
 ):
     """List all votes for a patch."""
@@ -510,7 +511,7 @@ async def list_votes(
 
 @router.get("/{patch_id}/comments", response_model=list[CommentRead])
 async def list_patch_comments(
-    patch_id: str,
+    patch_id: UUID,
     session: AsyncSession = Depends(get_session),
     user: User | None = Depends(optional_current_user),
 ):
@@ -600,7 +601,7 @@ async def list_patch_comments(
 
 @router.post("/{patch_id}/comments", response_model=CommentRead, status_code=201)
 async def create_patch_comment(
-    patch_id: str,
+    patch_id: UUID,
     data: CommentCreate,
     session: AsyncSession = Depends(get_session),
     user: User = Depends(current_user),

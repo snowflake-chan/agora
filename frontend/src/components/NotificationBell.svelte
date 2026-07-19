@@ -2,11 +2,21 @@
   import { onMount, onDestroy } from "svelte";
   import { Bell, Check, GitMerge, MessageSquare, ThumbsUp, X } from "@lucide/svelte";
   import { unreadCount, notifications, initNotificationStore, cleanupNotificationStore, openNotifications } from "../stores/notifications";
+  import { currentUser, initAuth } from "../stores/auth";
 
   let open = false;
+  let initialized = false;
 
-  onMount(() => initNotificationStore());
-  onDestroy(() => cleanupNotificationStore());
+  onMount(async () => {
+    await initAuth();
+    if ($currentUser) {
+      initNotificationStore();
+      initialized = true;
+    }
+  });
+  onDestroy(() => {
+    if (initialized) cleanupNotificationStore();
+  });
 
   function toggle() {
     if (!open) {
@@ -53,38 +63,25 @@
 
 <svelte:window on:click={handleClickOutside} />
 
-<div class="notif-bell relative">
-  <button class="bell-btn" on:click={toggle} title="通知">
-    <Bell class="size-4.5" />
-    {#if $unreadCount > 0}
-      <span class="bell-badge">
-        {$unreadCount > 99 ? "99+" : $unreadCount}
-      </span>
-    {/if}
-  </button>
+{#if $currentUser}
+  <div class="notif-bell relative">
+    <button class="bell-btn" on:click={toggle} title="通知">
+      <Bell class="size-4.5" />
+      {#if $unreadCount > 0}
+        <span class="bell-badge">
+          {$unreadCount > 99 ? "99+" : $unreadCount}
+        </span>
+      {/if}
+    </button>
 
-  {#if open}
-    <div class="notif-dropdown">
-      {#if $notifications.length === 0}
-        <div class="notif-empty">暂无通知</div>
-      {:else}
-        <div class="notif-section-label">与你相关</div>
-        {#each $notifications.filter((item) => !isFollowing(item.type)).slice(0, 6) as notif (notif.id)}
-          <button class="notif-item" on:click={() => handleNotifClick(notif.link)}>
-            <div class="notif-icon">
-              <svelte:component this={typeIcon(notif.type)} class="size-3.5" />
-            </div>
-            <div class="notif-body">
-              <div class="notif-title">{notif.title}</div>
-              <div class="notif-msg">{notif.message}</div>
-              <div class="notif-time">{timeAgo(notif.created_at)}</div>
-            </div>
-          </button>
-        {/each}
-        {#if $notifications.some((item) => isFollowing(item.type))}
-          <div class="notif-section-label secondary">关注动态</div>
-          {#each $notifications.filter((item) => isFollowing(item.type)).slice(0, 4) as notif (notif.id)}
-            <button class="notif-item secondary-item" on:click={() => handleNotifClick(notif.link)}>
+    {#if open}
+      <div class="notif-dropdown">
+        {#if $notifications.length === 0}
+          <div class="notif-empty">暂无通知</div>
+        {:else}
+          <div class="notif-section-label">与你相关</div>
+          {#each $notifications.filter((item) => !isFollowing(item.type)).slice(0, 6) as notif (notif.id)}
+            <button class="notif-item" on:click={() => handleNotifClick(notif.link)}>
               <div class="notif-icon">
                 <svelte:component this={typeIcon(notif.type)} class="size-3.5" />
               </div>
@@ -95,12 +92,27 @@
               </div>
             </button>
           {/each}
+          {#if $notifications.some((item) => isFollowing(item.type))}
+            <div class="notif-section-label secondary">关注动态</div>
+            {#each $notifications.filter((item) => isFollowing(item.type)).slice(0, 4) as notif (notif.id)}
+              <button class="notif-item secondary-item" on:click={() => handleNotifClick(notif.link)}>
+                <div class="notif-icon">
+                  <svelte:component this={typeIcon(notif.type)} class="size-3.5" />
+                </div>
+                <div class="notif-body">
+                  <div class="notif-title">{notif.title}</div>
+                  <div class="notif-msg">{notif.message}</div>
+                  <div class="notif-time">{timeAgo(notif.created_at)}</div>
+                </div>
+              </button>
+            {/each}
+          {/if}
+          <a class="notif-all" href="/notifications">查看全部通知</a>
         {/if}
-        <a class="notif-all" href="/notifications">查看全部通知</a>
-      {/if}
-    </div>
-  {/if}
-</div>
+      </div>
+    {/if}
+  </div>
+{/if}
 
 <style>
   .bell-btn {
