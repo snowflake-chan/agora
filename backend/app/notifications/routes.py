@@ -31,9 +31,13 @@ async def notification_stream(
 
     async def event_generator():
         redis = await get_redis()
-        pubsub = redis.pubsub()
+        pubsub = None
         channel = f"notif:{user.id}"
-        await pubsub.subscribe(channel)
+        try:
+            pubsub = redis.pubsub()
+            await pubsub.subscribe(channel)
+        except Exception:
+            return
 
         try:
             while True:
@@ -49,8 +53,9 @@ async def notification_stream(
         except asyncio.CancelledError:
             pass
         finally:
-            await pubsub.unsubscribe(channel)
-            await pubsub.close()
+            if pubsub is not None:
+                await pubsub.unsubscribe(channel)
+                await pubsub.close()
 
     return EventSourceResponse(event_generator())
 
