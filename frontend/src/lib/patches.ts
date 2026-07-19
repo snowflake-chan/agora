@@ -1,4 +1,5 @@
 import { API_BASE } from "./config";
+import type { Comment } from "./posts";
 
 export interface Patch {
   id: string;
@@ -12,6 +13,7 @@ export interface Patch {
   for_count: number;
   against_count: number;
   abstain_count: number;
+  comment_count: number;
   created_at: string;
   updated_at: string;
 }
@@ -97,5 +99,27 @@ export async function listVotes(patchId: string): Promise<Vote[]> {
     credentials: "include",
   });
   if (!res.ok) throw new Error("Failed to load votes");
+  return res.json();
+}
+
+export async function listPatchComments(patchId: string): Promise<Comment[]> {
+  const res = await fetch(`${API_BASE}/patches/${patchId}/comments`, {
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error("无法加载讨论");
+  return res.json();
+}
+
+export async function createPatchComment(
+  patchId: string,
+  data: { content: string; replying_id?: string },
+): Promise<Comment> {
+  const res = await fetch(`${API_BASE}/patches/${patchId}/comments`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error((await res.json()).detail ?? "评论失败");
   return res.json();
 }

@@ -19,6 +19,9 @@ class Content(Base):
     parent_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("content.id", ondelete="CASCADE"), index=True
     )
+    patch_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("patch.id", ondelete="CASCADE"), index=True, nullable=True
+    )
     replying_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("content.id", ondelete="SET NULL"), index=True, nullable=True
     )

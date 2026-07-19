@@ -1,6 +1,7 @@
 ---
 import Layout from "../layouts/Layout.astro";
 import LoginForm from "../components/auth/LoginForm.svelte";
+const returnTo = Astro.url.searchParams.get("returnTo") ?? "/";
 ---
 
 <Layout>
@@ -11,7 +12,7 @@ import LoginForm from "../components/auth/LoginForm.svelte";
     <p class="mb-8 text-sm" style="color: var(--vercel-text-tertiary);">登录你的账号</p>
 
     <div class="card w-full p-6">
-      <LoginForm client:load />
+      <LoginForm {returnTo} client:load />
     </div>
   </main>
 </Layout>

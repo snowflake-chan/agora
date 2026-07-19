@@ -49,6 +49,10 @@ class CommentRead(BaseModel):
     replying_id: UUID | None
     author_username: str | None = None
     replying_to_username: str | None = None
+    replying_to_content: str | None = None
+    reply_count: int = 0
+    like_count: int = 0
+    liked_by_me: bool = False
     created_at: datetime
 
     model_config = {"from_attributes": True}

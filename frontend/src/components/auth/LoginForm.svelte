@@ -63,6 +63,11 @@
 
   <p class="text-center text-sm" style="color: var(--vercel-text-tertiary);">
     还没有账号？
-    <a href="/register" class="font-medium transition-colors" style="color: var(--vercel-text-secondary);" onmouseenter={(e) => e.currentTarget.style.color = 'var(--vercel-text)'} onmouseleave={(e) => e.currentTarget.style.color = 'var(--vercel-text-secondary)'}>注册</a>
+    <a href={`/register?returnTo=${encodeURIComponent(safeReturnTo(returnTo))}`} class="auth-link">注册</a>
   </p>
 </form>
+
+<style>
+  .auth-link { color:var(--vercel-text-secondary); font-weight:500; transition:color .15s ease; }
+  .auth-link:hover { color:var(--vercel-text); }
+</style>

@@ -45,6 +45,10 @@
     if (type === "vote_rejected" || type === "patch_failed") return X;
     return Bell;
   }
+
+  function isFollowing(type: string) {
+    return type.startsWith("following_");
+  }
 </script>
 
 <svelte:window on:click={handleClickOutside} />
@@ -64,7 +68,8 @@
       {#if $notifications.length === 0}
         <div class="notif-empty">暂无通知</div>
       {:else}
-        {#each $notifications as notif (notif.id)}
+        <div class="notif-section-label">与你相关</div>
+        {#each $notifications.filter((item) => !isFollowing(item.type)).slice(0, 6) as notif (notif.id)}
           <button class="notif-item" on:click={() => handleNotifClick(notif.link)}>
             <div class="notif-icon">
               <svelte:component this={typeIcon(notif.type)} class="size-3.5" />
@@ -76,6 +81,22 @@
             </div>
           </button>
         {/each}
+        {#if $notifications.some((item) => isFollowing(item.type))}
+          <div class="notif-section-label secondary">关注动态</div>
+          {#each $notifications.filter((item) => isFollowing(item.type)).slice(0, 4) as notif (notif.id)}
+            <button class="notif-item secondary-item" on:click={() => handleNotifClick(notif.link)}>
+              <div class="notif-icon">
+                <svelte:component this={typeIcon(notif.type)} class="size-3.5" />
+              </div>
+              <div class="notif-body">
+                <div class="notif-title">{notif.title}</div>
+                <div class="notif-msg">{notif.message}</div>
+                <div class="notif-time">{timeAgo(notif.created_at)}</div>
+              </div>
+            </button>
+          {/each}
+        {/if}
+        <a class="notif-all" href="/notifications">查看全部通知</a>
       {/if}
     </div>
   {/if}
@@ -145,6 +166,32 @@
     text-align: center;
     font-size: 0.8125rem;
     color: var(--vercel-text-tertiary);
+  }
+
+  .notif-section-label {
+    padding: .65rem .75rem .45rem;
+    border-bottom: 1px solid var(--vercel-border);
+    color: var(--vercel-text-secondary);
+    font-size: .65rem;
+    font-weight: 650;
+    letter-spacing: .1em;
+  }
+
+  .notif-section-label.secondary {
+    margin-top: .25rem;
+    color: var(--vercel-text-tertiary);
+  }
+
+  .secondary-item {
+    opacity: .78;
+  }
+
+  .notif-all {
+    display: block;
+    padding: .75rem;
+    color: var(--vercel-text-secondary);
+    font-size: .75rem;
+    text-align: center;
   }
 
   .notif-item {

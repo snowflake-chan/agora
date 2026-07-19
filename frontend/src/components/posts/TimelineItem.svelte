@@ -19,6 +19,9 @@
     onLike = null,
     onDiscuss = null,
     onShare = null,
+    contentId = null,
+    replyingToContent = null,
+    replyingToId = null,
   }: {
     username: string;
     userId: string | null;
@@ -36,6 +39,9 @@
     onLike?: (() => void) | null;
     onDiscuss?: (() => void) | null;
     onShare?: (() => void) | null;
+    contentId?: string | null;
+    replyingToContent?: string | null;
+    replyingToId?: string | null;
   } = $props();
 
   let menuOpen = false;
@@ -51,7 +57,7 @@
 
 <svelte:window on:click={handleClickOutside} />
 
-<div class="relative mb-6 ml-7">
+<div id={contentId ?? undefined} class="relative mb-6 ml-7 content-node">
   <div class="card">
     <!-- Header -->
     <div class="flex items-center gap-2 px-4 py-2 border-b" style="border-color: var(--vercel-border);">
@@ -92,7 +98,12 @@
     <!-- Body -->
     <div class="px-4 py-3 text-sm" style="color: var(--vercel-text-secondary);">
       {#if replyingToUsername}
-        <span class="mr-1 font-medium" style="color: var(--vercel-text);">@{replyingToUsername}</span>
+        <a href={replyingToId ? `#${replyingToId}` : undefined} class="reply-trace">
+          <span>回复 @{replyingToUsername}</span>
+          {#if replyingToContent}
+            <span class="reply-trace-copy">{replyingToContent}</span>
+          {/if}
+        </a>
       {/if}
       <div class="markdown-body">
         {@html renderMarkdown(content)}
@@ -147,6 +158,33 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
     border-top: 1px solid var(--vercel-border);
     padding: 0.25rem;
+  }
+
+  .content-node {
+    scroll-margin-top: 5rem;
+  }
+
+  .reply-trace {
+    display: block;
+    margin-bottom: 0.75rem;
+    padding-left: 0.75rem;
+    border-left: 2px solid var(--vercel-border-hover);
+    color: var(--vercel-text-tertiary);
+    font-size: 0.75rem;
+    line-height: 1.45;
+  }
+
+  .reply-trace:hover {
+    color: var(--vercel-text-secondary);
+  }
+
+  .reply-trace-copy {
+    display: -webkit-box;
+    overflow: hidden;
+    margin-top: 0.2rem;
+    color: var(--vercel-text-secondary);
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
   }
 
   .post-action {

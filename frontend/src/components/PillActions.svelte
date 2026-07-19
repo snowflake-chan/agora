@@ -18,11 +18,15 @@
   let showPostForm = $state(false);
   let showPatchForm = $state(false);
   let menuOpen = $state(false);
+  let authReady = $state(false);
 
   let trackEl = $state<HTMLDivElement | null>(null);
   let highlightEl = $state<HTMLDivElement | null>(null);
 
-  onMount(() => initAuth());
+  onMount(async () => {
+    await initAuth();
+    authReady = true;
+  });
 
   onMount(() => {
     let initial: "posts" | "patches" = "posts";
@@ -85,7 +89,16 @@
     }
   }
 
-  function selectAndOpen(key: "post" | "patch") {
+  async function selectAndOpen(key: "post" | "patch") {
+    if (!authReady) {
+      await initAuth();
+      authReady = true;
+    }
+    if (!$currentUser) {
+      const returnTo = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      window.location.href = `/login?returnTo=${encodeURIComponent(returnTo)}`;
+      return;
+    }
     activeKey = key;
     if (key === "post") showPostForm = true;
     else showPatchForm = true;
@@ -186,7 +199,6 @@
     <span class="pill-tooltip">发帖</span>
   </button>
 
-  {#if $currentUser}
     <button
       class="pill-item pill-slot"
       class:is-active={activeKey === "patch"}
@@ -197,7 +209,6 @@
       <GitBranchIcon class="size-4.5" />
       <span class="pill-tooltip">发起变更</span>
     </button>
-  {/if}
 
   <div class="user-menu relative">
     {#if $currentUser}

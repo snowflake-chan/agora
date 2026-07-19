@@ -1,7 +1,10 @@
 from uuid import UUID
 
+from sqlalchemy import select
+
 from app.db import async_session
 from app.db.models.notification import Notification
+from app.db.models.follow import Follow
 from app.notifications.redis import publish_notification
 
 
@@ -44,3 +47,33 @@ async def create_notification(
     except Exception as e:
         print(f"[notif] create error: {e}")
         return None
+
+
+async def notify_followers(
+    *,
+    author_id: UUID,
+    type: str,
+    title: str,
+    message: str,
+    link: str,
+) -> None:
+    """Create low-priority activity notifications for an author's followers."""
+    try:
+        async with async_session() as session:
+            follower_ids = (
+                await session.execute(
+                    select(Follow.follower_id).where(
+                        Follow.following_id == author_id
+                    )
+                )
+            ).scalars().all()
+        for follower_id in follower_ids:
+            await create_notification(
+                recipient_id=follower_id,
+                type=type,
+                title=title,
+                message=message,
+                link=link,
+            )
+    except Exception as e:
+        print(f"[notif] followers error: {e}")

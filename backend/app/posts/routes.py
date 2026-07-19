@@ -8,7 +8,7 @@ from app.db.models.content import Content as ContentModel
 from app.db.models.patch import Patch as PatchModel
 from app.db.models.post_like import PostLike
 from app.db.models.user import User
-from app.notifications.service import create_notification
+from app.notifications.service import create_notification, notify_followers
 from app.schemas.post import (
     CommentCreate,
     CommentRead,
@@ -118,6 +118,14 @@ async def create_post(
     result = await session.execute(stmt)
     post = result.scalar_one()
 
+    await notify_followers(
+        author_id=user.id,
+        type="following_post",
+        title=f"{user.nickname or user.username} 发布了新帖子",
+        message=post.title or "",
+        link=f"/posts/{post.id}",
+    )
+
     return PostRead(
         id=post.id,
         title=post.title or "",
@@ -186,6 +194,21 @@ async def get_feed(
 
     # Merge & sort by created_at desc
     items: list[FeedItem] = []
+    patch_comment_counts: dict = {}
+    patch_ids = [p.id for p in patches]
+    if patch_ids:
+        patch_comment_counts = dict(
+            (
+                await session.execute(
+                    select(ContentModel.patch_id, func.count(ContentModel.id))
+                    .where(
+                        ContentModel.patch_id.in_(patch_ids),
+                        ContentModel.type == "comment",
+                    )
+                    .group_by(ContentModel.patch_id)
+                )
+            ).all()
+        )
 
     for p in posts:
         items.append(FeedItem(
@@ -201,6 +224,7 @@ async def get_feed(
             author_id=p.author_id, author_username=p.author.username,
             created_at=p.created_at,
             pr_number=p.pr_number, status=p.status,
+            reply_count=patch_comment_counts.get(p.id, 0),
         ))
 
     items.sort(key=lambda x: x.created_at, reverse=True)
@@ -279,17 +303,17 @@ async def like_post(
     user: User = Depends(current_user),
 ):
     """Like a post. Repeated requests are idempotent."""
-    post_exists = await session.scalar(
+    content_exists = await session.scalar(
         select(ContentModel.id).where(
-            ContentModel.id == post_id, ContentModel.type == "post"
+            ContentModel.id == post_id, ContentModel.type.in_(("post", "comment"))
         )
     )
-    if not post_exists:
-        raise HTTPException(status_code=404, detail="POST_NOT_FOUND")
+    if not content_exists:
+        raise HTTPException(status_code=404, detail="CONTENT_NOT_FOUND")
 
     await session.execute(
         insert(PostLike)
-        .values(post_id=post_exists, user_id=user.id)
+        .values(post_id=content_exists, user_id=user.id)
         .on_conflict_do_nothing(constraint="uq_post_like_post_user")
     )
     await session.commit()
@@ -303,17 +327,17 @@ async def unlike_post(
     user: User = Depends(current_user),
 ):
     """Remove the current user's like. Repeated requests are idempotent."""
-    post_exists = await session.scalar(
+    content_exists = await session.scalar(
         select(ContentModel.id).where(
-            ContentModel.id == post_id, ContentModel.type == "post"
+            ContentModel.id == post_id, ContentModel.type.in_(("post", "comment"))
         )
     )
-    if not post_exists:
-        raise HTTPException(status_code=404, detail="POST_NOT_FOUND")
+    if not content_exists:
+        raise HTTPException(status_code=404, detail="CONTENT_NOT_FOUND")
 
     await session.execute(
         delete(PostLike).where(
-            PostLike.post_id == post_exists, PostLike.user_id == user.id
+            PostLike.post_id == content_exists, PostLike.user_id == user.id
         )
     )
     await session.commit()
@@ -346,6 +370,7 @@ async def delete_content(
 async def list_comments(
     post_id: str,
     session: AsyncSession = Depends(get_session),
+    user: User | None = Depends(optional_current_user),
 ):
     """List comments for a post, flat with replying_id markers."""
     # Verify post exists
@@ -368,15 +393,53 @@ async def list_comments(
     result = await session.execute(stmt)
     comments = result.scalars().all()
 
-    # Build lookup for replying_to usernames
+    # Build traceability, reply counts and reaction state in batches.
     replying_ids = [c.replying_id for c in comments if c.replying_id]
     usernames = {}
+    reply_content = {}
     if replying_ids:
-        user_stmt = select(ContentModel.id, User.username).join(
+        user_stmt = select(ContentModel.id, User.username, ContentModel.content).join(
             User, ContentModel.author_id == User.id
         ).where(ContentModel.id.in_(replying_ids))
         user_result = await session.execute(user_stmt)
-        usernames = {str(row[0]): row[1] for row in user_result}
+        rows = user_result.all()
+        usernames = {str(row[0]): row[1] for row in rows}
+        reply_content = {str(row[0]): row[2] for row in rows}
+
+    comment_ids = [c.id for c in comments]
+    reply_counts = {}
+    like_counts = {}
+    liked_ids = set()
+    if comment_ids:
+        reply_counts = dict(
+            (
+                await session.execute(
+                    select(ContentModel.replying_id, func.count(ContentModel.id))
+                    .where(ContentModel.replying_id.in_(comment_ids))
+                    .group_by(ContentModel.replying_id)
+                )
+            ).all()
+        )
+        like_counts = dict(
+            (
+                await session.execute(
+                    select(PostLike.post_id, func.count(PostLike.id))
+                    .where(PostLike.post_id.in_(comment_ids))
+                    .group_by(PostLike.post_id)
+                )
+            ).all()
+        )
+        if user:
+            liked_ids = set(
+                (
+                    await session.execute(
+                        select(PostLike.post_id).where(
+                            PostLike.post_id.in_(comment_ids),
+                            PostLike.user_id == user.id,
+                        )
+                    )
+                ).scalars()
+            )
 
     return [
         CommentRead(
@@ -387,6 +450,10 @@ async def list_comments(
             replying_id=c.replying_id,
             author_username=c.author.username,
             replying_to_username=usernames.get(str(c.replying_id)) if c.replying_id else None,
+            replying_to_content=reply_content.get(str(c.replying_id)) if c.replying_id else None,
+            reply_count=reply_counts.get(c.id, 0),
+            like_count=like_counts.get(c.id, 0),
+            liked_by_me=c.id in liked_ids,
             created_at=c.created_at,
         )
         for c in comments
@@ -418,6 +485,7 @@ async def create_comment(
         reply_stmt = select(ContentModel).where(
             ContentModel.id == data.replying_id,
             ContentModel.type == "comment",
+            ContentModel.parent_id == post.id,
         )
         reply_result = await session.execute(reply_stmt)
         if not reply_result.scalar_one_or_none():
@@ -442,7 +510,7 @@ async def create_comment(
             type="reply",
             title="新回复",
             message=f"{user.nickname or user.username} 回复了你的帖子《{post.title or ''}》",
-            link=f"/posts/{post.id}",
+            link=f"/posts/{post.id}#{comment.id}",
         )
 
     # Notify replied-to comment author (if replying to a specific comment)
@@ -457,7 +525,7 @@ async def create_comment(
                 type="reply",
                 title="新回复",
                 message=f"{user.nickname or user.username} 回复了你的评论",
-                link=f"/posts/{post.id}",
+                link=f"/posts/{post.id}#{comment.id}",
             )
 
     return CommentRead(
@@ -468,5 +536,6 @@ async def create_comment(
         replying_id=comment.replying_id,
         author_username=comment.author.username,
         replying_to_username=None,
+        replying_to_content=None,
         created_at=comment.created_at,
     )

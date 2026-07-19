@@ -7,6 +7,7 @@
   import ConfirmDialog from "../ConfirmDialog.svelte";
 
   export let postId: string;
+  export let embedded = false;
 
   let post: Post | null = null;
   let comments: Comment[] = [];
@@ -14,7 +15,7 @@
   let replyText = "";
   let replyingTo: Comment | null = null;
   let submitting = false;
-  let liking = false;
+  let likingId: string | null = null;
 
   let showDeleteDialog = false;
   let pendingDelete: "post" | "comment" | null = null;
@@ -46,6 +47,14 @@
     }, 0);
   }
 
+  function focusCommentReply(comment: Comment) {
+    if (!$currentUser) {
+      window.location.href = `/login?returnTo=${encodeURIComponent(window.location.pathname)}`;
+      return;
+    }
+    handleReplyClick(comment);
+  }
+
   function focusReply() {
     if (!$currentUser) {
       window.location.href = `/login?returnTo=${encodeURIComponent(window.location.pathname)}`;
@@ -54,31 +63,34 @@
     document.querySelector<HTMLTextAreaElement>("#reply-textarea")?.focus();
   }
 
-  async function handleLike() {
-    if (!post) return;
+  async function handleContentLike(id: string, liked: boolean) {
     if (!$currentUser) {
       window.location.href = `/login?returnTo=${encodeURIComponent(window.location.pathname)}`;
       return;
     }
-    liking = true;
+    likingId = id;
     try {
-      const state = post.liked_by_me
-        ? await unlikePost(post.id)
-        : await likePost(post.id);
-      post = { ...post, ...state };
+      const state = liked ? await unlikePost(id) : await likePost(id);
+      if (post?.id === id) {
+        post = { ...post, ...state };
+      } else {
+        comments = comments.map((comment) =>
+          comment.id === id ? { ...comment, ...state } : comment
+        );
+      }
     } catch (e: any) {
       toaster.error("操作失败", e.message ?? "请稍后重试");
     } finally {
-      liking = false;
+      likingId = null;
     }
   }
 
-  async function handleShare() {
+  async function handleShare(contentId?: string) {
     if (!post) return;
     const data = {
       title: post.title,
       text: post.content.slice(0, 120),
-      url: window.location.href,
+      url: `${window.location.origin}${window.location.pathname}${contentId ? `#${contentId}` : ""}`,
     };
     try {
       if (navigator.share) {
@@ -154,8 +166,13 @@
     createdAt: string;
     content: string;
     replyingToUsername: string | null;
+    replyingToContent: string | null;
+    replyingToId: string | null;
     title: string | null;
     tags: string[] | null;
+    likeCount: number;
+    liked: boolean;
+    replyCount: number;
   }> = [];
 
   $: if (post) {
@@ -169,8 +186,13 @@
         createdAt: post.created_at,
         content: post.content,
         replyingToUsername: null,
+        replyingToContent: null,
+        replyingToId: null,
         title: post.title,
         tags: post.tags,
+        likeCount: post.like_count,
+        liked: post.liked_by_me,
+        replyCount: post.reply_count,
       },
       ...comments.map((c) => ({
         key: c.id,
@@ -179,8 +201,13 @@
         createdAt: c.created_at,
         content: c.content,
         replyingToUsername: c.replying_to_username,
+        replyingToContent: c.replying_to_content,
+        replyingToId: c.replying_id,
         title: null,
         tags: null,
+        likeCount: c.like_count,
+        liked: c.liked_by_me,
+        replyCount: c.reply_count,
       })),
     ];
   }
@@ -195,12 +222,12 @@
   <div class="empty-state">帖子不存在</div>
 {:else}
   <!-- Back button -->
-  <button class="back-btn" onclick={() => window.history.back()}>
+  {#if !embedded}<button class="back-btn" onclick={() => window.history.back()}>
     <svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
     </svg>
     <span>返回</span>
-  </button>
+  </button>{/if}
 
   <div class="mb-6 ml-7">
     <h1 class="text-xl font-bold" style="color: var(--vercel-text);">{postTitle}</h1>
@@ -226,17 +253,20 @@
           title={item.title}
           tags={item.tags}
           replyingToUsername={item.replyingToUsername}
+          replyingToContent={item.replyingToContent}
+          replyingToId={item.replyingToId}
+          contentId={item.key}
           onReply={$currentUser && i > 0 ? () => handleReplyClick(comments[i - 1]) : null}
           onDelete={i === 0
             ? ($currentUser?.id === post?.author_id ? handleDelete : null)
             : ($currentUser?.id === comments[i - 1]?.author_id ? () => handleDeleteComment(i) : null)}
-          liked={i === 0 ? post.liked_by_me : false}
-          likeCount={i === 0 ? post.like_count : null}
-          replyCount={i === 0 ? post.reply_count : null}
-          {liking}
-          onLike={i === 0 ? handleLike : null}
-          onDiscuss={i === 0 ? focusReply : null}
-          onShare={i === 0 ? handleShare : null}
+          liked={item.liked}
+          likeCount={item.likeCount}
+          replyCount={item.replyCount}
+          liking={likingId === item.key}
+          onLike={() => handleContentLike(item.key, item.liked)}
+          onDiscuss={i === 0 ? focusReply : () => focusCommentReply(comments[i - 1])}
+          onShare={() => handleShare(i === 0 ? undefined : item.key)}
         />
       {/each}
     </div>

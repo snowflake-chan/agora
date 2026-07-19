@@ -14,6 +14,34 @@ export interface UserPublic {
   username: string;
   nickname: string | null;
   bio: string | null;
+  follower_count: number;
+  following_count: number;
+  is_following: boolean;
+}
+
+export interface FollowState {
+  follower_count: number;
+  following_count: number;
+  is_following: boolean;
+}
+
+export interface UserContentItem {
+  id: string;
+  type: "post" | "comment" | "patch";
+  title: string | null;
+  content: string;
+  created_at: string;
+  root_type: "post" | "patch" | null;
+  root_id: string | null;
+  root_title: string | null;
+  replying_to_id: string | null;
+  replying_to_username: string | null;
+  replying_to_content: string | null;
+  reply_count: number;
+  like_count: number;
+  pr_number: number | null;
+  status: string | null;
+  can_delete: boolean;
 }
 
 export interface UserUpdateData {
@@ -101,3 +129,23 @@ export async function getUserPatches(userId: string): Promise<import("./patches"
   if (!res.ok) throw new Error("Failed to load");
   return res.json();
 }
+
+export async function getUserContent(userId: string): Promise<UserContentItem[]> {
+  const res = await fetch(`${API_BASE}/users/${userId}/content`, {
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error("Failed to load user content");
+  return res.json();
+}
+
+async function setFollow(userId: string, following: boolean): Promise<FollowState> {
+  const res = await fetch(`${API_BASE}/users/${userId}/follow`, {
+    method: following ? "PUT" : "DELETE",
+    credentials: "include",
+  });
+  if (!res.ok) throw new ApiError((await res.json()).detail);
+  return res.json();
+}
+
+export const followUser = (userId: string) => setFollow(userId, true);
+export const unfollowUser = (userId: string) => setFollow(userId, false);

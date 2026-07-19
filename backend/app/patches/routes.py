@@ -9,17 +9,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.db import get_session
 from app.db.models.patch import Patch as PatchModel
+from app.db.models.content import Content as ContentModel
+from app.db.models.post_like import PostLike
 from app.db.models.vote import Vote as VoteModel
 from app.db.models.user import User
-from app.notifications.service import create_notification
+from app.notifications.service import create_notification, notify_followers
 from app.schemas.patch import (
     PatchCreate,
     PatchRead,
     VoteCreate,
     VoteRead,
 )
+from app.schemas.post import CommentCreate, CommentRead
 from app.patches.github import merge_pr
-from app.users.deps import current_user
+from app.users.deps import current_user, optional_current_user
 
 router = APIRouter()
 
@@ -104,19 +107,8 @@ async def _do_merge_and_deploy(patch_id: str, pr_number: int, patch_title: str |
 
     try:
         await merge_pr(pr_number)
-        async with _async_session() as session:
-            stmt = select(PatchModel).where(PatchModel.id == patch_id)
-            result = await session.execute(stmt)
-            patch = result.scalar_one()
-            patch_title = patch.title
-            patch.status = "merged"
-            await session.commit()
-        await _trigger_deploy()
-        # Notify voters + author
-        asyncio.create_task(
-            _notify_patch_voters(patch_id, patch_title, "merged")
-        )
-    except Exception:
+    except Exception as exc:
+        print(f"[merge] ERROR merging PR #{pr_number}: {exc}")
         try:
             async with _async_session() as session:
                 stmt = select(PatchModel).where(PatchModel.id == patch_id)
@@ -125,12 +117,35 @@ async def _do_merge_and_deploy(patch_id: str, pr_number: int, patch_title: str |
                 patch_title = patch.title
                 patch.status = "failed"
                 await session.commit()
-        except Exception:
+        except Exception as status_exc:
+            print(f"[merge] ERROR recording failure for PR #{pr_number}: {status_exc}")
             patch_title = patch_title or "未知"
-        # Notify voters + author
         asyncio.create_task(
             _notify_patch_voters(patch_id, patch_title, "failed")
         )
+        return
+
+    try:
+        async with _async_session() as session:
+            stmt = select(PatchModel).where(PatchModel.id == patch_id)
+            result = await session.execute(stmt)
+            patch = result.scalar_one()
+            patch_title = patch.title
+            patch.status = "merged"
+            await session.commit()
+        asyncio.create_task(
+            _notify_patch_voters(patch_id, patch_title, "merged")
+        )
+    except Exception as status_exc:
+        print(f"[merge] ERROR recording merge for PR #{pr_number}: {status_exc}")
+        return
+
+    # The PR is already merged at this point. A deployment launch failure must
+    # not rewrite the truthful governance state to "merge failed".
+    try:
+        await _trigger_deploy()
+    except Exception as deploy_exc:
+        print(f"[deploy] ERROR after merging PR #{pr_number}: {deploy_exc}")
 
 
 async def _auto_tally(session: AsyncSession, patch: PatchModel) -> bool:
@@ -160,32 +175,36 @@ async def _auto_tally_patch(patch_id: str) -> None:
 
 
 async def _trigger_deploy() -> None:
-    """Run deploy.sh (spawn subprocess, don't await — it self-destructs)."""
+    """Launch the detached deployment helper and verify it started."""
     if not settings.DEPLOY_ENABLED:
+        print("[deploy] Disabled by configuration")
         return
 
-    print("[deploy] Launching deploy.sh (container will self-destruct)...")
-    try:
-        process = await asyncio.create_subprocess_exec(
-            "/bin/bash", "/repo/deploy.sh",
-            env={**os.environ, "REPO_DIR": settings.REPO_DIR},
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+    print("[deploy] Launching detached deployment helper...")
+    process = await asyncio.create_subprocess_exec(
+        "/bin/bash", "/repo/deploy.sh",
+        env={**os.environ, "REPO_DIR": settings.REPO_DIR},
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=30)
+    output = stdout.decode(errors="replace").strip()
+    error = stderr.decode(errors="replace").strip()
+    if output:
+        print(output)
+    if process.returncode != 0:
+        raise RuntimeError(
+            f"deployment helper failed to start (exit {process.returncode}): "
+            f"{error or output or 'no output'}"
         )
-        # Fire and forget — deploy.sh replaces this container
-        async def _log_deploy(proc: asyncio.subprocess.Process) -> None:
-            try:
-                stdout, stderr = await proc.communicate()
-                print(f"[deploy] exit={proc.returncode}: {stdout.decode(errors='replace')}")
-            except Exception:
-                pass  # expected: container killed before we finish
-
-        asyncio.ensure_future(_log_deploy(process))
-    except Exception as e:
-        print(f"[deploy] ERROR launching deploy: {e}")
+    print("[deploy] Detached deployment helper started")
 
 
-def _patch_to_read(patch: PatchModel, counts: dict[str, int] | None = None) -> PatchRead:
+def _patch_to_read(
+    patch: PatchModel,
+    counts: dict[str, int] | None = None,
+    comment_count: int = 0,
+) -> PatchRead:
     c = counts or {"for": 0, "against": 0, "abstain": 0}
     return PatchRead(
         id=patch.id,
@@ -199,6 +218,7 @@ def _patch_to_read(patch: PatchModel, counts: dict[str, int] | None = None) -> P
         for_count=c["for"],
         against_count=c["against"],
         abstain_count=c["abstain"],
+        comment_count=comment_count,
         created_at=patch.created_at,
         updated_at=patch.updated_at,
     )
@@ -243,6 +263,7 @@ async def list_patches(
     # Get vote counts
     patch_ids = [str(p.id) for p in patches]
     counts_map: dict[str, dict[str, int]] = {}
+    comment_counts: dict = {}
     if patch_ids:
         rows = (
             await session.execute(
@@ -256,8 +277,23 @@ async def list_patches(
             if key not in counts_map:
                 counts_map[key] = {"for": 0, "against": 0, "abstain": 0}
             counts_map[key][choice] = cnt
+        comment_counts = dict(
+            (
+                await session.execute(
+                    select(ContentModel.patch_id, func.count(ContentModel.id))
+                    .where(
+                        ContentModel.patch_id.in_(patch_ids),
+                        ContentModel.type == "comment",
+                    )
+                    .group_by(ContentModel.patch_id)
+                )
+            ).all()
+        )
 
-    return [_patch_to_read(p, counts_map.get(str(p.id))) for p in patches]
+    return [
+        _patch_to_read(p, counts_map.get(str(p.id)), comment_counts.get(p.id, 0))
+        for p in patches
+    ]
 
 
 @router.post("", response_model=PatchRead, status_code=201)
@@ -289,6 +325,14 @@ async def create_patch(
     result = await session.execute(stmt)
     patch = result.scalar_one()
 
+    await notify_followers(
+        author_id=user.id,
+        type="following_patch",
+        title=f"{user.nickname or user.username} 发起了新变更",
+        message=patch.title,
+        link=f"/patches/{patch.id}",
+    )
+
     return _patch_to_read(patch)
 
 
@@ -307,7 +351,12 @@ async def get_patch(
     await _auto_tally(session, patch)
 
     counts = await _get_vote_counts(session, patch_id)
-    return _patch_to_read(patch, counts)
+    comment_count = await session.scalar(
+        select(func.count(ContentModel.id)).where(
+            ContentModel.patch_id == patch.id, ContentModel.type == "comment"
+        )
+    )
+    return _patch_to_read(patch, counts, comment_count or 0)
 
 
 @router.delete("/{patch_id}", status_code=204)
@@ -454,3 +503,170 @@ async def list_votes(
         )
         for v in votes
     ]
+
+
+# ── Discussion ──
+
+
+@router.get("/{patch_id}/comments", response_model=list[CommentRead])
+async def list_patch_comments(
+    patch_id: str,
+    session: AsyncSession = Depends(get_session),
+    user: User | None = Depends(optional_current_user),
+):
+    patch = await session.scalar(
+        select(PatchModel.id).where(PatchModel.id == patch_id)
+    )
+    if not patch:
+        raise HTTPException(status_code=404, detail="PATCH_NOT_FOUND")
+
+    comments = (
+        await session.execute(
+            select(ContentModel)
+            .where(
+                ContentModel.patch_id == patch,
+                ContentModel.type == "comment",
+            )
+            .order_by(ContentModel.created_at.asc())
+        )
+    ).scalars().all()
+    comment_ids = [comment.id for comment in comments]
+    replying_ids = [comment.replying_id for comment in comments if comment.replying_id]
+
+    trace_rows = []
+    if replying_ids:
+        trace_rows = (
+            await session.execute(
+                select(ContentModel.id, User.username, ContentModel.content)
+                .join(User, ContentModel.author_id == User.id)
+                .where(ContentModel.id.in_(replying_ids))
+            )
+        ).all()
+    usernames = {row[0]: row[1] for row in trace_rows}
+    trace_content = {row[0]: row[2] for row in trace_rows}
+
+    reply_counts = {}
+    like_counts = {}
+    liked_ids = set()
+    if comment_ids:
+        reply_counts = dict(
+            (
+                await session.execute(
+                    select(ContentModel.replying_id, func.count(ContentModel.id))
+                    .where(ContentModel.replying_id.in_(comment_ids))
+                    .group_by(ContentModel.replying_id)
+                )
+            ).all()
+        )
+        like_counts = dict(
+            (
+                await session.execute(
+                    select(PostLike.post_id, func.count(PostLike.id))
+                    .where(PostLike.post_id.in_(comment_ids))
+                    .group_by(PostLike.post_id)
+                )
+            ).all()
+        )
+        if user:
+            liked_ids = set(
+                (
+                    await session.execute(
+                        select(PostLike.post_id).where(
+                            PostLike.post_id.in_(comment_ids),
+                            PostLike.user_id == user.id,
+                        )
+                    )
+                ).scalars()
+            )
+
+    return [
+        CommentRead(
+            id=comment.id,
+            content=comment.content,
+            author_id=comment.author_id,
+            parent_id=patch,
+            replying_id=comment.replying_id,
+            author_username=comment.author.username,
+            replying_to_username=usernames.get(comment.replying_id),
+            replying_to_content=trace_content.get(comment.replying_id),
+            reply_count=reply_counts.get(comment.id, 0),
+            like_count=like_counts.get(comment.id, 0),
+            liked_by_me=comment.id in liked_ids,
+            created_at=comment.created_at,
+        )
+        for comment in comments
+    ]
+
+
+@router.post("/{patch_id}/comments", response_model=CommentRead, status_code=201)
+async def create_patch_comment(
+    patch_id: str,
+    data: CommentCreate,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(current_user),
+):
+    patch = await session.scalar(
+        select(PatchModel).where(PatchModel.id == patch_id)
+    )
+    if not patch:
+        raise HTTPException(status_code=404, detail="PATCH_NOT_FOUND")
+    if not data.content.strip():
+        raise HTTPException(status_code=422, detail="CONTENT_REQUIRED")
+
+    if data.replying_id:
+        target = await session.scalar(
+            select(ContentModel.id).where(
+                ContentModel.id == data.replying_id,
+                ContentModel.patch_id == patch.id,
+                ContentModel.type == "comment",
+            )
+        )
+        if not target:
+            raise HTTPException(status_code=404, detail="REPLY_TARGET_NOT_FOUND")
+
+    comment = ContentModel(
+        type="comment",
+        content=data.content.strip(),
+        patch_id=patch.id,
+        replying_id=data.replying_id,
+        author_id=user.id,
+    )
+    session.add(comment)
+    await session.commit()
+    await session.refresh(comment)
+
+    if patch.author_id != user.id:
+        await create_notification(
+            recipient_id=patch.author_id,
+            type="reply",
+            title="变更有新讨论",
+            message=f"{user.nickname or user.username} 评论了《{patch.title}》",
+            link=f"/patches/{patch.id}#{comment.id}",
+        )
+
+    if data.replying_id:
+        reply_author_id = await session.scalar(
+            select(ContentModel.author_id).where(
+                ContentModel.id == data.replying_id
+            )
+        )
+        if reply_author_id and reply_author_id not in (user.id, patch.author_id):
+            await create_notification(
+                recipient_id=reply_author_id,
+                type="reply",
+                title="你的讨论有新回复",
+                message=f"{user.nickname or user.username} 回复了你的评论",
+                link=f"/patches/{patch.id}#{comment.id}",
+            )
+
+    return CommentRead(
+        id=comment.id,
+        content=comment.content,
+        author_id=comment.author_id,
+        parent_id=patch.id,
+        replying_id=comment.replying_id,
+        author_username=comment.author.username,
+        replying_to_username=None,
+        replying_to_content=None,
+        created_at=comment.created_at,
+    )

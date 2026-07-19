@@ -24,6 +24,10 @@ export interface Comment {
   replying_id: string | null;
   author_username: string | null;
   replying_to_username: string | null;
+  replying_to_content: string | null;
+  reply_count: number;
+  like_count: number;
+  liked_by_me: boolean;
   created_at: string;
 }
 

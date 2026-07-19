@@ -18,6 +18,7 @@ class PatchRead(BaseModel):
     for_count: int = 0
     against_count: int = 0
     abstain_count: int = 0
+    comment_count: int = 0
     created_at: datetime
     updated_at: datetime
 

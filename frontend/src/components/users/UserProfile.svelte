@@ -1,138 +1,301 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { getUser, getUserPosts, getUserPatches, type UserPublic } from "../../lib/auth";
-  import type { Post } from "../../lib/posts";
-  import type { Patch } from "../../lib/patches";
-  import { timeAgo } from "../../lib/utils";
+  import {
+    followUser,
+    getUser,
+    getUserContent,
+    unfollowUser,
+    type UserContentItem,
+    type UserPublic,
+  } from "../../lib/auth";
+  import { deleteContent } from "../../lib/posts";
+  import { deletePatch } from "../../lib/patches";
+  import { stripMarkdown, timeAgo } from "../../lib/utils";
+  import { currentUser } from "../../stores/auth";
+  import { toaster } from "../../stores/toaster";
+  import ConfirmDialog from "../ConfirmDialog.svelte";
 
   let { userId }: { userId: string } = $props();
 
   let user = $state<UserPublic | null>(null);
-  let posts = $state<Post[]>([]);
-  let patches = $state<Patch[]>([]);
+  let items = $state<UserContentItem[]>([]);
   let loading = $state(true);
   let error = $state<string | null>(null);
-  let tab = $state<"posts" | "patches">("posts");
+  let followingBusy = $state(false);
+  let filter = $state<"all" | "post" | "comment" | "patch">("all");
+  let pendingDelete = $state<UserContentItem | null>(null);
+  let showDeleteDialog = $state(false);
+
+  let visibleItems = $derived(
+    filter === "all" ? items : items.filter((item) => item.type === filter)
+  );
 
   onMount(async () => {
     try {
-      const [u, p, pt] = await Promise.all([
+      [user, items] = await Promise.all([
         getUser(userId),
-        getUserPosts(userId),
-        getUserPatches(userId),
+        getUserContent(userId),
       ]);
-      user = u;
-      posts = p;
-      patches = pt;
     } catch (e) {
-      error = e instanceof Error ? e.message : "Failed to load user";
+      error = e instanceof Error ? e.message : "无法加载用户主页";
     } finally {
       loading = false;
     }
   });
+
+  async function toggleFollow() {
+    if (!user) return;
+    if (!$currentUser) {
+      window.location.href = `/login?returnTo=${encodeURIComponent(window.location.pathname)}`;
+      return;
+    }
+    followingBusy = true;
+    try {
+      const state = user.is_following
+        ? await unfollowUser(user.id)
+        : await followUser(user.id);
+      user = { ...user, ...state };
+    } catch (e: any) {
+      toaster.error("操作失败", e.message ?? "请稍后重试");
+    } finally {
+      followingBusy = false;
+    }
+  }
+
+  function itemHref(item: UserContentItem): string {
+    if (item.type === "post") return `/posts/${item.id}`;
+    if (item.type === "patch") return `/patches/${item.id}`;
+    if (!item.root_id || !item.root_type) return "#";
+    const base = item.root_type === "post" ? "posts" : "patches";
+    return `/${base}/${item.root_id}#${item.id}`;
+  }
+
+  function requestDelete(item: UserContentItem) {
+    pendingDelete = item;
+    showDeleteDialog = true;
+  }
+
+  async function confirmDelete() {
+    if (!pendingDelete) return;
+    try {
+      if (pendingDelete.type === "patch") await deletePatch(pendingDelete.id);
+      else await deleteContent(pendingDelete.id);
+      items = items.filter((item) => item.id !== pendingDelete?.id);
+      toaster.success("内容已删除");
+    } catch (e: any) {
+      toaster.error("删除失败", e.message ?? "请稍后重试");
+    } finally {
+      pendingDelete = null;
+    }
+  }
 </script>
 
 {#if loading}
-  <div class="empty-state">
-    <div class="spinner mb-3"></div>
-    加载中...
+  <div class="profile-skeleton" aria-label="正在加载用户主页">
+    <div></div><div></div><div></div>
   </div>
 {:else if error}
-  <div class="empty-state">
-    <p style="color: var(--vercel-danger);">{error}</p>
-  </div>
+  <div class="empty-state"><p style="color: var(--vercel-danger);">{error}</p></div>
 {:else if user}
-  <!-- Profile header -->
-  <div class="card p-6 mb-6">
-    <div class="flex items-center gap-4">
-      <div class="avatar" style="width: 3.5rem; height: 3.5rem; font-size: 1.5rem;">
-        {(user.nickname ?? user.username)[0].toUpperCase()}
-      </div>
+  <header class="profile-header">
+    <div class="profile-identity">
+      <div class="profile-avatar">{(user.nickname ?? user.username)[0].toUpperCase()}</div>
       <div class="min-w-0">
-        <h1 class="text-xl font-bold" style="color: var(--vercel-text);">
-          {user.nickname ?? user.username}
-        </h1>
-        <p class="text-sm" style="color: var(--vercel-text-tertiary);">
-          @{user.username}
-        </p>
-        {#if user.bio}
-          <p class="mt-2 text-sm leading-relaxed" style="color: var(--vercel-text-secondary);">
-            {user.bio}
-          </p>
-        {/if}
+        <p class="profile-kicker">Profile</p>
+        <h1>{user.nickname ?? user.username}</h1>
+        <p class="profile-handle">@{user.username}</p>
       </div>
     </div>
-  </div>
 
-  <!-- Tab switcher -->
-  <div class="flex gap-1 mb-4 border-b" style="border-color: var(--vercel-border);">
-    <button
-      class="filter-tab"
-      class:active={tab === "posts"}
-      onclick={() => tab = "posts"}
-    >
-      发布的帖子 ({posts.length})
-    </button>
-    <button
-      class="filter-tab"
-      class:active={tab === "patches"}
-      onclick={() => tab = "patches"}
-    >
-      提交的变更 ({patches.length})
-    </button>
-  </div>
+    {#if $currentUser?.id !== user.id}
+      <button
+        class:following={user.is_following}
+        class="follow-button"
+        disabled={followingBusy}
+        onclick={toggleFollow}
+      >
+        {followingBusy ? "处理中…" : user.is_following ? "已关注" : "关注"}
+      </button>
+    {/if}
 
-  <!-- Content -->
-  {#if tab === "posts"}
-    {#if posts.length === 0}
-      <div class="empty-state">
-        <p>暂无发布的帖子</p>
-      </div>
+    {#if user.bio}<p class="profile-bio">{user.bio}</p>{/if}
+
+    <div class="profile-stats">
+      <span><strong>{user.follower_count}</strong> 关注者</span>
+      <span><strong>{user.following_count}</strong> 正在关注</span>
+      <span><strong>{items.length}</strong> 条动态</span>
+    </div>
+  </header>
+
+  <nav class="content-filters" aria-label="内容筛选">
+    {#each [
+      ["all", "全部"],
+      ["post", "帖子"],
+      ["comment", "回复"],
+      ["patch", "变更"],
+    ] as option}
+      <button
+        class:active={filter === option[0]}
+        onclick={() => (filter = option[0] as typeof filter)}
+      >
+        {option[1]}
+      </button>
+    {/each}
+  </nav>
+
+  <section class="profile-stream" aria-label="用户内容">
+    {#if visibleItems.length === 0}
+      <div class="empty-state">这里还没有内容。</div>
     {:else}
-      <div class="card overflow-hidden">
-        {#each posts as post (post.id)}
-          <a
-            href={`/posts/${post.id}`}
-            class="block px-4 py-3 border-b transition-colors"
-            style="border-color: var(--vercel-border);"
-            onmouseenter={(e) => e.currentTarget.style.background = '#141417'}
-            onmouseleave={(e) => e.currentTarget.style.background = ''}
-          >
-            <h3 class="text-sm font-semibold" style="color: var(--vercel-text);">{post.title}</h3>
-            <div class="mt-1 flex items-center gap-3 text-xs" style="color: var(--vercel-text-tertiary);">
-              <span class="flex items-center gap-1">
-                <svg class="size-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
-                {post.reply_count}
-              </span>
-              <span>{timeAgo(post.created_at)}</span>
-            </div>
+      {#each visibleItems as item (item.id)}
+        <article class="profile-item">
+          <div class="item-rail">
+            <span>{item.type === "post" ? "帖子" : item.type === "patch" ? "变更" : "回复"}</span>
+            <time>{timeAgo(item.created_at)}</time>
+          </div>
+
+          {#if item.type === "comment" && item.root_id}
+            <a class="context-root" href={itemHref(item)}>
+              <span>回复于</span>
+              <strong>{item.root_title ?? (item.root_type === "post" ? "帖子" : "变更")}</strong>
+            </a>
+          {/if}
+
+          {#if item.replying_to_username}
+            <a class="context-reply" href={itemHref(item)}>
+              <span>↳ @{item.replying_to_username}</span>
+              {#if item.replying_to_content}
+                <span>{stripMarkdown(item.replying_to_content)}</span>
+              {/if}
+            </a>
+          {/if}
+
+          <a class="item-main" href={itemHref(item)}>
+            {#if item.title}<h2>{item.title}</h2>{/if}
+            <p>{stripMarkdown(item.content)}</p>
           </a>
-        {/each}
-      </div>
-    {/if}
-  {:else}
-    {#if patches.length === 0}
-      <div class="empty-state">
-        <p>暂无提交的变更</p>
-      </div>
-    {:else}
-      <div class="card overflow-hidden">
-        {#each patches as patch (patch.id)}
-          <a
-            href={`/patches/${patch.id}`}
-            class="block px-4 py-3 border-b transition-colors"
-            style="border-color: var(--vercel-border);"
-            onmouseenter={(e) => e.currentTarget.style.background = '#141417'}
-            onmouseleave={(e) => e.currentTarget.style.background = ''}
-          >
-            <h3 class="text-sm font-semibold" style="color: var(--vercel-text);">{patch.title}</h3>
-            <div class="mt-1 flex items-center gap-3 text-xs" style="color: var(--vercel-text-tertiary);">
-              <span>#{patch.pr_number}</span>
-              <span>{timeAgo(patch.created_at)}</span>
+
+          <footer class="item-footer">
+            <div class="item-counts">
+              {#if item.type !== "patch"}<span>♡ {item.like_count}</span>{/if}
+              <a href={itemHref(item)}>↳ {item.reply_count}</a>
+              {#if item.pr_number}<span>PR #{item.pr_number}</span>{/if}
+              {#if item.status}<span>{item.status}</span>{/if}
             </div>
-          </a>
-        {/each}
-      </div>
+            {#if item.can_delete}
+              <button class="delete-item" onclick={() => requestDelete(item)}>删除</button>
+            {/if}
+          </footer>
+        </article>
+      {/each}
     {/if}
-  {/if}
+  </section>
 {/if}
+
+<ConfirmDialog
+  bind:open={showDeleteDialog}
+  title="删除内容"
+  description="确认删除这条内容？相关回复也可能一并删除，此操作不可撤销。"
+  confirmText="删除"
+  onConfirm={confirmDelete}
+/>
+
+<style>
+  .profile-header {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 1rem 2rem;
+    padding: 1.5rem 0 1.75rem;
+    border-bottom: 1px solid var(--vercel-border);
+  }
+  .profile-identity { display: flex; align-items: center; gap: 1rem; }
+  .profile-avatar {
+    display: grid; width: 3.75rem; height: 3.75rem; place-items: center;
+    border: 1px solid var(--vercel-border-hover); border-radius: 1rem;
+    background: rgba(255,255,255,.06); color: var(--vercel-text);
+    font-size: 1.25rem; font-weight: 650;
+  }
+  .profile-kicker {
+    color: var(--vercel-text-tertiary); font-size: .625rem; font-weight: 650;
+    letter-spacing: .14em; text-transform: uppercase;
+  }
+  .profile-header h1 { font-size: 1.5rem; font-weight: 650; letter-spacing: -.04em; }
+  .profile-handle { color: var(--vercel-text-tertiary); font-size: .8rem; }
+  .profile-bio {
+    grid-column: 1 / -1; max-width: 42rem; color: var(--vercel-text-secondary);
+    font-size: .875rem; line-height: 1.65;
+  }
+  .profile-stats {
+    display: flex; grid-column: 1 / -1; gap: 1.25rem;
+    color: var(--vercel-text-tertiary); font-size: .75rem;
+  }
+  .profile-stats strong { color: var(--vercel-text); font-variant-numeric: tabular-nums; }
+  .follow-button {
+    align-self: center; min-width: 5.5rem; padding: .5rem .9rem;
+    border: 1px solid var(--vercel-text); border-radius: .45rem;
+    background: var(--vercel-text); color: var(--vercel-bg);
+    font-size: .8rem; font-weight: 600; transition: all 180ms ease;
+  }
+  .follow-button.following {
+    border-color: var(--vercel-border-hover); background: transparent;
+    color: var(--vercel-text-secondary);
+  }
+  .follow-button:hover:not(:disabled) { transform: translateY(-1px); }
+  .content-filters {
+    display: flex; gap: 1.25rem; overflow-x: auto;
+    border-bottom: 1px solid var(--vercel-border);
+  }
+  .content-filters button {
+    position: relative; padding: .9rem 0; color: var(--vercel-text-tertiary);
+    font-size: .78rem; white-space: nowrap;
+  }
+  .content-filters button.active { color: var(--vercel-text); }
+  .content-filters button.active::after {
+    position: absolute; right: 0; bottom: -1px; left: 0; height: 2px;
+    background: var(--vercel-text); content: "";
+  }
+  .profile-stream { border-bottom: 1px solid var(--vercel-border); }
+  .profile-item {
+    display: grid; grid-template-columns: 4.5rem minmax(0, 1fr);
+    gap: .25rem 1rem; padding: 1.25rem 0;
+    border-bottom: 1px solid var(--vercel-border);
+  }
+  .profile-item:last-child { border-bottom: 0; }
+  .item-rail {
+    display: flex; grid-row: 1 / span 4; flex-direction: column; gap: .3rem;
+    color: var(--vercel-text-tertiary); font-size: .65rem;
+  }
+  .item-rail span { font-weight: 650; letter-spacing: .1em; }
+  .context-root, .context-reply {
+    display: flex; min-width: 0; gap: .4rem; color: var(--vercel-text-tertiary);
+    font-size: .7rem;
+  }
+  .context-root strong { overflow: hidden; color: var(--vercel-text-secondary); text-overflow: ellipsis; white-space: nowrap; }
+  .context-reply {
+    flex-direction: column; padding: .5rem .65rem; border-left: 2px solid var(--vercel-border-hover);
+    background: rgba(255,255,255,.02); line-height: 1.45;
+  }
+  .context-reply span:last-child {
+    display: -webkit-box; overflow: hidden; color: var(--vercel-text-secondary);
+    -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  }
+  .item-main h2 { margin-bottom: .35rem; color: var(--vercel-text); font-size: 1rem; font-weight: 620; }
+  .item-main p {
+    display: -webkit-box; overflow: hidden; max-width: 65ch;
+    color: var(--vercel-text-secondary); font-size: .83rem; line-height: 1.55;
+    -webkit-box-orient: vertical; -webkit-line-clamp: 3;
+  }
+  .item-footer { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: .5rem; }
+  .item-counts { display: flex; gap: 1rem; color: var(--vercel-text-tertiary); font-size: .7rem; }
+  .delete-item { color: var(--vercel-text-tertiary); font-size: .7rem; }
+  .delete-item:hover { color: var(--vercel-danger); }
+  .profile-skeleton { display: grid; gap: .75rem; padding: 2rem 0; }
+  .profile-skeleton div { height: 5rem; border-radius: .5rem; background: rgba(255,255,255,.035); animation: pulse 1.2s ease-in-out infinite alternate; }
+  @keyframes pulse { to { opacity: .45; } }
+  @media (max-width: 36rem) {
+    .profile-header { grid-template-columns: 1fr; }
+    .follow-button { justify-self: start; }
+    .profile-item { grid-template-columns: 1fr; }
+    .item-rail { grid-row: auto; flex-direction: row; justify-content: space-between; }
+  }
+</style>

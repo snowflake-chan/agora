@@ -3,6 +3,18 @@
   import { getFeed, type FeedItem } from "../lib/posts";
   import FeedCard from "./FeedCard.svelte";
 
+  let {
+    onSelect = null,
+    selectedId = null,
+    onFirstItem = null,
+    onStateChange = null,
+  }: {
+    onSelect?: ((item: FeedItem) => void) | null;
+    selectedId?: string | null;
+    onFirstItem?: ((item: FeedItem) => void) | null;
+    onStateChange?: ((state: "loading" | "ready" | "empty" | "error") => void) | null;
+  } = $props();
+
   // ---- reactive state (all $state for Svelte 5 runes mode) ----
   let items = $state<FeedItem[]>([]);
   let loading = $state(true);
@@ -17,8 +29,10 @@
   let loaded = new Set<number>();
 
   onMount(async () => {
+    onStateChange?.("loading");
     await loadOnce();
     loading = false;
+    onStateChange?.(error ? "error" : items.length ? "ready" : "empty");
     await tick();
     if (!sentinel || observer) return;
     observer = new IntersectionObserver((entries) => {
@@ -38,6 +52,7 @@
       const next = await getFeed(page);
       if (next.length === 0) { hasMore = false; return; }
       items = [...items, ...next];
+      if (items.length === next.length && next[0]) onFirstItem?.(next[0]);
       page++;
     } catch (e) {
       error = e instanceof Error ? e.message : "加载失败";
@@ -62,7 +77,7 @@
   </div>
 {:else}
   {#each items as item (item.id)}
-    <FeedCard {item} />
+    <FeedCard {item} {onSelect} selected={selectedId === item.id} />
   {/each}
 
   <div
