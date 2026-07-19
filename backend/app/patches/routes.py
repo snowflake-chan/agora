@@ -160,10 +160,11 @@ async def _auto_tally_patch(patch_id: str) -> None:
 
 
 async def _trigger_deploy() -> None:
-    """Run deploy.sh asynchronously (fire-and-forget)."""
+    """Run deploy.sh (spawn subprocess, don't await — it self-destructs)."""
     if not settings.DEPLOY_ENABLED:
         return
 
+    print("[deploy] Launching deploy.sh (container will self-destruct)...")
     try:
         process = await asyncio.create_subprocess_exec(
             "/bin/bash", "/repo/deploy.sh",
@@ -171,14 +172,13 @@ async def _trigger_deploy() -> None:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        # Don't await — fire and forget
-        # Log completion in background
+        # Fire and forget — deploy.sh replaces this container
         async def _log_deploy(proc: asyncio.subprocess.Process) -> None:
-            stdout, stderr = await proc.communicate()
-            if proc.returncode == 0:
-                print(f"[deploy] OK: {stdout.decode(errors='replace')}")
-            else:
-                print(f"[deploy] FAILED (exit={proc.returncode}): {stderr.decode(errors='replace')}")
+            try:
+                stdout, stderr = await proc.communicate()
+                print(f"[deploy] exit={proc.returncode}: {stdout.decode(errors='replace')}")
+            except Exception:
+                pass  # expected: container killed before we finish
 
         asyncio.ensure_future(_log_deploy(process))
     except Exception as e:
