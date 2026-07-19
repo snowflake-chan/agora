@@ -12,6 +12,13 @@
     replyingToUsername = null,
     onReply = null,
     onDelete = null,
+    liked = false,
+    likeCount = null,
+    replyCount = null,
+    liking = false,
+    onLike = null,
+    onDiscuss = null,
+    onShare = null,
   }: {
     username: string;
     userId: string | null;
@@ -22,6 +29,13 @@
     replyingToUsername: string | null;
     onReply: (() => void) | null;
     onDelete: (() => void) | null;
+    liked?: boolean;
+    likeCount?: number | null;
+    replyCount?: number | null;
+    liking?: boolean;
+    onLike?: (() => void) | null;
+    onDiscuss?: (() => void) | null;
+    onShare?: (() => void) | null;
   } = $props();
 
   let menuOpen = false;
@@ -91,5 +105,88 @@
         </div>
       {/if}
     </div>
+
+    {#if likeCount !== null && replyCount !== null}
+      <div class="post-actions" aria-label="帖子操作">
+        <button
+          type="button"
+          class:active={liked}
+          class="post-action"
+          aria-pressed={liked}
+          aria-label={liked ? "取消点赞" : "点赞"}
+          disabled={liking}
+          on:click={onLike}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill={liked ? "currentColor" : "none"}>
+            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1.1L12 21l7.8-7.5 1.1-1.1a5.5 5.5 0 0 0-.1-7.8Z"/>
+          </svg>
+          <span>点赞</span>
+          {#if likeCount > 0}<span class="action-count">{likeCount}</span>{/if}
+        </button>
+        <button type="button" class="post-action" on:click={onDiscuss}>
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none">
+            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M21 12a8.4 8.4 0 0 1-9 8 9.8 9.8 0 0 1-4.3-1L3 20l1.4-3.7A7.4 7.4 0 0 1 3 12a8.4 8.4 0 0 1 9-8 8.4 8.4 0 0 1 9 8Z"/>
+          </svg>
+          <span>回复</span>
+          {#if replyCount > 0}<span class="action-count">{replyCount}</span>{/if}
+        </button>
+        <button type="button" class="post-action" on:click={onShare}>
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none">
+            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7M16 6l-4-4-4 4M12 2v14"/>
+          </svg>
+          <span>转发</span>
+        </button>
+      </div>
+    {/if}
   </div>
 </div>
+
+<style>
+  .post-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    border-top: 1px solid var(--vercel-border);
+    padding: 0.25rem;
+  }
+
+  .post-action {
+    display: inline-flex;
+    min-height: 2.5rem;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    border-radius: 0.375rem;
+    color: var(--vercel-text-tertiary);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    transition: color 150ms ease, background 150ms ease;
+  }
+
+  .post-action:hover:not(:disabled) {
+    color: var(--vercel-text);
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  .post-action:focus-visible {
+    outline: 2px solid var(--vercel-text-secondary);
+    outline-offset: -2px;
+  }
+
+  .post-action:disabled {
+    cursor: wait;
+    opacity: 0.55;
+  }
+
+  .post-action.active {
+    color: #f47286;
+  }
+
+  .post-action svg {
+    width: 1rem;
+    height: 1rem;
+  }
+
+  .action-count {
+    font-variant-numeric: tabular-nums;
+  }
+</style>

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { getPost, listComments, createComment, deleteContent, type Post, type Comment } from "../../lib/posts";
+  import { getPost, listComments, createComment, deleteContent, likePost, unlikePost, type Post, type Comment } from "../../lib/posts";
   import { toaster } from "../../stores/toaster";
   import { currentUser } from "../../stores/auth";
   import TimelineItem from "./TimelineItem.svelte";
@@ -14,6 +14,7 @@
   let replyText = "";
   let replyingTo: Comment | null = null;
   let submitting = false;
+  let liking = false;
 
   let showDeleteDialog = false;
   let pendingDelete: "post" | "comment" | null = null;
@@ -43,6 +44,54 @@
       const ta = document.querySelector<HTMLTextAreaElement>("#reply-textarea");
       ta?.focus();
     }, 0);
+  }
+
+  function focusReply() {
+    if (!$currentUser) {
+      window.location.href = `/login?returnTo=${encodeURIComponent(window.location.pathname)}`;
+      return;
+    }
+    document.querySelector<HTMLTextAreaElement>("#reply-textarea")?.focus();
+  }
+
+  async function handleLike() {
+    if (!post) return;
+    if (!$currentUser) {
+      window.location.href = `/login?returnTo=${encodeURIComponent(window.location.pathname)}`;
+      return;
+    }
+    liking = true;
+    try {
+      const state = post.liked_by_me
+        ? await unlikePost(post.id)
+        : await likePost(post.id);
+      post = { ...post, ...state };
+    } catch (e: any) {
+      toaster.error("操作失败", e.message ?? "请稍后重试");
+    } finally {
+      liking = false;
+    }
+  }
+
+  async function handleShare() {
+    if (!post) return;
+    const data = {
+      title: post.title,
+      text: post.content.slice(0, 120),
+      url: window.location.href,
+    };
+    try {
+      if (navigator.share) {
+        await navigator.share(data);
+      } else {
+        await navigator.clipboard.writeText(data.url);
+        toaster.success("链接已复制", "可以粘贴给其他人了");
+      }
+    } catch (e: any) {
+      if (e?.name !== "AbortError") {
+        toaster.error("转发失败", "无法复制链接，请稍后重试");
+      }
+    }
   }
 
   function handleDelete() {
@@ -181,6 +230,13 @@
           onDelete={i === 0
             ? ($currentUser?.id === post?.author_id ? handleDelete : null)
             : ($currentUser?.id === comments[i - 1]?.author_id ? () => handleDeleteComment(i) : null)}
+          liked={i === 0 ? post.liked_by_me : false}
+          likeCount={i === 0 ? post.like_count : null}
+          replyCount={i === 0 ? post.reply_count : null}
+          {liking}
+          onLike={i === 0 ? handleLike : null}
+          onDiscuss={i === 0 ? focusReply : null}
+          onShare={i === 0 ? handleShare : null}
         />
       {/each}
     </div>

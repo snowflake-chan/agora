@@ -10,6 +10,8 @@ export interface Post {
   tags: string[] | null;
   author_username: string | null;
   reply_count: number;
+  like_count: number;
+  liked_by_me: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -59,6 +61,23 @@ export async function deleteContent(id: string): Promise<void> {
   if (!res.ok && res.status !== 204) throw new Error("删除失败");
 }
 
+export interface PostLikeState {
+  like_count: number;
+  liked_by_me: boolean;
+}
+
+async function setPostLike(id: string, liked: boolean): Promise<PostLikeState> {
+  const res = await fetch(`${API_BASE}/posts/${id}/like`, {
+    method: liked ? "PUT" : "DELETE",
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error(liked ? "点赞失败" : "取消点赞失败");
+  return res.json();
+}
+
+export const likePost = (id: string) => setPostLike(id, true);
+export const unlikePost = (id: string) => setPostLike(id, false);
+
 export interface FeedItem {
   id: string;
   type: "post" | "patch";
@@ -69,6 +88,7 @@ export interface FeedItem {
   created_at: string;
   tags: string[] | null;
   reply_count: number;
+  like_count: number;
   pr_number: number | null;
   status: string | null;
   for_count: number;
