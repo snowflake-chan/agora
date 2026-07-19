@@ -34,6 +34,6 @@
       </span>
     </div>
 
-    <AuthorMeta username={post.author_username ?? "匿名"} createdAt={post.created_at} />
+    <AuthorMeta username={post.author_username ?? "匿名"} userId={post.author_id} createdAt={post.created_at} />
   </div>
 </a>

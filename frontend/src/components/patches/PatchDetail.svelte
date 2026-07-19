@@ -139,7 +139,7 @@
     </div>
     <h1 class="mt-2 text-xl font-bold" style="color: var(--vercel-text);">{patch.title}</h1>
     <div class="mt-1">
-      <AuthorMeta username={patch.author_username ?? "匿名"} createdAt={patch.created_at} />
+      <AuthorMeta username={patch.author_username ?? "匿名"} userId={patch.author_id} createdAt={patch.created_at} />
     </div>
   </div>
 

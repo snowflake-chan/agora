@@ -151,6 +151,21 @@ async def get_feed(
         )
     ).scalars().all()
 
+    # Attach reply counts for posts in feed
+    post_ids = [p.id for p in posts]
+    reply_counts: dict = {}
+    if post_ids:
+        count_stmt = (
+            select(ContentModel.parent_id, func.count(ContentModel.id))
+            .where(
+                ContentModel.parent_id.in_(post_ids),
+                ContentModel.type == "comment",
+            )
+            .group_by(ContentModel.parent_id)
+        )
+        count_result = await session.execute(count_stmt)
+        reply_counts = dict(count_result.all())
+
     # Merge & sort by created_at desc
     items: list[FeedItem] = []
 
@@ -158,7 +173,7 @@ async def get_feed(
         items.append(FeedItem(
             id=p.id, type="post", title=p.title or "", content=p.content,
             author_id=p.author_id, author_username=p.author.username,
-            created_at=p.created_at, tags=p.tags, reply_count=0,
+            created_at=p.created_at, tags=p.tags, reply_count=reply_counts.get(p.id, 0),
         ))
 
     for p in patches:

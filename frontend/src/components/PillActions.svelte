@@ -77,6 +77,12 @@
     if (showPatchForm) showPatchForm = false;
     activeKey = key;
     mainView.set(key);
+    // On non-home pages there is no MainView listening, so navigate to /
+    const path = window.location.pathname;
+    if (path !== '/' && path !== '') {
+      try { localStorage.setItem("agora:initView", key); } catch (e) {}
+      window.location.href = '/';
+    }
   }
 
   function selectAndOpen(key: "post" | "patch") {
@@ -223,6 +229,10 @@
             {$currentUser.nickname ?? $currentUser.username}
           </div>
           <div class="divider"></div>
+          <a href="/my" class="menu-item">
+            <UserIcon class="size-3.5" />
+            我的资料
+          </a>
           <button class="menu-item" onclick={handleLogout}>
             <LogOutIcon class="size-3.5" />
             退出登录

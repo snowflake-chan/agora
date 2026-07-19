@@ -28,10 +28,14 @@ export interface Vote {
 export async function listPatches(
   page = 1,
   status?: string,
+  signal?: AbortSignal,
 ): Promise<Patch[]> {
   const params = new URLSearchParams({ page: String(page) });
   if (status) params.set("status", status);
-  const res = await fetch(`${API_BASE}/patches?${params}`, { credentials: "include" });
+  const res = await fetch(`${API_BASE}/patches?${params}`, {
+    credentials: "include",
+    signal,
+  });
   if (!res.ok) throw new Error("Failed to load patches");
   return res.json();
 }

@@ -143,6 +143,22 @@ async def _auto_tally(session: AsyncSession, patch: PatchModel) -> bool:
     return True
 
 
+async def _auto_tally_patch(patch_id: str) -> None:
+    """Background task: auto-tally a single patch in its own session."""
+    from app.db import async_session as _as
+
+    try:
+        async with _as() as session:
+            stmt = select(PatchModel).where(PatchModel.id == patch_id)
+            result = await session.execute(stmt)
+            patch = result.scalar_one_or_none()
+            if patch and patch.status == "voting" and patch.voting_ends_at:
+                if patch.voting_ends_at <= datetime.now(patch.voting_ends_at.tzinfo):
+                    await _tally(session, patch)
+    except Exception as e:
+        print(f"[tally] background tally error for {patch_id}: {e}")
+
+
 async def _trigger_deploy() -> None:
     """Run deploy.sh (spawn subprocess, don't await — it self-destructs)."""
     if not settings.DEPLOY_ENABLED:
@@ -219,9 +235,10 @@ async def list_patches(
     result = await session.execute(stmt)
     patches = result.scalars().all()
 
-    # Auto-tally any stale voting patches
+    # Auto-tally any stale voting patches (fire-and-forget so list never blocks)
     for p in patches:
-        await _auto_tally(session, p)
+        if p.status == "voting" and p.voting_ends_at:
+            asyncio.create_task(_auto_tally_patch(str(p.id)))
 
     # Get vote counts
     patch_ids = [str(p.id) for p in patches]
