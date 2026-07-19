@@ -71,6 +71,7 @@ export interface FeedItem {
   reply_count: number;
   pr_number: number | null;
   status: string | null;
+  voting_ends_at: string | null;
   for_count: number;
   against_count: number;
 }

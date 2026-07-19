@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import type { FeedItem } from "../lib/posts";
   import { stripMarkdown } from "../lib/utils";
   import AuthorMeta from "./AuthorMeta.svelte";
@@ -19,6 +20,60 @@
   let statusInfo = $derived(
     item.type === "patch" && item.status ? STATUS_MAP[item.status] : null
   );
+
+  // ---- voting countdown ----
+  let countdown = $state("");
+  let countdownUrgent = $state(false);
+  let interval: ReturnType<typeof setInterval> | null = null;
+
+  function tickCountdown() {
+    if (item.type !== "patch" || item.status !== "voting" || !item.voting_ends_at) {
+      countdown = "";
+      return;
+    }
+    const end = new Date(item.voting_ends_at).getTime();
+    const now = Date.now();
+    const diff = end - now;
+
+    if (diff <= 0) {
+      countdown = "已结束";
+      countdownUrgent = true;
+      return;
+    }
+
+    const sec = Math.floor(diff / 1000);
+    const min = Math.floor(sec / 60);
+    const hour = Math.floor(min / 60);
+    const day = Math.floor(hour / 24);
+
+    if (day > 0) {
+      countdown = `剩余 ${day} 天 ${hour % 24} 时`;
+      countdownUrgent = day < 1;
+    } else if (hour > 0) {
+      countdown = `剩余 ${hour} 时 ${min % 60} 分`;
+      countdownUrgent = hour < 2;
+    } else if (min > 0) {
+      countdown = `剩余 ${min} 分`;
+      countdownUrgent = true;
+    } else {
+      countdown = `剩余 ${sec} 秒`;
+      countdownUrgent = true;
+    }
+  }
+
+  onMount(() => {
+    tickCountdown();
+    if (item.type === "patch" && item.status === "voting" && item.voting_ends_at) {
+      interval = setInterval(tickCountdown, 30_000);
+    }
+  });
+
+  // cleanup interval on unmount
+  $effect(() => {
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  });
 </script>
 
 <a
@@ -56,6 +111,22 @@
       {/if}
       {#if item.type === "patch"}
         <span>赞成 {item.for_count} · 反对 {item.against_count}</span>
+        {#if countdown}
+          <span
+            class="flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium"
+            style="background: {countdownUrgent
+              ? 'rgba(239, 68, 68, 0.12)'
+              : 'rgba(245, 158, 11, 0.12)'};
+              color: {countdownUrgent
+              ? 'var(--vercel-danger)'
+              : 'var(--vercel-warning)'};"
+          >
+            <svg class="size-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            {countdown}
+          </span>
+        {/if}
       {/if}
       {#if item.type === "post"}
         <span class="flex items-center gap-1">

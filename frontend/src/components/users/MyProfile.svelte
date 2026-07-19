@@ -64,6 +64,16 @@
 
     try {
       await updateProfile(data);
+      if (data.password) {
+        // Password change invalidates current session token – force re-login.
+        message = { type: "success", text: "密码已更新，即将退出登录..." };
+        saving = false;
+        setTimeout(() => {
+          logout();
+          window.location.href = "/login";
+        }, 1500);
+        return;
+      }
       message = { type: "success", text: "资料已更新" };
       newPassword = "";
       confirmPassword = "";
