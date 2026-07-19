@@ -1,10 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
 from app.db.models.content import Content as ContentModel
 from app.db.models.patch import Patch as PatchModel
+from app.db.models.post_like import PostLike
 from app.db.models.user import User
 from app.notifications.service import create_notification
 from app.schemas.post import (
@@ -12,10 +14,11 @@ from app.schemas.post import (
     CommentRead,
     FeedItem,
     PostCreate,
+    PostLikeRead,
     PostRead,
     PostUpdate,
 )
-from app.users.deps import current_user
+from app.users.deps import current_user, optional_current_user
 
 router = APIRouter()
 
@@ -51,6 +54,7 @@ async def list_posts(
     # Attach reply counts
     post_ids = [p.id for p in posts]
     counts = {}
+    like_counts = {}
     if post_ids:
         count_stmt = (
             select(ContentModel.parent_id, func.count(ContentModel.id))
@@ -62,6 +66,12 @@ async def list_posts(
         )
         count_result = await session.execute(count_stmt)
         counts = dict(count_result.all())
+        like_result = await session.execute(
+            select(PostLike.post_id, func.count(PostLike.id))
+            .where(PostLike.post_id.in_(post_ids))
+            .group_by(PostLike.post_id)
+        )
+        like_counts = dict(like_result.all())
 
     return [
         PostRead(
@@ -72,6 +82,7 @@ async def list_posts(
             tags=p.tags,
             author_username=p.author.username,
             reply_count=counts.get(p.id, 0),
+            like_count=like_counts.get(p.id, 0),
             created_at=p.created_at,
             updated_at=p.updated_at,
         )
@@ -154,6 +165,7 @@ async def get_feed(
     # Attach reply counts for posts in feed
     post_ids = [p.id for p in posts]
     reply_counts: dict = {}
+    like_counts: dict = {}
     if post_ids:
         count_stmt = (
             select(ContentModel.parent_id, func.count(ContentModel.id))
@@ -165,6 +177,12 @@ async def get_feed(
         )
         count_result = await session.execute(count_stmt)
         reply_counts = dict(count_result.all())
+        like_result = await session.execute(
+            select(PostLike.post_id, func.count(PostLike.id))
+            .where(PostLike.post_id.in_(post_ids))
+            .group_by(PostLike.post_id)
+        )
+        like_counts = dict(like_result.all())
 
     # Merge & sort by created_at desc
     items: list[FeedItem] = []
@@ -174,6 +192,7 @@ async def get_feed(
             id=p.id, type="post", title=p.title or "", content=p.content,
             author_id=p.author_id, author_username=p.author.username,
             created_at=p.created_at, tags=p.tags, reply_count=reply_counts.get(p.id, 0),
+            like_count=like_counts.get(p.id, 0),
         ))
 
     for p in patches:
@@ -192,6 +211,7 @@ async def get_feed(
 async def get_post(
     post_id: str,
     session: AsyncSession = Depends(get_session),
+    user: User | None = Depends(optional_current_user),
 ):
     """Get a single post by ID."""
     stmt = select(ContentModel).where(
@@ -208,6 +228,18 @@ async def get_post(
             ContentModel.parent_id == post.id, ContentModel.type == "comment"
         )
     )
+    like_count = await session.scalar(
+        select(func.count(PostLike.id)).where(PostLike.post_id == post.id)
+    )
+    liked_by_me = False
+    if user:
+        liked_by_me = bool(
+            await session.scalar(
+                select(PostLike.id).where(
+                    PostLike.post_id == post.id, PostLike.user_id == user.id
+                )
+            )
+        )
 
     return PostRead(
         id=post.id,
@@ -217,9 +249,75 @@ async def get_post(
         tags=post.tags,
         author_username=post.author.username,
         reply_count=reply_count or 0,
+        like_count=like_count or 0,
+        liked_by_me=liked_by_me,
         created_at=post.created_at,
         updated_at=post.updated_at,
     )
+
+
+async def _post_like_state(
+    session: AsyncSession, post_id: str, user_id
+) -> PostLikeRead:
+    like_count = await session.scalar(
+        select(func.count(PostLike.id)).where(PostLike.post_id == post_id)
+    )
+    liked_by_me = bool(
+        await session.scalar(
+            select(PostLike.id).where(
+                PostLike.post_id == post_id, PostLike.user_id == user_id
+            )
+        )
+    )
+    return PostLikeRead(like_count=like_count or 0, liked_by_me=liked_by_me)
+
+
+@router.put("/{post_id}/like", response_model=PostLikeRead)
+async def like_post(
+    post_id: str,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(current_user),
+):
+    """Like a post. Repeated requests are idempotent."""
+    post_exists = await session.scalar(
+        select(ContentModel.id).where(
+            ContentModel.id == post_id, ContentModel.type == "post"
+        )
+    )
+    if not post_exists:
+        raise HTTPException(status_code=404, detail="POST_NOT_FOUND")
+
+    await session.execute(
+        insert(PostLike)
+        .values(post_id=post_exists, user_id=user.id)
+        .on_conflict_do_nothing(constraint="uq_post_like_post_user")
+    )
+    await session.commit()
+    return await _post_like_state(session, post_id, user.id)
+
+
+@router.delete("/{post_id}/like", response_model=PostLikeRead)
+async def unlike_post(
+    post_id: str,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(current_user),
+):
+    """Remove the current user's like. Repeated requests are idempotent."""
+    post_exists = await session.scalar(
+        select(ContentModel.id).where(
+            ContentModel.id == post_id, ContentModel.type == "post"
+        )
+    )
+    if not post_exists:
+        raise HTTPException(status_code=404, detail="POST_NOT_FOUND")
+
+    await session.execute(
+        delete(PostLike).where(
+            PostLike.post_id == post_exists, PostLike.user_id == user.id
+        )
+    )
+    await session.commit()
+    return await _post_like_state(session, post_id, user.id)
 
 
 @router.delete("/{content_id}", status_code=204)

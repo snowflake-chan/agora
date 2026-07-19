@@ -14,6 +14,8 @@ class PostRead(BaseModel):
     tags: list[str] | None
     author_username: str | None = None
     reply_count: int = 0
+    like_count: int = 0
+    liked_by_me: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -30,6 +32,11 @@ class PostUpdate(BaseModel):
     title: str | None = None
     content: str | None = None
     tags: list[str] | None = None
+
+
+class PostLikeRead(BaseModel):
+    like_count: int
+    liked_by_me: bool
 
 
 # ── Comment ──
@@ -66,6 +73,7 @@ class FeedItem(BaseModel):
     # Post-specific
     tags: list[str] | None = None
     reply_count: int = 0
+    like_count: int = 0
 
     # Patch-specific
     pr_number: int | None = None
