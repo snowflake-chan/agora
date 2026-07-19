@@ -143,15 +143,29 @@ async def mark_one_read(
     user: User = Depends(current_user),
 ):
     """Mark a single notification as read."""
-    stmt = select(Notification).where(
-        Notification.id == notification_id,
-        Notification.recipient_id == user.id,
+    stmt = (
+        update(Notification)
+        .where(
+            Notification.id == notification_id,
+            Notification.recipient_id == user.id,
+            Notification.is_read == False,
+        )
+        .values(is_read=True)
+        .returning(Notification.id)
     )
     result = await session.execute(stmt)
-    notif = result.scalar_one_or_none()
-    if not notif:
+    transitioned_id = result.scalar_one_or_none()
+
+    if transitioned_id is None:
+        exists = await session.scalar(
+            select(Notification.id).where(
+                Notification.id == notification_id,
+                Notification.recipient_id == user.id,
+            )
+        )
+        if exists is not None:
+            return
         raise HTTPException(status_code=404, detail="NOTIFICATION_NOT_FOUND")
 
-    notif.is_read = True
     await session.commit()
     await decrement_unread_count(str(user.id))
