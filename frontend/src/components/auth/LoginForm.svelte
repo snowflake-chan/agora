@@ -1,10 +1,21 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { login } from "../../stores/auth";
   import { toaster } from "../../stores/toaster";
+  import { safeReturnTo } from "../../lib/returnTo";
 
   let email = "";
   let password = "";
   let loading = false;
+  let returnTo = "/";
+
+  onMount(() => {
+    returnTo = safeReturnTo(
+      new URLSearchParams(window.location.search).get("returnTo")
+        ?? document.referrer,
+      window.location.origin,
+    );
+  });
 
   const ERROR_MAP: Record<string, string> = {
     LOGIN_INVALID_CREDENTIALS: "邮箱或密码错误",
@@ -14,7 +25,7 @@
     loading = true;
     try {
       await login(email, password);
-      window.location.href = "/";
+      window.location.href = returnTo;
     } catch (e: any) {
       toaster.error("登录失败", ERROR_MAP[e.code] ?? e.code ?? "请稍后重试");
     } finally {
