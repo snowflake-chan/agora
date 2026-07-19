@@ -1,13 +1,24 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
+from app.patches.reconcile import reconcile as reconcile_patches
 from app.users import auth_router, users_router
 from app.posts import posts_router
 from app.patches import patches_router
 from app.notifications import router as notifications_router
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Reconcile patches on startup."""
+    await reconcile_patches()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 # CORS — allow frontend origin
 if settings.CORS_ORIGIN:
