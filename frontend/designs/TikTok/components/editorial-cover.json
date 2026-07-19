@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 2,
+  "slug": "editorial-cover",
+  "name": "Editorial Cover",
+  "category": "component",
+  "sourceKind": "preview-derived",
+  "confidence": "medium",
+  "semanticTypeCandidates": [
+    "campaign cover",
+    "editorial media card"
+  ],
+  "variantDimensions": [
+    "light/dark surface",
+    "brand accent split"
+  ],
+  "coverageMatrix": {},
+  "sizeDeltas": {},
+  "stateCoverage": {},
+  "representativeVariants": [],
+  "anatomy": [
+    "cover.root",
+    "cover.brand",
+    "cover.meta",
+    "cover.kicker",
+    "cover.headline",
+    "cover.body",
+    "cover.url"
+  ],
+  "structurePatterns": [
+    "Preserve high-contrast headline scale.",
+    "Use red/cyan accent spans sparingly inside large type."
+  ],
+  "usageHints": [
+    "Preserve high-contrast headline scale.",
+    "Use red/cyan accent spans sparingly inside large type."
+  ],
+  "doNotInvent": [],
+  "unknowns": []
+}

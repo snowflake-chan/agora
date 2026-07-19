@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 2,
+  "slug": "card",
+  "name": "Card",
+  "category": "component",
+  "sourceKind": "preview-derived",
+  "confidence": "medium",
+  "semanticTypeCandidates": [
+    "reading card",
+    "editorial sidebar",
+    "review panel"
+  ],
+  "variantDimensions": [
+    "surface depth",
+    "contrast",
+    "content density"
+  ],
+  "coverageMatrix": {},
+  "sizeDeltas": {},
+  "stateCoverage": {},
+  "representativeVariants": [],
+  "anatomy": [
+    "card.root",
+    "card.kicker",
+    "card.title",
+    "card.body",
+    "card.footer"
+  ],
+  "structurePatterns": [
+    "Keep kicker and title in a single vertical rhythm.",
+    "Avoid overlapping cards; use stacked sections with explicit gaps."
+  ],
+  "usageHints": [
+    "Keep kicker and title in a single vertical rhythm.",
+    "Avoid overlapping cards; use stacked sections with explicit gaps."
+  ],
+  "doNotInvent": [],
+  "unknowns": []
+}

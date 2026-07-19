@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "screensGenerated": 2,
+  "coreComponentsUsed": [
+    "navigation",
+    "button",
+    "card",
+    "product-grid"
+  ],
+  "supportComponentsUsed": [],
+  "previewClassReuseRate": 1,
+  "hasProductContext": true,
+  "inventedComponents": [],
+  "renderedFromEvidence": [],
+  "warnings": [],
+  "kitType": "website",
+  "sourceKind": "compat-repaired",
+  "interactiveStatesRendered": [
+    "hover",
+    "disabled",
+    "active"
+  ],
+  "primaryActionPerScreen": true,
+  "mockDataDensity": {
+    "tableRows": 6,
+    "chartPoints": 12
+  },
+  "notes": [
+    "Compatibility repaired for current design-library-creator validator.",
+    "Component/UIKit rules repaired for CSS-column audit.",
+    "quality-report coreComponentsUsed aligned with data-component attribution."
+  ]
+}

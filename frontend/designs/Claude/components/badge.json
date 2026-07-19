@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 2,
+  "slug": "badge",
+  "name": "Badge",
+  "category": "component",
+  "sourceKind": "preview-derived",
+  "confidence": "medium",
+  "semanticTypeCandidates": [
+    "status badge",
+    "metadata pill"
+  ],
+  "variantDimensions": [
+    "tone",
+    "density",
+    "icon presence"
+  ],
+  "coverageMatrix": {},
+  "sizeDeltas": {},
+  "stateCoverage": {},
+  "representativeVariants": [],
+  "anatomy": [
+    "badge.root",
+    "badge.label",
+    "badge.icon"
+  ],
+  "structurePatterns": [
+    "Use a compact inline-flex root with calm editorial spacing.",
+    "Pair muted labels with stronger foreground only for active or priority states."
+  ],
+  "usageHints": [
+    "Use a compact inline-flex root with calm editorial spacing.",
+    "Pair muted labels with stronger foreground only for active or priority states."
+  ],
+  "doNotInvent": [],
+  "unknowns": []
+}

@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 2,
+  "slug": "bottom-info",
+  "name": "Bottom Info",
+  "category": "component",
+  "sourceKind": "preview-derived",
+  "confidence": "medium",
+  "semanticTypeCandidates": [
+    "video metadata panel",
+    "creator info"
+  ],
+  "variantDimensions": [
+    "media state",
+    "density"
+  ],
+  "coverageMatrix": {},
+  "sizeDeltas": {},
+  "stateCoverage": {},
+  "representativeVariants": [],
+  "anatomy": [
+    "info.root",
+    "info.creator",
+    "info.caption",
+    "info.music",
+    "info.actions"
+  ],
+  "structurePatterns": [
+    "Anchor metadata above bottom navigation.",
+    "Use on-media foreground and gradients for readability over video."
+  ],
+  "usageHints": [
+    "Anchor metadata above bottom navigation.",
+    "Use on-media foreground and gradients for readability over video."
+  ],
+  "doNotInvent": [],
+  "unknowns": []
+}

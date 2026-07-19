@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 2,
+  "slug": "navigation",
+  "name": "Navigation",
+  "category": "component",
+  "sourceKind": "preview-derived",
+  "confidence": "medium",
+  "semanticTypeCandidates": [
+    "sidebar navigation",
+    "top navigation"
+  ],
+  "variantDimensions": [
+    "active state",
+    "section grouping",
+    "density"
+  ],
+  "coverageMatrix": {},
+  "sizeDeltas": {},
+  "stateCoverage": {},
+  "representativeVariants": [],
+  "anatomy": [
+    "nav.root",
+    "nav.brand",
+    "nav.sectionLabel",
+    "nav.item",
+    "nav.activeIndicator"
+  ],
+  "structurePatterns": [
+    "Group navigation with quiet labels.",
+    "Active state should be clear but not over-saturated."
+  ],
+  "usageHints": [
+    "Group navigation with quiet labels.",
+    "Active state should be clear but not over-saturated."
+  ],
+  "doNotInvent": [],
+  "unknowns": []
+}

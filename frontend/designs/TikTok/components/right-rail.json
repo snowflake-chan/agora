@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 2,
+  "slug": "right-rail",
+  "name": "Right Rail",
+  "category": "component",
+  "sourceKind": "preview-derived",
+  "confidence": "medium",
+  "semanticTypeCandidates": [
+    "video action rail",
+    "social action stack"
+  ],
+  "variantDimensions": [
+    "count visibility",
+    "pressed state"
+  ],
+  "coverageMatrix": {},
+  "sizeDeltas": {},
+  "stateCoverage": {},
+  "representativeVariants": [],
+  "anatomy": [
+    "rail.root",
+    "rail.avatar",
+    "rail.action",
+    "rail.icon",
+    "rail.count"
+  ],
+  "structurePatterns": [
+    "Stack actions vertically with stable hit targets.",
+    "Use on-media color and subtle translucent surfaces."
+  ],
+  "usageHints": [
+    "Stack actions vertically with stable hit targets.",
+    "Use on-media color and subtle translucent surfaces."
+  ],
+  "doNotInvent": [],
+  "unknowns": []
+}

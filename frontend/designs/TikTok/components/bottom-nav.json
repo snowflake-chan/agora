@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 2,
+  "slug": "bottom-nav",
+  "name": "Bottom Nav",
+  "category": "component",
+  "sourceKind": "preview-derived",
+  "confidence": "medium",
+  "semanticTypeCandidates": [
+    "mobile tab bar",
+    "media app navigation"
+  ],
+  "variantDimensions": [
+    "active tab",
+    "badge presence"
+  ],
+  "coverageMatrix": {},
+  "sizeDeltas": {},
+  "stateCoverage": {},
+  "representativeVariants": [],
+  "anatomy": [
+    "nav.root",
+    "nav.item",
+    "nav.icon",
+    "nav.label",
+    "nav.activeIndicator"
+  ],
+  "structurePatterns": [
+    "Keep tabs fixed-height and finger-sized.",
+    "Use primary for active emphasis and on-media for inactive items."
+  ],
+  "usageHints": [
+    "Keep tabs fixed-height and finger-sized.",
+    "Use primary for active emphasis and on-media for inactive items."
+  ],
+  "doNotInvent": [],
+  "unknowns": []
+}
