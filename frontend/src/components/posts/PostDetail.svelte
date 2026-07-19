@@ -101,6 +101,7 @@
   let items: Array<{
     key: string;
     username: string;
+    userId: string | null;
     createdAt: string;
     content: string;
     replyingToUsername: string | null;
@@ -115,6 +116,7 @@
       {
         key: post.id,
         username: post.author_username ?? "匿名",
+        userId: post.author_id,
         createdAt: post.created_at,
         content: post.content,
         replyingToUsername: null,
@@ -124,6 +126,7 @@
       ...comments.map((c) => ({
         key: c.id,
         username: c.author_username ?? "匿名",
+        userId: c.author_id,
         createdAt: c.created_at,
         content: c.content,
         replyingToUsername: c.replying_to_username,
@@ -168,6 +171,7 @@
       {#each items as item, i (item.key)}
         <TimelineItem
           username={item.username}
+          userId={item.userId}
           createdAt={item.createdAt}
           content={item.content}
           title={item.title}

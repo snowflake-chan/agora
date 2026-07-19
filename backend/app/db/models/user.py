@@ -14,6 +14,7 @@ from app.db import get_session
 class User(SQLAlchemyBaseUserTableUUID, Base):
     username: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
     nickname: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    bio: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
 
 async def get_user_db(session: AsyncSession = Depends(get_session)):

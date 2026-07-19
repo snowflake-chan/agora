@@ -46,6 +46,6 @@
         <span>赞成 {patch.for_count} · 反对 {patch.against_count}</span>
       {/if}
     </div>
-    <AuthorMeta username={patch.author_username ?? "匿名"} createdAt={patch.created_at} />
+    <AuthorMeta username={patch.author_username ?? "匿名"} userId={patch.author_id} createdAt={patch.created_at} />
   </div>
 </a>

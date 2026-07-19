@@ -41,21 +41,13 @@ body {
   min-height: 100vh;
   background: linear-gradient(160deg, #0c0c0e 0%, #0a0a0c 40%, #0e0e11 100%);
   color: var(--vercel-text);
-  padding-bottom: 3.5rem;
+  padding-bottom: 6rem;
 }
 
-@media (min-width: 768px) {
-  body {
-    padding-bottom: 0;
-  }
-}
-
-/* The floating pill bar (灵动岛) is ~2.5rem tall and fixed to the viewport
-   bottom. Reserve generous space at the end of every main column so the last
-   card (and its "没有更多了" footer) sits fully above it, with extra empty
-   space below so the page can always scroll clear of the pill. */
+/* The floating pill bar (灵动岛) is ~2.75rem tall and fixed to the viewport
+   bottom. Reserve generous space so the last card sits fully above it. */
 main {
-  padding-bottom: 8rem;
+  padding-bottom: 10rem;
 }
 
 /* ── Typography ── */

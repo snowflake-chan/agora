@@ -1,8 +1,8 @@
 import { writable } from "svelte/store";
 import * as api from "../lib/auth";
-import type { User } from "../lib/auth";
+import type { User, UserUpdateData } from "../lib/auth";
 
-export { type User };
+export { type User, type UserUpdateData };
 
 export const currentUser = writable<User | null>(null);
 
@@ -25,4 +25,10 @@ export async function register(email: string, username: string, password: string
 export async function logout() {
   await api.logout();
   currentUser.set(null);
+}
+
+export async function updateProfile(data: UserUpdateData) {
+  const user = await api.updateProfile(data);
+  currentUser.set(user);
+  return user;
 }
