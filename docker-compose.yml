@@ -33,6 +33,10 @@ services:
       DEPLOY_ENABLED: ${DEPLOY_ENABLED:-true}
       REPO_DIR: /repo
       REDIS_URL: redis://redis:6379/0
+      AUTH_LOGIN_ATTEMPTS: ${AUTH_LOGIN_ATTEMPTS:-10}
+      AUTH_LOGIN_WINDOW_SECONDS: ${AUTH_LOGIN_WINDOW_SECONDS:-300}
+      AUTH_REGISTER_ATTEMPTS: ${AUTH_REGISTER_ATTEMPTS:-30}
+      AUTH_REGISTER_WINDOW_SECONDS: ${AUTH_REGISTER_WINDOW_SECONDS:-3600}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - .:/repo
