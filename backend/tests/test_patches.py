@@ -8,6 +8,9 @@ import sys
 from uuid import uuid4
 
 import httpx
+import pytest
+
+pytestmark = pytest.mark.usefixtures("server")
 
 BASE = "http://localhost:8000"
 
@@ -19,6 +22,11 @@ def _unique(prefix: str) -> dict:
         "username": f"{prefix}-{uid}",
         "password": "testpass123",
     }
+
+
+def _pr_number() -> int:
+    """Return a positive number unique enough for a persistent test database."""
+    return int(uuid4().hex[:7], 16) + 1
 
 
 def _register(client: httpx.Client, prefix: str = "u") -> dict:
@@ -52,30 +60,50 @@ class TestPatches:
     def test_create_patch(self):
         user = _register(self.client)
         headers = _login(self.client, user)
+        pr_number = _pr_number()
         r = self.client.post(
             f"{BASE}/api/v1/patches",
-            json={"title": "My patch", "content": "Content", "pr_number": 1},
+            json={"title": "My patch", "content": "Content", "pr_number": pr_number},
             headers=headers,
         )
         assert r.status_code == 201, r.text
         data = r.json()
         assert data["title"] == "My patch"
         assert data["status"] == "draft"
-        assert data["pr_number"] == 1
+        assert data["pr_number"] == pr_number
 
     def test_create_patch_requires_auth(self):
         r = self.client.post(
             f"{BASE}/api/v1/patches",
-            json={"title": "Test", "content": "Test", "pr_number": 1},
+            json={"title": "Test", "content": "Test", "pr_number": _pr_number()},
         )
         assert r.status_code == 401
+
+    def test_cannot_create_two_active_patches_for_same_pr(self):
+        user = _register(self.client)
+        headers = _login(self.client, user)
+        pr_number = _pr_number()
+        payload = {"title": "First", "content": "Content", "pr_number": pr_number}
+
+        first = self.client.post(
+            f"{BASE}/api/v1/patches", json=payload, headers=headers
+        )
+        second = self.client.post(
+            f"{BASE}/api/v1/patches",
+            json={**payload, "title": "Duplicate"},
+            headers=headers,
+        )
+
+        assert first.status_code == 201
+        assert second.status_code == 409
+        assert second.json()["detail"] == "PATCH_PR_ALREADY_ACTIVE"
 
     def test_list_patches(self):
         user = _register(self.client)
         headers = _login(self.client, user)
         self.client.post(
             f"{BASE}/api/v1/patches",
-            json={"title": "List me", "content": "Content", "pr_number": 2},
+            json={"title": "List me", "content": "Content", "pr_number": _pr_number()},
             headers=headers,
         )
         r = self.client.get(f"{BASE}/api/v1/patches")
@@ -89,7 +117,7 @@ class TestPatches:
         headers = _login(self.client, user)
         create = self.client.post(
             f"{BASE}/api/v1/patches",
-            json={"title": "Get me", "content": "Content", "pr_number": 3},
+            json={"title": "Get me", "content": "Content", "pr_number": _pr_number()},
             headers=headers,
         )
         pid = create.json()["id"]
@@ -103,7 +131,7 @@ class TestPatches:
         headers = _login(self.client, user)
         create = self.client.post(
             f"{BASE}/api/v1/patches",
-            json={"title": "Delete me", "content": "Bye", "pr_number": 4},
+            json={"title": "Delete me", "content": "Bye", "pr_number": _pr_number()},
             headers=headers,
         )
         pid = create.json()["id"]
@@ -119,7 +147,7 @@ class TestPatches:
         hb = _login(self.client, ub)
         create = self.client.post(
             f"{BASE}/api/v1/patches",
-            json={"title": "Mine", "content": "Hands off", "pr_number": 5},
+            json={"title": "Mine", "content": "Hands off", "pr_number": _pr_number()},
             headers=ha,
         )
         pid = create.json()["id"]
@@ -134,7 +162,7 @@ class TestPatches:
         headers = _login(self.client, user)
         create = self.client.post(
             f"{BASE}/api/v1/patches",
-            json={"title": "Deadline", "content": "Content", "pr_number": 6},
+            json={"title": "Deadline", "content": "Content", "pr_number": _pr_number()},
             headers=headers,
         )
         pid = create.json()["id"]
@@ -143,15 +171,13 @@ class TestPatches:
         data = r.json()
         assert data["status"] == "voting"
         assert data["voting_ends_at"] is not None
-        # Verify it's roughly 3 days from now (±1 hour)
-        end = r.json()["voting_ends_at"]
 
     def test_cast_and_change_vote(self):
         user = _register(self.client)
         headers = _login(self.client, user)
         create = self.client.post(
             f"{BASE}/api/v1/patches",
-            json={"title": "Vote", "content": "Content", "pr_number": 7},
+            json={"title": "Vote", "content": "Content", "pr_number": _pr_number()},
             headers=headers,
         )
         pid = create.json()["id"]
@@ -182,7 +208,7 @@ class TestPatches:
 
         create = self.client.post(
             f"{BASE}/api/v1/patches",
-            json={"title": "Count", "content": "Content", "pr_number": 8},
+            json={"title": "Count", "content": "Content", "pr_number": _pr_number()},
             headers=h1,
         )
         pid = create.json()["id"]
@@ -204,7 +230,7 @@ class TestPatches:
         headers = _login(self.client, user)
         create = self.client.post(
             f"{BASE}/api/v1/patches",
-            json={"title": "Draft vote", "content": "Content", "pr_number": 9},
+            json={"title": "Draft vote", "content": "Content", "pr_number": _pr_number()},
             headers=headers,
         )
         pid = create.json()["id"]
@@ -218,7 +244,7 @@ class TestPatches:
         headers = _login(self.client, user)
         create = self.client.post(
             f"{BASE}/api/v1/patches",
-            json={"title": "Bad vote", "content": "Content", "pr_number": 10},
+            json={"title": "Bad vote", "content": "Content", "pr_number": _pr_number()},
             headers=headers,
         )
         pid = create.json()["id"]
@@ -233,7 +259,7 @@ class TestPatches:
         headers = _login(self.client, user)
         create = self.client.post(
             f"{BASE}/api/v1/patches",
-            json={"title": "No delete", "content": "Content", "pr_number": 11},
+            json={"title": "No delete", "content": "Content", "pr_number": _pr_number()},
             headers=headers,
         )
         pid = create.json()["id"]
@@ -247,7 +273,7 @@ class TestPatches:
         headers = _login(self.client, user)
         create = self.client.post(
             f"{BASE}/api/v1/patches",
-            json={"title": "No close", "content": "Content", "pr_number": 12},
+            json={"title": "No close", "content": "Content", "pr_number": _pr_number()},
             headers=headers,
         )
         pid = create.json()["id"]
