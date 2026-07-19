@@ -12,6 +12,32 @@ router = APIRouter()
 password_helper = PasswordHelper()
 
 
+def _set_auth_cookie(response: Response, token: str) -> None:
+    """Set the JWT cookie with every policy configured by CookieTransport."""
+    response.set_cookie(
+        key=cookie_transport.cookie_name,
+        value=token,
+        max_age=cookie_transport.cookie_max_age,
+        path=cookie_transport.cookie_path,
+        domain=cookie_transport.cookie_domain,
+        secure=cookie_transport.cookie_secure,
+        httponly=cookie_transport.cookie_httponly,
+        samesite=cookie_transport.cookie_samesite,
+    )
+
+
+def _delete_auth_cookie(response: Response) -> None:
+    """Expire the JWT cookie using the same scope and security attributes."""
+    response.delete_cookie(
+        key=cookie_transport.cookie_name,
+        path=cookie_transport.cookie_path,
+        domain=cookie_transport.cookie_domain,
+        secure=cookie_transport.cookie_secure,
+        httponly=cookie_transport.cookie_httponly,
+        samesite=cookie_transport.cookie_samesite,
+    )
+
+
 @router.post("/register", response_model=UserRead)
 async def register(
     data: UserCreate,
@@ -45,14 +71,7 @@ async def register(
     )
 
     token = await strategy.write_token(user)
-    response.set_cookie(
-        key=cookie_transport.cookie_name,
-        value=token,
-        max_age=cookie_transport.cookie_max_age,
-        httponly=cookie_transport.cookie_httponly,
-        samesite="lax",
-        path="/",
-    )
+    _set_auth_cookie(response, token)
 
     return UserRead.model_validate(user)
 
@@ -78,14 +97,7 @@ async def login(
         await user_db.update(user, {"hashed_password": new_hash})
 
     token = await strategy.write_token(user)
-    response.set_cookie(
-        key=cookie_transport.cookie_name,
-        value=token,
-        max_age=cookie_transport.cookie_max_age,
-        httponly=cookie_transport.cookie_httponly,
-        samesite="lax",
-        path="/",
-    )
+    _set_auth_cookie(response, token)
 
     return UserRead.model_validate(user)
 
@@ -93,7 +105,4 @@ async def login(
 @router.post("/logout", status_code=204)
 async def logout(response: Response) -> None:
     """Clear the session cookie."""
-    response.delete_cookie(
-        key=cookie_transport.cookie_name,
-        path="/",
-    )
+    _delete_auth_cookie(response)
