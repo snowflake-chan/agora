@@ -1,12 +1,14 @@
 from sqlalchemy import select
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi_users.authentication import Strategy
 from fastapi_users.password import PasswordHelper
 
+from app.config import settings
 from app.schemas.user import LoginRequest, UserCreate, UserRead
 from app.db.models.user import User, get_user_db
 from app.users.backend import auth_backend, transport as cookie_transport
+from app.users.rate_limit import client_ip, enforce_rate_limit
 
 router = APIRouter()
 password_helper = PasswordHelper()
@@ -15,11 +17,19 @@ password_helper = PasswordHelper()
 @router.post("/register", response_model=UserRead)
 async def register(
     data: UserCreate,
+    request: Request,
     response: Response,
     user_db=Depends(get_user_db),
     strategy: Strategy = Depends(auth_backend.get_strategy),
 ) -> UserRead:
     """Register a new user and auto-login with a cookie."""
+    await enforce_rate_limit(
+        scope="register",
+        identifier=client_ip(request),
+        limit=settings.AUTH_REGISTER_ATTEMPTS,
+        window_seconds=settings.AUTH_REGISTER_WINDOW_SECONDS,
+    )
+
     existing = await user_db.get_by_email(data.email)
     if existing:
         raise HTTPException(status_code=409, detail="REGISTER_EMAIL_TAKEN")
@@ -60,11 +70,19 @@ async def register(
 @router.post("/login", response_model=UserRead)
 async def login(
     data: LoginRequest,
+    request: Request,
     response: Response,
     user_db=Depends(get_user_db),
     strategy: Strategy = Depends(auth_backend.get_strategy),
 ) -> UserRead:
     """Authenticate with email & password, set session cookie."""
+    await enforce_rate_limit(
+        scope="login",
+        identifier=data.email.strip().lower(),
+        limit=settings.AUTH_LOGIN_ATTEMPTS,
+        window_seconds=settings.AUTH_LOGIN_WINDOW_SECONDS,
+    )
+
     user: User | None = await user_db.get_by_email(data.email)
     if not user:
         raise HTTPException(status_code=401, detail="LOGIN_INVALID_CREDENTIALS")
