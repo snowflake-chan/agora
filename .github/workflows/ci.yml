@@ -24,6 +24,15 @@ jobs:
           --health-interval=5s
           --health-timeout=5s
           --health-retries=5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=5
 
     steps:
       - uses: actions/checkout@v4
@@ -52,6 +61,7 @@ jobs:
         env:
           DATABASE_URL: postgresql+asyncpg://agora:agora@localhost:5432/agora
           JWT_SECRET: test-secret
+          REDIS_URL: redis://localhost:6379/0
         run: |
           cd backend
           uvicorn app.main:app --host 0.0.0.0 --port 8000 &
