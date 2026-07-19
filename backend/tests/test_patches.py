@@ -4,9 +4,12 @@ Requires the backend server at localhost:8000.
 Start: cd backend && uvicorn app.main:app --reload --port 8000
 """
 
+import asyncio
+import os
 import sys
-from uuid import uuid4
+from uuid import UUID, uuid4
 
+import asyncpg
 import httpx
 import pytest
 
@@ -27,6 +30,26 @@ def _unique(prefix: str) -> dict:
 def _pr_number() -> int:
     """Return a positive number unique enough for a persistent test database."""
     return int(uuid4().hex[:7], 16) + 1
+
+
+def _set_patch_status(patch_id: str, status: str) -> None:
+    """Set up a completed governance state directly in the integration database."""
+    database_url = os.environ["DATABASE_URL"].replace(
+        "postgresql+asyncpg://", "postgresql://", 1
+    )
+
+    async def update_status() -> None:
+        connection = await asyncpg.connect(database_url)
+        try:
+            await connection.execute(
+                "UPDATE patch SET status = $1 WHERE id = $2",
+                status,
+                UUID(patch_id),
+            )
+        finally:
+            await connection.close()
+
+    asyncio.run(update_status())
 
 
 def _register(client: httpx.Client, prefix: str = "u") -> dict:
@@ -97,6 +120,31 @@ class TestPatches:
         assert first.status_code == 201
         assert second.status_code == 409
         assert second.json()["detail"] == "PATCH_PR_ALREADY_ACTIVE"
+
+    def test_rejected_pr_can_be_proposed_again(self):
+        user = _register(self.client)
+        headers = _login(self.client, user)
+        pr_number = _pr_number()
+        payload = {
+            "title": "First attempt",
+            "content": "Content",
+            "pr_number": pr_number,
+        }
+
+        first = self.client.post(
+            f"{BASE}/api/v1/patches", json=payload, headers=headers
+        )
+        assert first.status_code == 201
+        _set_patch_status(first.json()["id"], "rejected")
+
+        second = self.client.post(
+            f"{BASE}/api/v1/patches",
+            json={**payload, "title": "Revised proposal"},
+            headers=headers,
+        )
+
+        assert second.status_code == 201
+        assert second.json()["pr_number"] == pr_number
 
     def test_list_patches(self):
         user = _register(self.client)
