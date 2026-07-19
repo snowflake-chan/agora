@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { marked } from "marked";
+  import { renderMarkdown } from "../../lib/markdown";
   import { timeAgo } from "../../lib/utils";
   import { getUserGuild, type UserGuildBadge } from "../../lib/guilds";
 
@@ -113,7 +113,7 @@
         <span class="mr-1 font-medium" style="color: var(--vercel-text);">@{replyingToUsername}</span>
       {/if}
       <div class="markdown-body">
-        {@html marked.parse(content, { breaks: true, gfm: true })}
+        {@html renderMarkdown(content)}
       </div>
       {#if tags && tags.length > 0}
         <div class="mt-3 flex flex-wrap gap-2">

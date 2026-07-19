@@ -8,15 +8,16 @@
   let snippet = $derived(stripMarkdown(post.content));
 </script>
 
-<a
-  href={`/posts/${post.id}`}
-  class="block px-4 py-4 border-b transition-colors"
+<article
+  class="post-card relative px-4 py-4 border-b transition-colors"
   style="border-color: var(--vercel-border);"
   onmouseenter={(e) => e.currentTarget.style.background = '#141417'}
   onmouseleave={(e) => e.currentTarget.style.background = ''}
 >
-  <h2 class="text-base font-semibold" style="color: var(--vercel-text);">
-    {post.title}
+  <h2 class="text-base font-semibold">
+    <a class="card-link" href={`/posts/${post.id}`} style="color: var(--vercel-text);">
+      {post.title}
+    </a>
   </h2>
 
   <p class="mt-1 line-clamp-2 text-sm" style="color: var(--vercel-text-secondary);">
@@ -36,4 +37,21 @@
 
     <AuthorMeta username={post.author_username ?? "匿名"} userId={post.author_id} createdAt={post.created_at} />
   </div>
-</a>
+</article>
+
+<style>
+  .card-link::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+  }
+
+  .post-card:has(.card-link:focus-visible) {
+    outline: 2px solid var(--vercel-text);
+    outline-offset: -2px;
+  }
+
+  .card-link:focus-visible {
+    outline: none;
+  }
+</style>

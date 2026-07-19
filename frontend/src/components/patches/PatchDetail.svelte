@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { marked } from "marked";
+  import { renderMarkdown } from "../../lib/markdown";
   import { getPatch, deletePatch, submitPatch, votePatch, listVotes, type Patch, type Vote } from "../../lib/patches";
   import { toaster } from "../../stores/toaster";
   import { currentUser } from "../../stores/auth";
@@ -145,7 +145,7 @@
 
   <!-- Content (rendered markdown) -->
   <div class="card p-4 mb-8">
-    <div class="markdown-body">{@html marked.parse(patch.content, { breaks: true, gfm: true })}</div>
+    <div class="markdown-body">{@html renderMarkdown(patch.content)}</div>
   </div>
 
   <!-- Vote panel -->
