@@ -1,10 +1,11 @@
 <script lang="ts">
+  import { translator } from "../lib/i18n";
   import { modal } from "../lib/modal";
   let {
     open = $bindable(false),
-    title = "确认",
+    title = "",
     description = "",
-    confirmText = "确定",
+    confirmText = "",
     onConfirm = () => {},
   }: {
     open: boolean;
@@ -46,13 +47,17 @@
       tabindex="-1"
       onclick={stopPropagation}
     >
-      <h3 id="confirm-dialog-title" class="dialog-title">{title}</h3>
+      <h3 id="confirm-dialog-title" class="dialog-title">
+        {title || $translator("common.confirm")}
+      </h3>
       {#if description}
         <p id="confirm-dialog-description" class="dialog-desc">{description}</p>
       {/if}
       <div class="dialog-actions">
-        <button class="btn btn-ghost btn-sm" onclick={() => (open = false)}>取消</button>
-        <button data-autofocus class="btn btn-danger btn-sm" onclick={handleConfirm}>{confirmText}</button>
+        <button class="btn btn-ghost btn-sm" onclick={() => (open = false)}>{$translator("common.cancel")}</button>
+        <button data-autofocus class="btn btn-danger btn-sm" onclick={handleConfirm}>
+          {confirmText || $translator("common.confirm")}
+        </button>
       </div>
     </div>
   </div>

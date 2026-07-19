@@ -1,18 +1,16 @@
 ---
 import Layout from "../layouts/Layout.astro";
 import LoginForm from "../components/auth/LoginForm.svelte";
+import LocalizedText from "../components/LocalizedText.svelte";
 const returnTo = Astro.url.searchParams.get("returnTo") ?? "/";
 ---
 
-<Layout>
+<Layout title="Sign in · Agora" titleKey="auth.signIn">
   <main class="mx-auto flex min-h-dvh max-w-sm flex-col items-center justify-center px-4">
-    <h1 class="mb-1 text-3xl font-bold tracking-tight" style="color: var(--vercel-text);">
-      Agora
-    </h1>
-    <p class="mb-8 text-sm" style="color: var(--vercel-text-tertiary);">登录你的账号</p>
-
-    <div class="card w-full p-6">
-      <LoginForm {returnTo} client:load />
-    </div>
+    <h1 class="mb-1 text-3xl font-bold tracking-tight" style="color: var(--vercel-text);">Agora</h1>
+    <p class="mb-8 text-sm" style="color: var(--vercel-text-tertiary);">
+      <LocalizedText messageKey="auth.signInDescription" client:load />
+    </p>
+    <div class="card w-full p-6"><LoginForm {returnTo} client:load /></div>
   </main>
 </Layout>

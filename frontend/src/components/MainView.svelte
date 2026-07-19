@@ -1,207 +1,191 @@
 <script lang="ts">
-  import { fly, fade } from "svelte/transition";
+  import { onMount } from "svelte";
+  import { fade, fly } from "svelte/transition";
+  import { Clock3Icon, FlameIcon, SparklesIcon, UsersIcon } from "@lucide/svelte";
   import { appleEase } from "../lib/motion";
+  import { translator } from "../lib/i18n";
+  import { homeLayout, initPreferences } from "../lib/preferences";
+  import { initAuth, currentUser } from "../stores/auth";
   import { mainView } from "../stores/nav";
   import FeedList from "./FeedList.svelte";
   import PatchList from "./patches/PatchList.svelte";
   import PostDetail from "./posts/PostDetail.svelte";
   import PatchDetail from "./patches/PatchDetail.svelte";
-  import type { FeedItem } from "../lib/posts";
+  import type { FeedItem, FeedMode } from "../lib/posts";
 
   let selected = $state<FeedItem | null>(null);
   let feedState = $state<"loading" | "ready" | "empty" | "error">("loading");
+  let feedMode = $state<FeedMode>("recommended");
+  let authReady = $state(false);
+
+  const feedModes: FeedMode[] = ["recommended", "trending", "following", "latest"];
+  const modeKeys: Record<FeedMode, { label: string; title: string; description: string }> = {
+    recommended: { label: "feed.recommended", title: "feed.recommendedTitle", description: "feed.recommendedDescription" },
+    trending: { label: "feed.trending", title: "feed.trendingTitle", description: "feed.trendingDescription" },
+    following: { label: "feed.following", title: "feed.followingTitle", description: "feed.followingDescription" },
+    latest: { label: "feed.latest", title: "feed.latestTitle", description: "feed.latestDescription" },
+  };
+
+  onMount(async () => {
+    initPreferences();
+    try {
+      const saved = localStorage.getItem("agora:feedMode") as FeedMode | null;
+      if (saved && feedModes.includes(saved)) feedMode = saved;
+    } catch {}
+    const user = await initAuth();
+    if (feedMode === "following" && !user) {
+      feedMode = "recommended";
+      try { localStorage.setItem("agora:feedMode", feedMode); } catch {}
+    }
+    authReady = true;
+  });
 
   function selectItem(item: FeedItem) {
     selected = item;
+  }
+
+  function syncSelection(items: FeedItem[]) {
+    if (!selected) {
+      if (items[0]) selected = items[0];
+      return;
+    }
+    const updated = items.find((item) => item.id === selected?.id);
+    if (updated) selected = updated;
+  }
+
+  async function selectMode(next: FeedMode) {
+    if (next === "following") {
+      const user = authReady ? $currentUser : await initAuth();
+      if (!user) {
+        window.location.href = `/login?returnTo=${encodeURIComponent("/")}`;
+        return;
+      }
+    }
+    selected = null;
+    feedState = "loading";
+    feedMode = next;
+    try { localStorage.setItem("agora:feedMode", next); } catch {}
   }
 </script>
 
 <div class="main-view">
   {#if $mainView === "posts"}
-    <div
-      class="view-pane"
-      in:fly={{ y: 12, duration: 320, easing: appleEase }}
-      out:fade={{ duration: 140 }}
-    >
+    <div class="view-pane" in:fly={{ y: 12, duration: 320, easing: appleEase }} out:fade={{ duration: 140 }}>
       <div class="stream-heading">
         <div>
-          <p class="view-kicker">Agora</p>
-          <h1 class="view-title">最新动态</h1>
+          <p class="view-kicker">{$translator("home.kicker")}</p>
+          <h1 class="view-title">{$translator(modeKeys[feedMode].title)}</h1>
         </div>
-        <p class="view-description">帖子、变更与讨论，按时间汇集在一起。</p>
+        <p class="view-description">{$translator(modeKeys[feedMode].description)}</p>
       </div>
-      <div class="workspace-grid">
-        <section class="stream-panel" aria-label="最新动态列表">
-          <FeedList onSelect={selectItem} selectedId={selected?.id ?? null} onFirstItem={(item) => selected ??= item} onStateChange={(state) => feedState = state} />
+      <div class="feed-toolbar">
+        <div class="feed-tabs" role="tablist" aria-label={$translator("feed.sorting")}>
+          {#each feedModes as mode}
+            <button
+              type="button"
+              class:active={feedMode === mode}
+              role="tab"
+              aria-selected={feedMode === mode}
+              title={$translator(modeKeys[mode].description)}
+              onclick={() => selectMode(mode)}
+            >
+              {#if mode === "recommended"}
+                <SparklesIcon size={15} strokeWidth={1.8} />
+              {:else if mode === "trending"}
+                <FlameIcon size={15} strokeWidth={1.8} />
+              {:else if mode === "following"}
+                <UsersIcon size={15} strokeWidth={1.8} />
+              {:else}
+                <Clock3Icon size={15} strokeWidth={1.8} />
+              {/if}
+              <span>{$translator(modeKeys[mode].label)}</span>
+            </button>
+          {/each}
+        </div>
+      </div>
+      <div class="workspace-grid" class:page-layout={$homeLayout === "pages"}>
+        <section class="stream-panel" aria-label={$translator("home.activity")}>
+          {#if authReady}
+            {#key feedMode}
+              <FeedList
+                mode={feedMode}
+                onSelect={$homeLayout === "split" ? selectItem : null}
+                selectedId={$homeLayout === "split" ? selected?.id ?? null : null}
+                onFirstItem={$homeLayout === "split" ? (item) => selected ??= item : null}
+                onItemsUpdated={$homeLayout === "split" ? syncSelection : null}
+                onStateChange={(state) => feedState = state}
+              />
+            {/key}
+          {:else}
+            <div class="empty-state"><div class="spinner mb-3"></div>{$translator("feed.loading")}</div>
+          {/if}
         </section>
-        <section class="detail-panel" aria-label="内容详情">
+        {#if $homeLayout === "split"}
+          <section class="detail-panel" aria-label={$translator("home.select")}>
           {#if selected}
-            {#key selected.id}
+            {#key `${selected.id}:${selected.reply_count}:${selected.like_count}:${selected.for_count}:${selected.against_count}:${selected.status}`}
               {#if selected.type === "post"}
                 <PostDetail postId={selected.id} embedded />
               {:else}
                 <PatchDetail patchId={selected.id} embedded />
               {/if}
             {/key}
+          {:else if feedState === "loading"}
+            <div class="detail-loading" aria-label={$translator("home.loading")} aria-live="polite">
+              <span></span><span></span><span></span><span></span>
+              <p>{$translator("home.loading")}</p>
+            </div>
           {:else}
-            {#if feedState === "loading"}
-              <div class="detail-loading" aria-label="正在加载详情" aria-live="polite">
-                <span></span><span></span><span></span><span></span>
-                <p>正在加载详情</p>
-              </div>
-            {:else}
-              <div class="detail-empty">
-                <span class="detail-empty-mark" aria-hidden="true">↗</span>
-                <p>{feedState === "empty" ? "还没有动态，发布第一条讨论吧。" : "选择一条动态，在这里阅读完整内容。"}</p>
-              </div>
-            {/if}
+            <div class="detail-empty">
+              <span class="detail-empty-mark" aria-hidden="true">→</span>
+              <p>{feedState === "empty" ? $translator("home.empty") : $translator("home.select")}</p>
+            </div>
           {/if}
-        </section>
+          </section>
+        {/if}
       </div>
     </div>
   {:else}
-    <div
-      class="view-pane"
-      in:fly={{ y: 12, duration: 320, easing: appleEase }}
-      out:fade={{ duration: 140 }}
-    >
-      <h1 class="view-title">变更</h1>
-      <div class="card overflow-hidden">
-        <PatchList />
-      </div>
+    <div class="view-pane" in:fly={{ y: 12, duration: 320, easing: appleEase }} out:fade={{ duration: 140 }}>
+      <h1 class="view-title">{$translator("nav.changes")}</h1>
+      <div class="card overflow-hidden"><PatchList /></div>
     </div>
   {/if}
 </div>
 
 <style>
-  .main-view {
-    position: relative;
-    min-height: 60vh;
-  }
-
-  .view-pane {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-  }
-
-  .view-title {
-    font-size: clamp(1.5rem, 2vw, 2rem);
-    font-weight: 650;
-    color: var(--vercel-text);
-    letter-spacing: -0.04em;
-  }
-
-  .stream-heading {
-    display: flex;
-    align-items: end;
-    justify-content: space-between;
-    gap: 2rem;
-    margin-bottom: 1.25rem;
-  }
-
-  .view-kicker {
-    margin-bottom: 0.25rem;
-    color: var(--vercel-text-tertiary);
-    font-size: 0.6875rem;
-    font-weight: 600;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-  }
-
-  .view-description {
-    max-width: 24rem;
-    color: var(--vercel-text-tertiary);
-    font-size: 0.8125rem;
-    line-height: 1.5;
-    text-align: right;
-  }
-
-  .workspace-grid {
-    display: grid;
-    grid-template-columns: minmax(19rem, 24rem) minmax(0, 1fr);
-    height: min(52rem, calc(100dvh - 11rem));
-    min-height: 38rem;
-    overflow: hidden;
-    border: 1px solid var(--vercel-border);
-    border-radius: var(--vercel-radius-lg);
-    background: rgba(18, 18, 20, 0.7);
-  }
-
-  .stream-panel {
-    min-width: 0;
-    overflow-y: auto;
-    border-right: 1px solid var(--vercel-border);
-    background: rgba(12, 12, 14, 0.72);
-  }
-
-  .detail-panel {
-    min-width: 0;
-    overflow-y: auto;
-    padding: clamp(1.25rem, 2.5vw, 2.5rem);
-  }
-
-  .detail-empty {
-    display: grid;
-    min-height: 60vh;
-    place-content: center;
-    justify-items: center;
-    gap: 1rem;
-    color: var(--vercel-text-tertiary);
-    font-size: 0.875rem;
-  }
-
-  .detail-empty-mark {
-    display: grid;
-    width: 3rem;
-    height: 3rem;
-    place-items: center;
-    border: 1px solid var(--vercel-border);
-    border-radius: 0.875rem;
-    color: var(--vercel-text-secondary);
-    font-size: 1.125rem;
-    font-weight: 650;
-  }
-
-  .detail-loading { display:grid; min-height:60vh; align-content:center; gap:.75rem; max-width:32rem; margin:auto; color:var(--vercel-text-tertiary); font-size:.75rem; }
-  .detail-loading span { display:block; height:.75rem; border-radius:.3rem; background:rgba(255,255,255,.06); animation:pulse 1.4s ease-in-out infinite; }
-  .detail-loading span:nth-child(1) { width:42%; height:1.4rem; }
-  .detail-loading span:nth-child(2) { width:100%; }
-  .detail-loading span:nth-child(3) { width:92%; }
-  .detail-loading span:nth-child(4) { width:68%; }
-  @keyframes pulse { 50% { opacity:.45; } }
-
+  .main-view { position: relative; min-height: 60vh; }
+  .view-pane { position: absolute; inset: 0; width: 100%; }
+  .view-title { color: var(--vercel-text); font-size: clamp(1.5rem, 2vw, 2rem); font-weight: 650; letter-spacing: -0.04em; }
+  .stream-heading { display: flex; align-items: end; justify-content: space-between; gap: 2rem; margin-bottom: 1.25rem; }
+  .feed-toolbar { display: flex; justify-content: flex-start; margin-bottom: 1rem; }
+  .feed-tabs { display: inline-flex; align-items: center; gap: .2rem; padding: .25rem; border: 1px solid var(--vercel-border); border-radius: .5rem; background: rgba(255,255,255,.025); }
+  .feed-tabs button { display: inline-flex; min-height: 2rem; padding: .35rem .7rem; align-items: center; gap: .4rem; border: 0; border-radius: .35rem; background: transparent; color: var(--vercel-text-tertiary); cursor: pointer; font: inherit; font-size: .75rem; font-weight: 600; transition: color .18s ease, background .18s ease; }
+  .feed-tabs button:hover { color: var(--vercel-text); background: rgba(255,255,255,.05); }
+  .feed-tabs button.active { color: var(--vercel-text); background: rgba(255,255,255,.1); box-shadow: inset 0 0 0 1px rgba(255,255,255,.06); }
+  .view-kicker { margin-bottom: .25rem; color: var(--vercel-text-tertiary); font-size: .6875rem; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; }
+  .view-description { max-width: 24rem; color: var(--vercel-text-tertiary); font-size: .8125rem; line-height: 1.5; text-align: right; }
+  .workspace-grid { display: grid; grid-template-columns: minmax(19rem, 24rem) minmax(0, 1fr); height: min(52rem, calc(100dvh - 11rem)); min-height: 38rem; overflow: hidden; border: 1px solid var(--vercel-border); border-radius: var(--vercel-radius-lg); background: rgba(18, 18, 20, .7); }
+  .workspace-grid.page-layout { grid-template-columns:minmax(0,1fr); width:100%; max-width:52rem; height:auto; min-height:0; margin-right:auto; overflow:visible; }
+  .workspace-grid.page-layout .stream-panel { overflow:visible; border-right:0; }
+  .stream-panel { min-width: 0; overflow-y: auto; border-right: 1px solid var(--vercel-border); background: rgba(12, 12, 14, .72); }
+  .detail-panel { min-width: 0; overflow-y: auto; padding: clamp(1.25rem, 2.5vw, 2.5rem); }
+  .detail-empty { display: grid; min-height: 60vh; place-content: center; justify-items: center; gap: 1rem; color: var(--vercel-text-tertiary); font-size: .875rem; text-align: center; }
+  .detail-empty-mark { display: grid; width: 3rem; height: 3rem; place-items: center; border: 1px solid var(--vercel-border); border-radius: .875rem; color: var(--vercel-text-secondary); font-size: 1.125rem; font-weight: 650; }
+  .detail-loading { display: grid; max-width: 32rem; min-height: 60vh; margin: auto; align-content: center; gap: .75rem; color: var(--vercel-text-tertiary); font-size: .75rem; }
+  .detail-loading span { display: block; height: .75rem; border-radius: .3rem; background: rgba(255,255,255,.06); animation: pulse 1.4s ease-in-out infinite; }
+  .detail-loading span:nth-child(1) { width: 42%; height: 1.4rem; }
+  .detail-loading span:nth-child(2) { width: 100%; }
+  .detail-loading span:nth-child(3) { width: 92%; }
+  .detail-loading span:nth-child(4) { width: 68%; }
+  @keyframes pulse { 50% { opacity: .45; } }
   @media (max-width: 63.99rem) {
-    .stream-heading {
-      align-items: start;
-      flex-direction: column;
-      gap: 0.5rem;
-    }
-
-    .view-description {
-      text-align: left;
-    }
-
-    .workspace-grid {
-      display: block;
-      height: auto;
-      min-height: 0;
-    }
-
-    .stream-panel {
-      overflow: visible;
-      border-right: 0;
-    }
-
-    .detail-panel {
-      display: none;
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .view-pane {
-      animation: none !important;
-      transition: none !important;
-    }
+    .stream-heading { align-items: start; flex-direction: column; gap: .5rem; }
+    .view-description { text-align: left; }
+    .feed-toolbar { overflow-x: auto; margin-bottom: .75rem; }
+    .feed-tabs { flex-shrink: 0; }
+    .workspace-grid { display: block; height: auto; min-height: 0; }
+    .stream-panel { overflow: visible; border-right: 0; }
+    .detail-panel { display: none; }
   }
 </style>

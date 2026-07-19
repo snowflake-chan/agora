@@ -1,6 +1,7 @@
 ---
 import PillActions from "./PillActions.svelte";
 import NotificationBell from "./NotificationBell.svelte";
+import SettingsButton from "./SettingsButton.svelte";
 ---
 
 <!-- Top header -->
@@ -10,7 +11,10 @@ import NotificationBell from "./NotificationBell.svelte";
       <img src="/favicon.svg" alt="" width="22" height="22" class="size-[22px]" />
       <span class="text-lg font-bold tracking-tight" style="color: var(--vercel-text);">Agora</span>
     </a>
-    <NotificationBell client:load />
+    <div class="flex items-center gap-1">
+      <SettingsButton client:load />
+      <NotificationBell client:load />
+    </div>
   </div>
 </header>
 

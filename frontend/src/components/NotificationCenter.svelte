@@ -6,6 +6,7 @@
     markRead,
     type Notification,
   } from "../lib/notifications";
+  import { localizeNotification, translator } from "../lib/i18n";
   import { timeAgo } from "../lib/utils";
   import { currentUser, initAuth } from "../stores/auth";
   import { toaster } from "../stores/toaster";
@@ -28,7 +29,7 @@
       items = result.items;
       unread = result.unread_count;
     } catch {
-      toaster.error("无法加载通知");
+      toaster.error($translator("notifications.loadFailed"));
     } finally {
       loading = false;
     }
@@ -51,32 +52,33 @@
 {:else}
   <header class="notification-header">
     <div>
-      <p>Inbox</p>
-      <h1>通知</h1>
-      <span>{unread > 0 ? `${unread} 条未读` : "已全部读完"}</span>
+      <p>{$translator("notifications.inbox")}</p>
+      <h1>{$translator("notifications.title")}</h1>
+      <span>{unread > 0 ? $translator("notifications.unreadCount", { count: unread }) : $translator("notifications.allRead")}</span>
     </div>
-    {#if unread > 0}<button onclick={readAll}>全部标为已读</button>{/if}
+    {#if unread > 0}<button onclick={readAll}>{$translator("notifications.markAll")}</button>{/if}
   </header>
 
   <div class="notification-grid">
     <section aria-labelledby="direct-title">
       <div class="section-heading">
         <div>
-          <span>Primary</span>
-          <h2 id="direct-title">与你相关</h2>
+          <span>{$translator("notifications.primary")}</span>
+          <h2 id="direct-title">{$translator("notifications.related")}</h2>
         </div>
         <strong>{direct.length}</strong>
       </div>
       <div class="notification-list">
         {#if direct.length === 0}
-          <div class="notification-empty">暂时没有新的回复或治理结果。</div>
+          <div class="notification-empty">{$translator("notifications.directEmpty")}</div>
         {:else}
           {#each direct as item (item.id)}
+            {@const copy = localizeNotification(item, $translator)}
             <button class:unread={!item.is_read} onclick={() => openItem(item)}>
               <span class="notification-dot"></span>
               <span class="notification-copy">
-                <strong>{item.title}</strong>
-                <span>{item.message}</span>
+                <strong>{copy.title}</strong>
+                <span>{copy.message}</span>
               </span>
               <time>{timeAgo(item.created_at)}</time>
             </button>
@@ -88,22 +90,23 @@
     <section class="following-section" aria-labelledby="following-title">
       <div class="section-heading">
         <div>
-          <span>Secondary</span>
-          <h2 id="following-title">关注动态</h2>
+          <span>{$translator("notifications.secondary")}</span>
+          <h2 id="following-title">{$translator("notifications.following")}</h2>
         </div>
         <strong>{following.length}</strong>
       </div>
-      <p class="section-note">你关注的创作者发布新帖子或新变更时，会出现在这里。</p>
+      <p class="section-note">{$translator("notifications.followingNote")}</p>
       <div class="notification-list secondary">
         {#if following.length === 0}
-          <div class="notification-empty">关注一些创作者后，这里会出现他们的新内容。</div>
+          <div class="notification-empty">{$translator("notifications.followingEmpty")}</div>
         {:else}
           {#each following as item (item.id)}
+            {@const copy = localizeNotification(item, $translator)}
             <button class:unread={!item.is_read} onclick={() => openItem(item)}>
               <span class="notification-dot"></span>
               <span class="notification-copy">
-                <strong>{item.title}</strong>
-                <span>{item.message}</span>
+                <strong>{copy.title}</strong>
+                <span>{copy.message}</span>
               </span>
               <time>{timeAgo(item.created_at)}</time>
             </button>

@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { FeedItem } from "../lib/posts";
+  import { translator } from "../lib/i18n";
   import { stripMarkdown } from "../lib/utils";
   import AuthorMeta from "./AuthorMeta.svelte";
 
@@ -13,20 +14,42 @@
     onSelect?: ((item: FeedItem) => void) | null;
   } = $props();
 
-  const STATUS_MAP: Record<string, { label: string; cls: string }> = {
-    draft: { label: "草稿", cls: "badge-neutral" },
-    voting: { label: "投票中", cls: "badge-warning" },
-    passed: { label: "通过待合并", cls: "badge-info" },
-    merged: { label: "已合并", cls: "badge-success" },
-    rejected: { label: "未通过", cls: "badge-danger" },
-    failed: { label: "合并失败", cls: "badge-danger" },
+  const STATUS_CLASSES: Record<string, string> = {
+    draft: "badge-neutral",
+    voting: "badge-warning",
+    passed: "badge-info",
+    merged: "badge-success",
+    rejected: "badge-danger",
+    failed: "badge-danger",
   };
 
   let snippet = $derived(stripMarkdown(item.content));
   let href = $derived(item.type === "post" ? `/posts/${item.id}` : `/patches/${item.id}`);
   let statusInfo = $derived(
-    item.type === "patch" && item.status ? STATUS_MAP[item.status] : null
+    item.type === "patch" && item.status
+      ? {
+          label: $translator(`status.${item.status}`),
+          cls: STATUS_CLASSES[item.status] ?? "badge-neutral",
+        }
+      : null
   );
+  let rankingReason = $derived(formatRankingReason(item.ranking_reason));
+
+  function formatRankingReason(reason: string | null): string | null {
+    if (!reason) return null;
+    const [code, detail] = reason.split(":", 2);
+    if (code === "followed_author") return $translator("feed.reasonFollowed");
+    if (code === "topic") {
+      return $translator("feed.reasonTopic").replace("{topic}", detail ?? "");
+    }
+    if (code === "community_voting") return $translator("feed.reasonVoting");
+    if (code === "rising") return $translator("feed.reasonRising");
+    if (code === "latest") return $translator("feed.reasonLatest");
+    if (code === "trending") {
+      return $translator("feed.reasonTrending").replace("{count}", detail ?? "0");
+    }
+    return $translator("feed.reasonRecent");
+  }
 
   function handleOpen(event: MouseEvent) {
     if (window.matchMedia("(min-width: 64rem)").matches && onSelect) {
@@ -42,7 +65,10 @@
   aria-current={selected ? "true" : undefined}
 >
   <div class="stream-card-topline">
-    <span class="content-kind">{item.type === "post" ? "讨论" : "变更"}</span>
+    <span class="content-kind">{$translator(item.type === "post" ? "common.discussion" : "common.change")}</span>
+    {#if rankingReason}
+      <span class="ranking-reason">{rankingReason}</span>
+    {/if}
     {#if item.type === "patch"}
       {#if statusInfo}
         <span class="badge {statusInfo.cls}">
@@ -78,7 +104,7 @@
         <span>{item.tags.join(", ")}</span>
       {/if}
       {#if item.type === "patch"}
-        <span>赞成 {item.for_count} · 反对 {item.against_count}</span>
+        <span>{$translator("patch.for")} {item.for_count} · {$translator("patch.against")} {item.against_count}</span>
       {/if}
       {#if item.type === "post"}
         <span class="flex items-center gap-1">
@@ -92,7 +118,7 @@
       </span>
     </div>
 
-    <AuthorMeta username={item.author_username ?? "匿名"} userId={item.author_id} createdAt={item.created_at} />
+    <AuthorMeta username={item.author_username ?? $translator("common.anonymous")} userId={item.author_id} createdAt={item.created_at} />
   </div>
 </article>
 
@@ -133,6 +159,15 @@
     overflow: hidden;
     color: var(--vercel-text-tertiary);
     font-size: 0.7rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ranking-reason {
+    overflow: hidden;
+    max-width: 12rem;
+    color: var(--vercel-text-secondary);
+    font-size: 0.68rem;
     text-overflow: ellipsis;
     white-space: nowrap;
   }

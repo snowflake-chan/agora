@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { translator } from "../../lib/i18n";
   import { renderMarkdown } from "../../lib/markdown";
   import { timeAgo } from "../../lib/utils";
 
@@ -64,7 +65,7 @@
       <a href={profileHref} class="avatar avatar-sm no-underline hover:opacity-80 transition-opacity" style="cursor: {userId ? 'pointer' : 'default'};">
         {(username ?? "?")[0].toUpperCase()}
       </a>
-      <a href={profileHref} class="text-sm font-medium no-underline hover:underline" style="color: var(--vercel-text); cursor: {userId ? 'pointer' : 'default'};">{username ?? "匿名"}</a>
+      <a href={profileHref} class="text-sm font-medium no-underline hover:underline" style="color: var(--vercel-text); cursor: {userId ? 'pointer' : 'default'};">{username ?? $translator("common.anonymous")}</a>
       <span class="text-xs" style="color: var(--vercel-text-tertiary);">{timeAgo(createdAt)}</span>
 
       {#if onReply || onDelete}
@@ -81,12 +82,12 @@
             <div class="menu-dropdown absolute right-0 top-full mt-1 z-50" style="min-width: 8rem;">
               {#if onReply}
                 <button class="menu-item" on:click={() => { menuOpen = false; onReply(); }}>
-                  回复
+                  {$translator("common.reply")}
                 </button>
               {/if}
               {#if onDelete}
                 <button class="menu-item menu-item-danger" on:click={() => { menuOpen = false; onDelete(); }}>
-                  删除
+                  {$translator("common.delete")}
                 </button>
               {/if}
             </div>
@@ -99,7 +100,7 @@
     <div class="px-4 py-3 text-sm" style="color: var(--vercel-text-secondary);">
       {#if replyingToUsername}
         <a href={replyingToId ? `#${replyingToId}` : undefined} class="reply-trace">
-          <span>回复 @{replyingToUsername}</span>
+          <span>{$translator("common.replyingTo", { name: replyingToUsername })}</span>
           {#if replyingToContent}
             <span class="reply-trace-copy">{replyingToContent}</span>
           {/if}
@@ -118,34 +119,34 @@
     </div>
 
     {#if likeCount !== null && replyCount !== null}
-      <div class="post-actions" aria-label="帖子操作">
+      <div class="post-actions" aria-label={$translator("post.actions")}>
         <button
           type="button"
           class:active={liked}
           class="post-action"
           aria-pressed={liked}
-          aria-label={liked ? "取消点赞" : "点赞"}
+          aria-label={$translator(liked ? "common.unlike" : "common.like")}
           disabled={liking}
           on:click={onLike}
         >
           <svg viewBox="0 0 24 24" aria-hidden="true" fill={liked ? "currentColor" : "none"}>
             <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1.1L12 21l7.8-7.5 1.1-1.1a5.5 5.5 0 0 0-.1-7.8Z"/>
           </svg>
-          <span>点赞</span>
+          <span>{$translator("common.like")}</span>
           {#if likeCount > 0}<span class="action-count">{likeCount}</span>{/if}
         </button>
         <button type="button" class="post-action" on:click={onDiscuss}>
           <svg viewBox="0 0 24 24" aria-hidden="true" fill="none">
             <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M21 12a8.4 8.4 0 0 1-9 8 9.8 9.8 0 0 1-4.3-1L3 20l1.4-3.7A7.4 7.4 0 0 1 3 12a8.4 8.4 0 0 1 9-8 8.4 8.4 0 0 1 9 8Z"/>
           </svg>
-          <span>回复</span>
+          <span>{$translator("common.reply")}</span>
           {#if replyCount > 0}<span class="action-count">{replyCount}</span>{/if}
         </button>
         <button type="button" class="post-action" on:click={onShare}>
           <svg viewBox="0 0 24 24" aria-hidden="true" fill="none">
             <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7M16 6l-4-4-4 4M12 2v14"/>
           </svg>
-          <span>转发</span>
+          <span>{$translator("common.share")}</span>
         </button>
       </div>
     {/if}

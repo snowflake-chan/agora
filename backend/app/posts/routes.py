@@ -1,16 +1,23 @@
+import asyncio
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
+from sse_starlette.sse import EventSourceResponse
 
 from app.db import get_session
 from app.db.models.content import Content as ContentModel
+from app.db.models.follow import Follow
 from app.db.models.patch import Patch as PatchModel
 from app.db.models.post_like import PostLike
 from app.db.models.user import User
+from app.db.models.vote import Vote as VoteModel
 from app.notifications.service import create_notification, notify_followers
+from app.notifications.redis import get_redis
+from app.posts.feed import FeedMode, rank_feed_items
+from app.posts.realtime import FEED_CHANNEL, publish_feed_event
 from app.schemas.post import (
     CommentCreate,
     CommentRead,
@@ -18,7 +25,6 @@ from app.schemas.post import (
     PostCreate,
     PostLikeRead,
     PostRead,
-    PostUpdate,
 )
 from app.users.deps import current_user, optional_current_user
 
@@ -120,10 +126,15 @@ async def create_post(
     result = await session.execute(stmt)
     post = result.scalar_one()
 
+    await publish_feed_event(
+        "created",
+        item_type="post",
+        item_id=str(post.id),
+    )
     await notify_followers(
         author_id=user.id,
         type="following_post",
-        title=f"{user.nickname or user.username} 发布了新帖子",
+        title=f"{user.nickname or user.username} published a new post",
         message=post.title or "",
         link=f"/posts/{post.id}",
     )
@@ -148,31 +159,75 @@ async def create_post(
 async def get_feed(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
+    mode: FeedMode = Query("recommended"),
     session: AsyncSession = Depends(get_session),
+    user: User | None = Depends(optional_current_user),
 ):
-    """Unified feed of posts and patches, newest first."""
+    """Unified feed ranked for the requested home view."""
     offset = (page - 1) * page_size
+    if mode == "following" and user is None:
+        raise HTTPException(status_code=401, detail="LOGIN_REQUIRED")
 
-    # Fetch recent posts
+    following_author_ids: set[UUID] = set()
+    interest_tags: set[str] = set()
+    if user:
+        following_author_ids = set(
+            (
+                await session.execute(
+                    select(Follow.following_id).where(
+                        Follow.follower_id == user.id
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        authored_tags = (
+            await session.execute(
+                select(ContentModel.tags)
+                .where(
+                    ContentModel.type == "post",
+                    ContentModel.author_id == user.id,
+                    ContentModel.tags.is_not(None),
+                )
+                .order_by(ContentModel.created_at.desc())
+                .limit(50)
+            )
+        ).scalars().all()
+        liked_tags = (
+            await session.execute(
+                select(ContentModel.tags)
+                .join(PostLike, PostLike.post_id == ContentModel.id)
+                .where(
+                    ContentModel.type == "post",
+                    PostLike.user_id == user.id,
+                    ContentModel.tags.is_not(None),
+                )
+                .order_by(ContentModel.created_at.desc())
+                .limit(50)
+            )
+        ).scalars().all()
+        for tags in [*authored_tags, *liked_tags]:
+            interest_tags.update(tag.casefold() for tag in tags or [])
+
+    # Fetch a bounded candidate pool; ranking happens after all signals are attached.
     posts = (
         await session.execute(
             select(ContentModel)
             .where(ContentModel.type == "post")
             .order_by(ContentModel.created_at.desc())
-            .limit(1000)
+            .limit(500)
         )
     ).scalars().all()
 
-    # Fetch recent patches
     patches = (
         await session.execute(
             select(PatchModel)
             .order_by(PatchModel.created_at.desc())
-            .limit(1000)
+            .limit(500)
         )
     ).scalars().all()
 
-    # Attach reply counts for posts in feed
     post_ids = [p.id for p in posts]
     reply_counts: dict = {}
     like_counts: dict = {}
@@ -194,8 +249,6 @@ async def get_feed(
         )
         like_counts = dict(like_result.all())
 
-    # Merge & sort by created_at desc
-    items: list[FeedItem] = []
     patch_comment_counts: dict = {}
     patch_ids = [p.id for p in patches]
     if patch_ids:
@@ -211,7 +264,22 @@ async def get_feed(
                 )
             ).all()
         )
+    vote_counts: dict[str, dict[str, int]] = {}
+    if patch_ids:
+        vote_rows = (
+            await session.execute(
+                select(VoteModel.patch_id, VoteModel.choice, func.count(VoteModel.id))
+                .where(VoteModel.patch_id.in_(patch_ids))
+                .group_by(VoteModel.patch_id, VoteModel.choice)
+            )
+        ).all()
+        for patch_id, choice, count in vote_rows:
+            vote_counts.setdefault(
+                str(patch_id),
+                {"for": 0, "against": 0, "abstain": 0},
+            )[choice] = count
 
+    items: list[FeedItem] = []
     for p in posts:
         items.append(FeedItem(
             id=p.id, type="post", title=p.title or "", content=p.content,
@@ -227,10 +295,45 @@ async def get_feed(
             created_at=p.created_at,
             pr_number=p.pr_number, status=p.status,
             reply_count=patch_comment_counts.get(p.id, 0),
+            for_count=vote_counts.get(str(p.id), {}).get("for", 0),
+            against_count=vote_counts.get(str(p.id), {}).get("against", 0),
+            abstain_count=vote_counts.get(str(p.id), {}).get("abstain", 0),
         ))
 
-    items.sort(key=lambda x: x.created_at, reverse=True)
-    return items[offset:offset + page_size]
+    ranked = rank_feed_items(
+        items,
+        mode=mode,
+        following_author_ids=following_author_ids,
+        interest_tags=interest_tags,
+    )
+    return ranked[offset:offset + page_size]
+
+
+@router.get("/-/feed/stream")
+async def feed_stream():
+    """SSE stream for home feed changes shared by all connected visitors."""
+
+    async def event_generator():
+        redis = await get_redis()
+        pubsub = redis.pubsub()
+        await pubsub.subscribe(FEED_CHANNEL)
+        try:
+            while True:
+                message = await pubsub.get_message(timeout=25.0)
+                if message and message["type"] == "message":
+                    yield {
+                        "event": "feed",
+                        "data": message["data"],
+                    }
+                else:
+                    yield {"comment": "ping"}
+        except asyncio.CancelledError:
+            pass
+        finally:
+            await pubsub.unsubscribe(FEED_CHANNEL)
+            await pubsub.close()
+
+    return EventSourceResponse(event_generator())
 
 
 @router.get("/{post_id}", response_model=PostRead)
@@ -305,21 +408,30 @@ async def like_post(
     user: User = Depends(current_user),
 ):
     """Like a post. Repeated requests are idempotent."""
-    content_exists = await session.scalar(
-        select(ContentModel.id).where(
+    content = await session.scalar(
+        select(ContentModel).where(
             ContentModel.id == post_id, ContentModel.type.in_(("post", "comment"))
         )
     )
-    if not content_exists:
+    if not content:
         raise HTTPException(status_code=404, detail="CONTENT_NOT_FOUND")
 
     await session.execute(
         insert(PostLike)
-        .values(post_id=content_exists, user_id=user.id)
+        .values(post_id=content.id, user_id=user.id)
         .on_conflict_do_nothing(constraint="uq_post_like_post_user")
     )
     await session.commit()
-    return await _post_like_state(session, post_id, user.id)
+    state = await _post_like_state(session, post_id, user.id)
+    root_type = "post" if content.type == "post" else "patch" if content.patch_id else "post"
+    root_id = content.id if content.type == "post" else content.patch_id or content.parent_id
+    if root_id:
+        await publish_feed_event(
+            "updated",
+            item_type=root_type,
+            item_id=str(root_id),
+        )
+    return state
 
 
 @router.delete("/{post_id}/like", response_model=PostLikeRead)
@@ -329,21 +441,30 @@ async def unlike_post(
     user: User = Depends(current_user),
 ):
     """Remove the current user's like. Repeated requests are idempotent."""
-    content_exists = await session.scalar(
-        select(ContentModel.id).where(
+    content = await session.scalar(
+        select(ContentModel).where(
             ContentModel.id == post_id, ContentModel.type.in_(("post", "comment"))
         )
     )
-    if not content_exists:
+    if not content:
         raise HTTPException(status_code=404, detail="CONTENT_NOT_FOUND")
 
     await session.execute(
         delete(PostLike).where(
-            PostLike.post_id == content_exists, PostLike.user_id == user.id
+            PostLike.post_id == content.id, PostLike.user_id == user.id
         )
     )
     await session.commit()
-    return await _post_like_state(session, post_id, user.id)
+    state = await _post_like_state(session, post_id, user.id)
+    root_type = "post" if content.type == "post" else "patch" if content.patch_id else "post"
+    root_id = content.id if content.type == "post" else content.patch_id or content.parent_id
+    if root_id:
+        await publish_feed_event(
+            "updated",
+            item_type=root_type,
+            item_id=str(root_id),
+        )
+    return state
 
 
 @router.delete("/{content_id}", status_code=204)
@@ -361,8 +482,24 @@ async def delete_content(
     if content.author_id != user.id:
         raise HTTPException(status_code=403, detail="FORBIDDEN")
 
+    if content.type == "post":
+        root_type = "post"
+        root_id = content.id
+    elif content.patch_id:
+        root_type = "patch"
+        root_id = content.patch_id
+    else:
+        root_type = "post"
+        root_id = content.parent_id
+
     await session.delete(content)
     await session.commit()
+    if root_id:
+        await publish_feed_event(
+            "removed" if content.type == "post" else "updated",
+            item_type=root_type,
+            item_id=str(root_id),
+        )
 
 
 # ── Comments (nested under posts) ──
@@ -510,8 +647,8 @@ async def create_comment(
         await create_notification(
             recipient_id=post.author_id,
             type="reply",
-            title="新回复",
-            message=f"{user.nickname or user.username} 回复了你的帖子《{post.title or ''}》",
+            title="New reply",
+            message=f"{user.nickname or user.username} replied to your post \"{post.title or ''}\"",
             link=f"/posts/{post.id}#{comment.id}",
         )
 
@@ -525,11 +662,16 @@ async def create_comment(
             await create_notification(
                 recipient_id=reply_author_id,
                 type="reply",
-                title="新回复",
-                message=f"{user.nickname or user.username} 回复了你的评论",
+                title="New reply",
+                message=f"{user.nickname or user.username} replied to your comment",
                 link=f"/posts/{post.id}#{comment.id}",
             )
 
+    await publish_feed_event(
+        "updated",
+        item_type="post",
+        item_id=str(post.id),
+    )
     return CommentRead(
         id=comment.id,
         content=comment.content,

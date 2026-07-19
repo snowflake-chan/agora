@@ -1,4 +1,5 @@
 import type { User } from "./auth";
+import { ApiError } from "./auth";
 
 import { API_BASE } from "./config";
 
@@ -62,7 +63,7 @@ export async function listComments(postId: string): Promise<Comment[]> {
 
 export async function deleteContent(id: string): Promise<void> {
   const res = await fetch(`${API_BASE}/posts/${id}`, { method: "DELETE", credentials: "include" });
-  if (!res.ok && res.status !== 204) throw new Error("删除失败");
+  if (!res.ok && res.status !== 204) throw new ApiError("POST_DELETE_FAILED");
 }
 
 export interface PostLikeState {
@@ -75,7 +76,7 @@ async function setPostLike(id: string, liked: boolean): Promise<PostLikeState> {
     method: liked ? "PUT" : "DELETE",
     credentials: "include",
   });
-  if (!res.ok) throw new Error(liked ? "点赞失败" : "取消点赞失败");
+  if (!res.ok) throw new ApiError(liked ? "POST_LIKE_FAILED" : "POST_UNLIKE_FAILED");
   return res.json();
 }
 
@@ -97,10 +98,23 @@ export interface FeedItem {
   status: string | null;
   for_count: number;
   against_count: number;
+  abstain_count: number;
+  ranking_reason: string | null;
 }
 
-export async function getFeed(page = 1): Promise<FeedItem[]> {
-  const res = await fetch(`${API_BASE}/posts/-/feed?page=${page}`, { credentials: "include" });
+export type FeedMode = "recommended" | "trending" | "following" | "latest";
+
+export async function getFeed(
+  page = 1,
+  mode: FeedMode = "recommended",
+): Promise<FeedItem[]> {
+  const params = new URLSearchParams({
+    page: String(page),
+    mode,
+  });
+  const res = await fetch(`${API_BASE}/posts/-/feed?${params}`, {
+    credentials: "include",
+  });
   if (!res.ok) throw new Error("Failed to load feed");
   return res.json();
 }

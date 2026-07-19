@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { translator } from "../../lib/i18n";
   import { renderMarkdown } from "../../lib/markdown";
   import { getPatch, deletePatch, submitPatch, votePatch, listVotes, listPatchComments, createPatchComment, type Patch, type Vote } from "../../lib/patches";
   import { deleteContent, likePost, unlikePost, type Comment } from "../../lib/posts";
@@ -27,27 +28,44 @@
   let showDeleteDialog = $state(false);
   let pendingCommentDelete = $state<Comment | null>(null);
 
-  const STATUS_MAP: Record<string, { label: string; type: string }> = {
-    draft: { label: "草稿", type: "neutral" },
-    voting: { label: "投票中", type: "warning" },
-    passed: { label: "通过待合并", type: "info" },
-    merged: { label: "已合并", type: "success" },
-    rejected: { label: "未通过", type: "danger" },
-    failed: { label: "合并失败", type: "danger" },
+  const STATUS_TYPES: Record<string, string> = {
+    draft: "neutral",
+    voting: "warning",
+    passed: "info",
+    merged: "success",
+    rejected: "danger",
+    failed: "danger",
   };
 
-  let statusInfo = $derived(patch ? STATUS_MAP[patch.status] ?? { label: patch.status, type: "neutral" } : { label: "", type: "neutral" });
+  let statusInfo = $derived(patch
+    ? {
+        label: $translator(`status.${patch.status}`),
+        type: STATUS_TYPES[patch.status] ?? "neutral",
+      }
+    : { label: "", type: "neutral" });
   let deadlineStr = $derived(patch?.voting_ends_at ? formatDeadline(patch.voting_ends_at) : null);
 
   function formatDeadline(iso: string): string {
     const end = new Date(iso);
     const now = new Date();
     const diff = end.getTime() - now.getTime();
-    if (diff <= 0) return "已截止";
+    if (diff <= 0) return $translator("patch.closed");
     const hours = Math.floor(diff / 3600000);
     const days = Math.floor(hours / 24);
-    if (days > 0) return `剩余 ${days} 天 ${hours % 24} 小时`;
-    return `剩余 ${hours} 小时`;
+    if (days > 0) {
+      return $translator("patch.remainingDaysHours", { days, hours: hours % 24 });
+    }
+    return $translator("patch.remainingHours", { hours });
+  }
+
+  function voteLabel(choice: string): string {
+    return $translator(
+      choice === "for" ? "patch.for" : choice === "against" ? "patch.against" : "patch.abstain",
+    );
+  }
+
+  function votingOpen(iso: string | null): boolean {
+    return Boolean(iso && new Date(iso).getTime() > Date.now());
   }
 
   onMount(async () => {
@@ -63,7 +81,7 @@
       const myVote = v.find((v) => v.voter_id === $currentUser?.id);
       if (myVote) currentUserVote = myVote;
     } catch {
-      toaster.error("错误", "无法加载变更");
+      toaster.error($translator("common.error"), $translator("patch.loadFailed"));
     } finally {
       loading = false;
     }
@@ -74,16 +92,16 @@
       await deletePatch(patchId);
       window.location.href = "/";
     } catch {
-      toaster.error("删除失败");
+      toaster.error($translator("patch.deleteFailed"));
     }
   }
 
   async function handleSubmit() {
     try {
       patch = await submitPatch(patchId);
-      toaster.success("已提交投票", "窗口期 3 天");
+      toaster.success($translator("patch.submitted"), $translator("patch.votingWindow"));
     } catch (e: any) {
-      toaster.error("提交失败", e.message ?? "");
+      toaster.error($translator("patch.submitFailed"), $translator("common.tryAgain"));
     }
   }
 
@@ -98,9 +116,9 @@
       currentUserVote = v;
       votes = [...votes.filter((v) => v.voter_id !== $currentUser?.id), v];
       patch = await getPatch(patchId);
-      toaster.success("投票成功");
+      toaster.success($translator("patch.voteSuccess"));
     } catch (e: any) {
-      toaster.error("投票失败", e.message ?? "");
+      toaster.error($translator("patch.voteFailed"), $translator("common.tryAgain"));
     }
   }
 
@@ -120,7 +138,7 @@
       comments = comments.filter((item) => item.id !== target.id);
       if (patch) patch = { ...patch, comment_count: Math.max(0, patch.comment_count - 1) };
     } catch {
-      toaster.error("删除失败");
+      toaster.error($translator("patch.deleteReplyTitle"), $translator("common.tryAgain"));
     } finally {
       pendingCommentDelete = null;
     }
@@ -149,7 +167,7 @@
       replyingTo = null;
       if (patch) patch = { ...patch, comment_count: patch.comment_count + 1 };
     } catch (e: any) {
-      toaster.error("评论失败", e.message ?? "请稍后重试");
+      toaster.error($translator("patch.commentFailed"), $translator("common.tryAgain"));
     } finally {
       submittingReply = false;
     }
@@ -169,7 +187,7 @@
         item.id === comment.id ? { ...item, ...state } : item
       );
     } catch (e: any) {
-      toaster.error("操作失败", e.message ?? "请稍后重试");
+      toaster.error($translator("common.operationFailed"), $translator("common.tryAgain"));
     } finally {
       likingId = null;
     }
@@ -181,10 +199,10 @@
       if (navigator.share) await navigator.share({ title: patch?.title, url });
       else {
         await navigator.clipboard.writeText(url);
-        toaster.success("链接已复制");
+        toaster.success($translator("common.linkCopied"));
       }
     } catch (e: any) {
-      if (e?.name !== "AbortError") toaster.error("转发失败");
+      if (e?.name !== "AbortError") toaster.error($translator("common.shareFailed"));
     }
   }
 
@@ -201,17 +219,17 @@
 {#if loading}
   <div class="empty-state">
     <div class="spinner mb-3"></div>
-    加载中...
+    {$translator("common.loading")}
   </div>
 {:else if !patch}
-  <div class="empty-state">变更不存在</div>
+  <div class="empty-state">{$translator("patch.notFound")}</div>
 {:else}
   <!-- Back button -->
   {#if !embedded}<button class="back-btn" onclick={goBack}>
     <svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
     </svg>
-    <span>返回</span>
+    <span>{$translator("common.back")}</span>
   </button>{/if}
 
   <!-- Header -->
@@ -236,7 +254,7 @@
     </div>
     <h1 class="mt-2 text-xl font-bold" style="color: var(--vercel-text);">{patch.title}</h1>
     <div class="mt-1">
-      <AuthorMeta username={patch.author_username ?? "匿名"} userId={patch.author_id} createdAt={patch.created_at} />
+      <AuthorMeta username={patch.author_username ?? $translator("common.anonymous")} userId={patch.author_id} createdAt={patch.created_at} />
     </div>
   </div>
 
@@ -250,14 +268,16 @@
     <section class="vote-panel mb-8">
       <div class="vote-heading">
         <div>
-          <p class="section-kicker">Governance</p>
-          <h3>社区决策</h3>
+          <p class="section-kicker">{$translator("patch.governance")}</p>
+          <h3>{$translator("patch.governance")}</h3>
         </div>
         {#if deadlineStr}<span class="vote-deadline">{deadlineStr}</span>{/if}
       </div>
 
-      {#if deadlineStr && deadlineStr !== "已截止"}
-        <p class="mb-3 text-xs" style="color: var(--vercel-text-tertiary);">{deadlineStr}，截止后自动计票</p>
+      {#if deadlineStr && votingOpen(patch.voting_ends_at)}
+        <p class="mb-3 text-xs" style="color: var(--vercel-text-tertiary);">
+          {$translator("patch.autoTally", { deadline: deadlineStr })}
+        </p>
       {/if}
 
       <!-- Vote bar -->
@@ -270,15 +290,15 @@
       {/if}
 
       <div class="vote-totals">
-        <div class="vote-total is-for"><strong>{patch.for_count}</strong><span>赞成</span></div>
-        <div class="vote-total is-against"><strong>{patch.against_count}</strong><span>反对</span></div>
-        <div class="vote-total"><strong>{patch.abstain_count}</strong><span>弃权</span></div>
+        <div class="vote-total is-for"><strong>{patch.for_count}</strong><span>{$translator("patch.for")}</span></div>
+        <div class="vote-total is-against"><strong>{patch.against_count}</strong><span>{$translator("patch.against")}</span></div>
+        <div class="vote-total"><strong>{patch.abstain_count}</strong><span>{$translator("patch.abstain")}</span></div>
       </div>
 
       {#if $currentUser}
         {#if currentUserVote}
           <div class="mb-3 text-sm" style="color: var(--vercel-text-secondary);">
-            你的投票：<span class="font-medium" style="color: var(--vercel-text);">{currentUserVote.choice === "for" ? "赞成" : currentUserVote.choice === "against" ? "反对" : "弃权"}</span>
+            {$translator("patch.yourVote", { choice: voteLabel(currentUserVote.choice) })}
           </div>
         {/if}
         <div class="vote-actions">
@@ -286,23 +306,23 @@
             class="btn {currentUserVote?.choice === 'for' ? 'btn-primary' : 'btn-secondary'} btn-sm"
             onclick={() => promptVote("for")}
           >
-            赞成
+            {$translator("patch.for")}
           </button>
           <button
             class="btn {currentUserVote?.choice === 'against' ? 'btn-primary' : 'btn-secondary'} btn-sm"
             onclick={() => promptVote("against")}
           >
-            反对
+            {$translator("patch.against")}
           </button>
           <button
             class="btn {currentUserVote?.choice === 'abstain' ? 'btn-primary' : 'btn-secondary'} btn-sm"
             onclick={() => promptVote("abstain")}
           >
-            弃权
+            {$translator("patch.abstain")}
           </button>
         </div>
       {:else}
-        <a href="/login" class="text-sm transition-colors" style="color: var(--vercel-text-secondary);">登录后参与投票</a>
+        <a href="/login" class="text-sm transition-colors" style="color: var(--vercel-text-secondary);">{$translator("patch.loginToVote")}</a>
       {/if}
     </section>
   {/if}
@@ -311,13 +331,13 @@
   {#if patch.status === "merged" || patch.status === "rejected" || patch.status === "failed" || patch.status === "passed"}
     <div class="card p-4 mb-8">
       <h3 class="mb-3 text-sm font-semibold" style="color: var(--vercel-text);">
-        {patch.status === "merged" ? "已合并" : patch.status === "rejected" ? "未通过" : patch.status === "failed" ? "合并失败" : "已通过"}
+        {statusInfo.label}
       </h3>
       <div class="flex gap-4 text-sm" style="color: var(--vercel-text-secondary);">
-        <span>赞成 {patch.for_count}</span>
-        <span>反对 {patch.against_count}</span>
-        <span>弃权 {patch.abstain_count}</span>
-        <span>总票数 {totalVotes}</span>
+        <span>{$translator("patch.for")} {patch.for_count}</span>
+        <span>{$translator("patch.against")} {patch.against_count}</span>
+        <span>{$translator("patch.abstain")} {patch.abstain_count}</span>
+        <span>{$translator("patch.totalVotes", { count: totalVotes })}</span>
       </div>
     </div>
   {/if}
@@ -327,10 +347,10 @@
     <div class="mb-8 flex gap-2">
       {#if patch.status === "draft"}
         <button class="btn btn-primary btn-sm" onclick={handleSubmit}>
-          提交投票
+          {$translator("patch.submit")}
         </button>
         <button class="btn btn-danger btn-sm" onclick={() => { pendingCommentDelete = null; showDeleteDialog = true; }}>
-          删除
+          {$translator("common.delete")}
         </button>
       {/if}
     </div>
@@ -340,10 +360,10 @@
   <section class="discussion-section" aria-labelledby="discussion-title">
     <div class="discussion-heading">
       <div>
-        <p class="section-kicker">Discussion</p>
-        <h2 id="discussion-title">讨论 <span>{patch.comment_count}</span></h2>
+        <p class="section-kicker">{$translator("common.discussion")}</p>
+        <h2 id="discussion-title">{$translator("common.discussion")} <span>{patch.comment_count}</span></h2>
       </div>
-      <p>每条评论都可以继续回复、点赞和转发。</p>
+      <p>{$translator("patch.discussionDescription")}</p>
     </div>
 
     {#if comments.length > 0}
@@ -351,7 +371,7 @@
         <div class="timeline-line"></div>
         {#each comments as comment (comment.id)}
           <TimelineItem
-            username={comment.author_username ?? "匿名"}
+            username={comment.author_username ?? $translator("common.anonymous")}
             userId={comment.author_id}
             createdAt={comment.created_at}
             content={comment.content}
@@ -374,32 +394,32 @@
         {/each}
       </div>
     {:else}
-      <div class="discussion-empty">还没有讨论，写下第一条意见。</div>
+      <div class="discussion-empty">{$translator("patch.discussionEmpty")}</div>
     {/if}
 
     {#if $currentUser}
       <div class="reply-composer">
         {#if replyingTo}
           <div class="replying-label">
-            <span>回复 @{replyingTo.author_username}</span>
-            <button type="button" onclick={() => (replyingTo = null)}>取消</button>
+            <span>{$translator("common.replyingTo", { name: replyingTo.author_username ?? $translator("common.anonymous") })}</span>
+            <button type="button" onclick={() => (replyingTo = null)}>{$translator("common.cancel")}</button>
           </div>
         {/if}
         <textarea
           id="patch-reply"
           class="input"
           bind:value={replyText}
-          placeholder="补充你的判断、问题或建议…"
+          placeholder={$translator("patch.commentPlaceholder")}
         ></textarea>
         <div class="composer-footer">
-          <span>支持 Markdown</span>
+          <span>{$translator("common.markdownSupported")}</span>
           <button class="btn btn-primary btn-sm" disabled={submittingReply || !replyText.trim()} onclick={submitReply}>
-            {submittingReply ? "发送中…" : "参与讨论"}
+            {submittingReply ? $translator("common.sending") : $translator("patch.joinDiscussion")}
           </button>
         </div>
       </div>
     {:else}
-      <a class="discussion-login" href="/login?returnTo={encodeURIComponent(`/patches/${patchId}`)}">登录后参与讨论</a>
+      <a class="discussion-login" href="/login?returnTo={encodeURIComponent(`/patches/${patchId}`)}">{$translator("patch.loginToDiscuss")}</a>
     {/if}
   </section>
 
@@ -407,13 +427,13 @@
   {#if votes.length > 0}
     <div class="card mb-8">
       <h3 class="px-4 py-2 text-sm font-semibold border-b" style="color: var(--vercel-text); border-color: var(--vercel-border);">
-        投票记录
+        {$translator("patch.voteRecords")}
       </h3>
       {#each votes as v (v.id)}
         <div class="flex items-center justify-between px-4 py-2 text-sm border-b last:border-0" style="border-color: var(--vercel-border);">
-          <span style="color: var(--vercel-text-secondary);">{v.voter_username ?? "匿名"}</span>
+          <span style="color: var(--vercel-text-secondary);">{v.voter_username ?? $translator("common.anonymous")}</span>
           <span class="text-xs" style="color: {v.choice === 'for' ? 'var(--vercel-success)' : v.choice === 'against' ? 'var(--vercel-danger)' : 'var(--vercel-text-tertiary)'};">
-            {v.choice === "for" ? "赞成" : v.choice === "against" ? "反对" : "弃权"}
+            {voteLabel(v.choice)}
           </span>
         </div>
       {/each}
@@ -423,17 +443,17 @@
 
 <ConfirmDialog
   bind:open={showDeleteDialog}
-  title={pendingCommentDelete ? "删除回复" : "删除变更"}
-  description={pendingCommentDelete ? "确认删除这条回复？后续追评也会失去这段上下文。" : "确认删除这个变更？此操作不可撤销。"}
-  confirmText="删除"
+  title={$translator(pendingCommentDelete ? "patch.deleteReplyTitle" : "patch.deleteTitle")}
+  description={$translator(pendingCommentDelete ? "patch.deleteReplyDescription" : "patch.deleteDescription")}
+  confirmText={$translator("common.delete")}
   onConfirm={confirmDelete}
 />
 
 <ConfirmDialog
   bind:open={showVoteDialog}
-  title={pendingChoice === "for" ? "投赞成票" : pendingChoice === "against" ? "投反对票" : "投弃权票"}
-  description={pendingChoice === "for" ? "确认投赞成票？" : pendingChoice === "against" ? "确认投反对票？" : "确认弃权？"}
-  confirmText="确认"
+  title={$translator("patch.castVoteTitle", { choice: voteLabel(pendingChoice) })}
+  description={$translator("patch.castVoteDescription", { choice: voteLabel(pendingChoice) })}
+  confirmText={$translator("common.confirm")}
   onConfirm={confirmVote}
 />
 

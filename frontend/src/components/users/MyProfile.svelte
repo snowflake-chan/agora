@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { translateError, translator } from "../../lib/i18n";
   import { initAuth, currentUser, updateProfile, logout } from "../../stores/auth";
   import type { UserUpdateData } from "../../lib/auth";
 
@@ -44,12 +45,12 @@
     // Password change
     if (newPassword) {
       if (newPassword.length < 8) {
-        message = { type: "error", text: "密码至少 8 位" };
+        message = { type: "error", text: $translator("profile.passwordTooShort") };
         saving = false;
         return;
       }
       if (newPassword !== confirmPassword) {
-        message = { type: "error", text: "两次输入的密码不一致" };
+        message = { type: "error", text: $translator("profile.passwordMismatch") };
         saving = false;
         return;
       }
@@ -57,18 +58,21 @@
     }
 
     if (Object.keys(data).length === 0) {
-      message = { type: "error", text: "没有修改任何内容" };
+      message = { type: "error", text: $translator("profile.noChanges") };
       saving = false;
       return;
     }
 
     try {
       await updateProfile(data);
-      message = { type: "success", text: "资料已更新" };
+      message = { type: "success", text: $translator("profile.updated") };
       newPassword = "";
       confirmPassword = "";
     } catch (e: any) {
-      message = { type: "error", text: e?.message ?? "更新失败" };
+      message = {
+        type: "error",
+        text: translateError(e, $translator, "profile.updateFailed"),
+      };
     } finally {
       saving = false;
     }
@@ -82,8 +86,8 @@
 
 {#if !$currentUser}
   <div class="empty-state">
-    <p>请先登录</p>
-    <a href="/login" class="btn btn-primary btn-sm mt-3">前往登录</a>
+    <p>{$translator("profile.signInRequired")}</p>
+    <a href="/login" class="btn btn-primary btn-sm mt-3">{$translator("profile.goSignIn")}</a>
   </div>
 {:else}
   <div class="card p-6 mb-6">
@@ -92,8 +96,8 @@
         {($currentUser.nickname ?? $currentUser.username)[0].toUpperCase()}
       </div>
       <div>
-        <h1 class="text-xl font-bold" style="color: var(--vercel-text);">我的资料</h1>
-        <p class="text-sm" style="color: var(--vercel-text-tertiary);">修改个人信息和密码</p>
+        <h1 class="text-xl font-bold" style="color: var(--vercel-text);">{$translator("profile.myProfile")}</h1>
+        <p class="text-sm" style="color: var(--vercel-text-tertiary);">{$translator("profile.editDescription")}</p>
       </div>
     </div>
 
@@ -109,34 +113,34 @@
     <div class="space-y-4">
       <!-- Username -->
       <div>
-        <label class="block text-xs mb-1" style="color: var(--vercel-text-secondary);">用户名</label>
+        <label class="block text-xs mb-1" style="color: var(--vercel-text-secondary);">{$translator("auth.username")}</label>
         <input
           class="input"
           type="text"
           bind:value={editForm.username}
-          placeholder="用户名"
+          placeholder={$translator("auth.username")}
         />
       </div>
 
       <!-- Nickname -->
       <div>
-        <label class="block text-xs mb-1" style="color: var(--vercel-text-secondary);">显示昵称</label>
+        <label class="block text-xs mb-1" style="color: var(--vercel-text-secondary);">{$translator("profile.displayName")}</label>
         <input
           class="input"
           type="text"
           bind:value={editForm.nickname}
-          placeholder="设置一个显示昵称"
+          placeholder={$translator("profile.displayNamePlaceholder")}
         />
       </div>
 
       <!-- Bio -->
       <div>
-        <label class="block text-xs mb-1" style="color: var(--vercel-text-secondary);">个人简介</label>
+        <label class="block text-xs mb-1" style="color: var(--vercel-text-secondary);">{$translator("profile.bio")}</label>
         <textarea
           class="input"
           rows="3"
           bind:value={editForm.bio}
-          placeholder="介绍一下自己..."
+          placeholder={$translator("profile.bioPlaceholder")}
           maxlength="500"
         ></textarea>
         <p class="text-xs mt-1" style="color: var(--vercel-text-tertiary);">{(editForm.bio ?? "").length}/500</p>
@@ -144,7 +148,7 @@
 
       <!-- Email -->
       <div>
-        <label class="block text-xs mb-1" style="color: var(--vercel-text-secondary);">邮箱</label>
+        <label class="block text-xs mb-1" style="color: var(--vercel-text-secondary);">{$translator("auth.email")}</label>
         <input
           class="input"
           type="email"
@@ -157,37 +161,37 @@
 
       <!-- Password -->
       <div>
-        <label class="block text-xs mb-1" style="color: var(--vercel-text-secondary);">新密码（留空则不修改）</label>
+        <label class="block text-xs mb-1" style="color: var(--vercel-text-secondary);">{$translator("profile.newPassword")}</label>
         <input
           class="input"
           type="password"
           bind:value={newPassword}
-          placeholder="至少 8 位"
+          placeholder={$translator("profile.newPasswordPlaceholder")}
         />
       </div>
 
       <div>
-        <label class="block text-xs mb-1" style="color: var(--vercel-text-secondary);">确认新密码</label>
+        <label class="block text-xs mb-1" style="color: var(--vercel-text-secondary);">{$translator("profile.confirmPassword")}</label>
         <input
           class="input"
           type="password"
           bind:value={confirmPassword}
-          placeholder="再次输入新密码"
+          placeholder={$translator("profile.confirmPasswordPlaceholder")}
         />
       </div>
     </div>
 
     <div class="flex items-center justify-between mt-6 pt-4 border-t" style="border-color: var(--vercel-border);">
       <button class="btn btn-ghost btn-sm" style="color: var(--vercel-danger);" onclick={handleLogout}>
-        退出登录
+        {$translator("common.logout")}
       </button>
       <button class="btn btn-primary" onclick={handleSave} disabled={saving}>
-        {saving ? "保存中..." : "保存修改"}
+        {saving ? $translator("profile.saving") : $translator("profile.save")}
       </button>
     </div>
   </div>
 
   <div class="flex justify-center gap-4 text-sm">
-    <a href="/users/{$currentUser.id}" style="color: var(--vercel-text-secondary);">查看我的公开资料</a>
+    <a href="/users/{$currentUser.id}" style="color: var(--vercel-text-secondary);">{$translator("profile.viewPublic")}</a>
   </div>
 {/if}

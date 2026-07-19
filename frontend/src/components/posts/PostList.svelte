@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { translator } from "../../lib/i18n";
   import { listPosts, type Post } from "../../lib/posts";
   import PostCard from "./PostCard.svelte";
 
@@ -20,12 +21,12 @@
 {#if loading}
   <div class="empty-state">
     <div class="spinner mb-3"></div>
-    加载中...
+    {$translator("common.loading")}
   </div>
 {:else if posts.length === 0}
   <div class="empty-state">
-    <p>还没有帖子</p>
-    <a href="/posts/new" class="btn btn-ghost btn-sm mt-3">发布第一条</a>
+    <p>{$translator("post.empty")}</p>
+    <a href="/posts/new" class="btn btn-ghost btn-sm mt-3">{$translator("post.first")}</a>
   </div>
 {:else}
   {#each posts as post (post.id)}

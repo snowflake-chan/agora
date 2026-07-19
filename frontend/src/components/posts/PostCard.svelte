@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Post } from "../../lib/posts";
+  import { translator } from "../../lib/i18n";
   import { stripMarkdown } from "../../lib/utils";
   import AuthorMeta from "../AuthorMeta.svelte";
 
@@ -39,7 +40,7 @@
       </span>
     </div>
 
-    <AuthorMeta username={post.author_username ?? "匿名"} userId={post.author_id} createdAt={post.created_at} />
+    <AuthorMeta username={post.author_username ?? $translator("common.anonymous")} userId={post.author_id} createdAt={post.created_at} />
   </div>
 </article>
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { translator } from "../lib/i18n";
   import { timeAgo } from "../lib/utils";
 
   let { username, userId, createdAt }: { username: string; userId?: string; createdAt: string } = $props();
@@ -11,7 +12,7 @@
     {(username ?? "?")[0].toUpperCase()}
   </a>
   <a href={profileHref} class="no-underline hover:underline" style="color: var(--vercel-text-secondary); cursor: {userId ? 'pointer' : 'default'};">
-    {username ?? "匿名"}
+    {username ?? $translator("common.anonymous")}
   </a>
   <span>·</span>
   <span>{timeAgo(createdAt)}</span>

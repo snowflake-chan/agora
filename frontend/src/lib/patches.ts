@@ -1,4 +1,5 @@
 import { API_BASE } from "./config";
+import { ApiError } from "./auth";
 import type { Comment } from "./posts";
 
 export interface Patch {
@@ -68,7 +69,7 @@ export async function deletePatch(id: string): Promise<void> {
     method: "DELETE",
     credentials: "include",
   });
-  if (!res.ok && res.status !== 204) throw new Error("删除失败");
+  if (!res.ok && res.status !== 204) throw new ApiError("PATCH_DELETE_FAILED");
 }
 
 export async function submitPatch(id: string): Promise<Patch> {
@@ -106,7 +107,7 @@ export async function listPatchComments(patchId: string): Promise<Comment[]> {
   const res = await fetch(`${API_BASE}/patches/${patchId}/comments`, {
     credentials: "include",
   });
-  if (!res.ok) throw new Error("无法加载讨论");
+  if (!res.ok) throw new ApiError("PATCH_COMMENTS_LOAD_FAILED");
   return res.json();
 }
 
@@ -120,6 +121,6 @@ export async function createPatchComment(
     body: JSON.stringify(data),
     credentials: "include",
   });
-  if (!res.ok) throw new Error((await res.json()).detail ?? "评论失败");
+  if (!res.ok) throw new ApiError((await res.json()).detail ?? "PATCH_COMMENT_FAILED");
   return res.json();
 }

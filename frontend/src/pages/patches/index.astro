@@ -1,16 +1,15 @@
 ---
-// Redirect to home page; the MainView component reads localStorage to
-// pre-select the patches view so the transition is seamless.
+// Redirect to home and preselect the changes view.
 ---
 
-<html lang="zh-CN">
+<html lang="en">
   <head>
     <meta http-equiv="refresh" content="0; url=/" />
     <script is:inline>
-      try { localStorage.setItem("agora:initView", "patches"); } catch (e) {}
+      try { localStorage.setItem("agora:initView", "patches"); } catch {}
     </script>
   </head>
   <body>
-    <p style="color:#888;font-family:sans-serif;padding:2rem">正在跳转到首页…</p>
+    <p style="color:#888;font-family:sans-serif;padding:2rem">Opening changes...</p>
   </body>
 </html>

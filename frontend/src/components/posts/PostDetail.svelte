@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { translator } from "../../lib/i18n";
   import { getPost, listComments, createComment, deleteContent, likePost, unlikePost, type Post, type Comment } from "../../lib/posts";
   import { toaster } from "../../stores/toaster";
   import { currentUser } from "../../stores/auth";
@@ -27,7 +28,7 @@
       post = p;
       comments = c;
     } catch {
-      toaster.error("错误", "无法加载帖子");
+      toaster.error($translator("common.error"), $translator("post.loadFailed"));
     } finally {
       loading = false;
     }
@@ -79,7 +80,7 @@
         );
       }
     } catch (e: any) {
-      toaster.error("操作失败", e.message ?? "请稍后重试");
+      toaster.error($translator("common.operationFailed"), $translator("common.tryAgain"));
     } finally {
       likingId = null;
     }
@@ -97,11 +98,14 @@
         await navigator.share(data);
       } else {
         await navigator.clipboard.writeText(data.url);
-        toaster.success("链接已复制", "可以粘贴给其他人了");
+        toaster.success(
+          $translator("common.linkCopied"),
+          $translator("common.linkCopiedDescription"),
+        );
       }
     } catch (e: any) {
       if (e?.name !== "AbortError") {
-        toaster.error("转发失败", "无法复制链接，请稍后重试");
+        toaster.error($translator("common.shareFailed"), $translator("common.copyFailed"));
       }
     }
   }
@@ -123,7 +127,7 @@
         await deleteContent(postId);
         window.location.href = "/";
       } catch {
-        toaster.error("删除失败");
+        toaster.error($translator("post.deleteTitle"), $translator("common.tryAgain"));
       }
     } else if (pendingDelete === "comment") {
       const comment = comments[pendingDeleteIndex - 1];
@@ -133,7 +137,7 @@
         comments = comments.filter((c) => c.id !== comment.id);
         if (post) post.reply_count--;
       } catch {
-        toaster.error("删除失败");
+        toaster.error($translator("post.deleteReplyTitle"), $translator("common.tryAgain"));
       }
     }
   }
@@ -151,7 +155,7 @@
       replyingTo = null;
       if (post) post.reply_count++;
     } catch (e: any) {
-      toaster.error("错误", e.message ?? "回复失败");
+      toaster.error($translator("common.error"), $translator("post.replyFailed"));
     } finally {
       submitting = false;
     }
@@ -181,7 +185,7 @@
     items = [
       {
         key: post.id,
-        username: post.author_username ?? "匿名",
+        username: post.author_username ?? $translator("common.anonymous"),
         userId: post.author_id,
         createdAt: post.created_at,
         content: post.content,
@@ -196,7 +200,7 @@
       },
       ...comments.map((c) => ({
         key: c.id,
-        username: c.author_username ?? "匿名",
+        username: c.author_username ?? $translator("common.anonymous"),
         userId: c.author_id,
         createdAt: c.created_at,
         content: c.content,
@@ -216,17 +220,17 @@
 {#if loading}
   <div class="empty-state">
     <div class="spinner mb-3"></div>
-    加载中...
+    {$translator("common.loading")}
   </div>
 {:else if !post}
-  <div class="empty-state">帖子不存在</div>
+  <div class="empty-state">{$translator("post.notFound")}</div>
 {:else}
   <!-- Back button -->
   {#if !embedded}<button class="back-btn" onclick={() => window.history.back()}>
     <svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
     </svg>
-    <span>返回</span>
+    <span>{$translator("common.back")}</span>
   </button>{/if}
 
   <div class="mb-6 ml-7">
@@ -277,8 +281,8 @@
     <div class="mt-4 ml-7 pt-4 border-t" style="border-color: var(--vercel-border);">
       {#if replyingTo}
         <div class="mb-2 flex items-center gap-2 text-xs" style="color: var(--vercel-text-tertiary);">
-          <span>回复 <span class="font-medium" style="color: var(--vercel-text);">@{replyingTo.author_username}</span></span>
-          <button class="transition-colors" style="color: var(--vercel-text-tertiary);" onmouseenter={(e) => e.currentTarget.style.color = 'var(--vercel-text)'} onmouseleave={(e) => e.currentTarget.style.color = 'var(--vercel-text-tertiary)'} onclick={cancelReply}>取消</button>
+          <span>{$translator("common.replyingTo", { name: replyingTo.author_username ?? $translator("common.anonymous") })}</span>
+          <button class="transition-colors" style="color: var(--vercel-text-tertiary);" onmouseenter={(e) => e.currentTarget.style.color = 'var(--vercel-text)'} onmouseleave={(e) => e.currentTarget.style.color = 'var(--vercel-text-tertiary)'} onclick={cancelReply}>{$translator("common.cancel")}</button>
         </div>
       {/if}
       <div class="flex-1">
@@ -287,7 +291,7 @@
           bind:value={replyText}
           class="input"
           style="min-height: 80px; resize: vertical;"
-          placeholder="写下你的回复..."
+          placeholder={$translator("post.replyPlaceholder")}
         ></textarea>
         <div class="mt-2 flex justify-end">
           <button
@@ -295,23 +299,23 @@
             onclick={handleSubmitReply}
             disabled={submitting || !replyText.trim()}
           >
-            {submitting ? "发送中..." : "回复"}
+            {submitting ? $translator("common.sending") : $translator("common.reply")}
           </button>
         </div>
       </div>
     </div>
   {:else}
     <div class="mt-4 ml-7 pt-4 border-t text-center" style="border-color: var(--vercel-border);">
-      <a href="/login" class="text-sm transition-colors" style="color: var(--vercel-text-secondary);" onmouseenter={(e) => e.currentTarget.style.color = 'var(--vercel-text)'} onmouseleave={(e) => e.currentTarget.style.color = 'var(--vercel-text-secondary)'}>登录后参与回复</a>
+      <a href="/login" class="text-sm transition-colors" style="color: var(--vercel-text-secondary);" onmouseenter={(e) => e.currentTarget.style.color = 'var(--vercel-text)'} onmouseleave={(e) => e.currentTarget.style.color = 'var(--vercel-text-secondary)'}>{$translator("post.loginToReply")}</a>
     </div>
   {/if}
 {/if}
 
 <ConfirmDialog
   bind:open={showDeleteDialog}
-  title={pendingDelete === "post" ? "删除帖子" : "删除回复"}
-  description={pendingDelete === "post" ? "确认要删除这个帖子？此操作不可撤销。" : "确认要删除这条回复？此操作不可撤销。"}
-  confirmText="删除"
+  title={$translator(pendingDelete === "post" ? "post.deleteTitle" : "post.deleteReplyTitle")}
+  description={$translator(pendingDelete === "post" ? "post.deleteDescription" : "post.deleteReplyDescription")}
+  confirmText={$translator("common.delete")}
   onConfirm={confirmDelete}
 />
 

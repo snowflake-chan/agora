@@ -1,0 +1,834 @@
+/*
+ * Agora is the unscoped default theme. Optional themes override shared design
+ * tokens and a small set of global surfaces without changing behavior.
+ */
+
+html[data-ui-ready="false"] .page-shell {
+  visibility: hidden;
+}
+
+html[data-theme="tiktok"] {
+  --vercel-bg: #0b0b10;
+  --vercel-surface: #101116;
+  --vercel-card: #1c1e2a;
+  --vercel-border: #262838;
+  --vercel-border-hover: #3a3d50;
+  --vercel-text: #f5f5f5;
+  --vercel-text-secondary: rgba(255, 255, 255, 0.72);
+  --vercel-text-tertiary: rgba(255, 255, 255, 0.48);
+  --vercel-hover: rgba(255, 255, 255, 0.06);
+  --vercel-hover-strong: rgba(255, 255, 255, 0.1);
+  --vercel-accent: #fe2c55;
+  --vercel-ring: rgba(37, 244, 238, 0.58);
+  --vercel-radius: 6px;
+  --vercel-radius-lg: 8px;
+  --vercel-radius-sm: 4px;
+  color-scheme: dark;
+}
+
+html[data-theme="tiktok"],
+html[data-theme="tiktok"] body {
+  background: #0b0b10;
+}
+
+html[data-theme="tiktok"] .appbar-top {
+  border-bottom-color: #262838;
+  background: rgba(11, 11, 16, 0.86);
+}
+
+html[data-theme="tiktok"] .pill-bar {
+  border-color: #343647;
+  border-radius: 8px;
+  background: rgba(15, 15, 20, 0.94);
+  box-shadow: 3px 3px 0 rgba(37, 244, 238, 0.18), -3px -3px 0 rgba(254, 44, 85, 0.16);
+}
+
+html[data-theme="tiktok"] .pill-item,
+html[data-theme="tiktok"] .pill-highlight {
+  border-radius: 5px;
+}
+
+html[data-theme="tiktok"] .pill-highlight {
+  border-color: rgba(254, 44, 85, 0.56);
+  background: rgba(254, 44, 85, 0.18);
+  box-shadow: inset 0 -2px 0 #fe2c55;
+}
+
+html[data-theme="tiktok"] .btn-primary {
+  color: #ffffff;
+  background: #fe2c55;
+  border-color: #fe2c55;
+}
+
+html[data-theme="tiktok"] .btn-primary:hover {
+  background: #e9274d;
+  border-color: #e9274d;
+}
+
+html[data-theme="tiktok"] ::selection {
+  color: #161823;
+  background: #25f4ee;
+}
+
+html[data-theme="claude"] {
+  --vercel-bg: #faf9f5;
+  --vercel-surface: #f5f4ef;
+  --vercel-card: #ffffff;
+  --vercel-border: #dad9d4;
+  --vercel-border-hover: #b4b2a7;
+  --vercel-text: #3d3929;
+  --vercel-text-secondary: #535146;
+  --vercel-text-tertiary: #7f7c71;
+  --vercel-hover: rgba(61, 57, 41, 0.05);
+  --vercel-hover-strong: rgba(61, 57, 41, 0.09);
+  --vercel-accent: #c96442;
+  --vercel-danger: #d64545;
+  --vercel-danger-hover: #b83636;
+  --vercel-success: #788c5d;
+  --vercel-success-bg: #f0f3ea;
+  --vercel-warning: #8a6827;
+  --vercel-warning-bg: #f7f0df;
+  --vercel-info: #596f88;
+  --vercel-ring: rgba(201, 100, 66, 0.3);
+  --vercel-radius: 12px;
+  --vercel-radius-lg: 16px;
+  --vercel-radius-sm: 8px;
+  color-scheme: light;
+}
+
+html[data-theme="claude"],
+html[data-theme="claude"] body {
+  background: #faf9f5;
+}
+
+html[data-theme="claude"] body,
+html[data-theme="claude"] button,
+html[data-theme="claude"] input,
+html[data-theme="claude"] textarea,
+html[data-theme="claude"] select {
+  font-family: Poppins, ui-sans-serif, system-ui, sans-serif;
+}
+
+html[data-theme="claude"] h1,
+html[data-theme="claude"] h2,
+html[data-theme="claude"] h3 {
+  font-family: Newsreader, Georgia, ui-serif, serif;
+  font-weight: 500;
+}
+
+html[data-theme="claude"] .appbar-top {
+  border-bottom-color: rgba(61, 57, 41, 0.1);
+  background: rgba(250, 249, 245, 0.82);
+}
+
+html[data-theme="claude"] .pill-bar {
+  border-color: #dad9d4;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 8px 30px rgba(61, 57, 41, 0.12);
+}
+
+html[data-theme="claude"] .pill-item {
+  color: #535146;
+}
+
+html[data-theme="claude"] .pill-item:hover,
+html[data-theme="claude"] .pill-item.is-active {
+  color: #3d3929;
+  background: rgba(201, 100, 66, 0.08);
+}
+
+html[data-theme="claude"] .pill-highlight {
+  border-color: rgba(201, 100, 66, 0.2);
+  background: rgba(201, 100, 66, 0.11);
+  box-shadow: none;
+}
+
+html[data-theme="claude"] .pill-tooltip,
+html[data-theme="claude"] .menu-dropdown,
+html[data-theme="claude"] .notif-dropdown,
+html[data-theme="claude"] .dialog-panel-confirm,
+html[data-theme="claude"] .toast {
+  color: #3d3929;
+  border-color: #dad9d4;
+  background: #ffffff;
+  box-shadow: 0 12px 36px rgba(61, 57, 41, 0.12);
+}
+
+html[data-theme="claude"] .btn-primary {
+  color: #ffffff;
+  background: #c96442;
+  border-color: #c96442;
+}
+
+html[data-theme="claude"] .btn-primary:hover {
+  background: #b0562f;
+  border-color: #b0562f;
+}
+
+html[data-theme="claude"] .input {
+  background: #ffffff;
+}
+
+html[data-theme="claude"] .card,
+html[data-theme="claude"] .workspace-grid {
+  box-shadow: 0 1px 3px rgba(61, 57, 41, 0.06);
+}
+
+html[data-theme="claude"] .workspace-grid {
+  background: rgba(255, 255, 255, 0.72);
+}
+
+html[data-theme="claude"] .stream-panel {
+  background: rgba(245, 244, 239, 0.76);
+}
+
+html[data-theme="claude"] .detail-loading span {
+  background: rgba(61, 57, 41, 0.08);
+}
+
+html[data-theme="claude"] ::selection {
+  color: #3d3929;
+  background: #ebc6b6;
+}
+
+/* Color mode is independent from the selected design language. */
+html[data-theme="default"][data-color-mode="dark"],
+html[data-theme="tiktok"][data-color-mode="dark"] {
+  color-scheme: dark;
+}
+
+html[data-theme="default"][data-color-mode="light"] {
+  --vercel-bg: #f7f7f8;
+  --vercel-surface: #f1f1f3;
+  --vercel-card: #ffffff;
+  --vercel-border: rgba(17, 17, 19, 0.1);
+  --vercel-border-hover: rgba(17, 17, 19, 0.18);
+  --vercel-text: #171719;
+  --vercel-text-secondary: #5f6067;
+  --vercel-text-tertiary: #85868d;
+  --vercel-hover: rgba(17, 17, 19, 0.045);
+  --vercel-hover-strong: rgba(17, 17, 19, 0.08);
+  --vercel-accent: #171719;
+  --vercel-ring: rgba(17, 17, 19, 0.2);
+  color-scheme: light;
+}
+
+html[data-theme="default"][data-color-mode="light"],
+html[data-theme="default"][data-color-mode="light"] body {
+  background: #f7f7f8;
+}
+
+html[data-theme="default"][data-color-mode="light"] .appbar-top {
+  border-bottom-color: rgba(17, 17, 19, 0.08);
+  background: rgba(247, 247, 248, 0.82);
+}
+
+html[data-theme="default"][data-color-mode="light"] .pill-bar {
+  border-color: rgba(17, 17, 19, 0.12);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 8px 30px rgba(17, 17, 19, 0.12);
+}
+
+html[data-theme="default"][data-color-mode="light"] .pill-item {
+  color: #35363b;
+}
+
+html[data-theme="default"][data-color-mode="light"] .pill-item:hover,
+html[data-theme="default"][data-color-mode="light"] .pill-item.is-active {
+  color: #171719;
+  background: rgba(17, 17, 19, 0.07);
+}
+
+html[data-theme="default"][data-color-mode="light"] .pill-highlight {
+  border-color: rgba(17, 17, 19, 0.1);
+  background: rgba(17, 17, 19, 0.07);
+  box-shadow: none;
+}
+
+html[data-theme="default"][data-color-mode="light"] .pill-tooltip,
+html[data-theme="default"][data-color-mode="light"] .menu-dropdown,
+html[data-theme="default"][data-color-mode="light"] .notif-dropdown,
+html[data-theme="default"][data-color-mode="light"] .dialog-panel-confirm,
+html[data-theme="default"][data-color-mode="light"] .toast {
+  color: #171719;
+  border-color: rgba(17, 17, 19, 0.1);
+  background: #ffffff;
+  box-shadow: 0 12px 36px rgba(17, 17, 19, 0.12);
+}
+
+html[data-theme="tiktok"][data-color-mode="light"] {
+  --vercel-bg: #fafafa;
+  --vercel-surface: #f2f2f4;
+  --vercel-card: #ffffff;
+  --vercel-border: #dedee3;
+  --vercel-border-hover: #c4c5cc;
+  --vercel-text: #161823;
+  --vercel-text-secondary: #565861;
+  --vercel-text-tertiary: #8a8b93;
+  --vercel-hover: rgba(22, 24, 35, 0.045);
+  --vercel-hover-strong: rgba(22, 24, 35, 0.08);
+  --vercel-ring: rgba(37, 244, 238, 0.46);
+  color-scheme: light;
+}
+
+html[data-theme="tiktok"][data-color-mode="light"],
+html[data-theme="tiktok"][data-color-mode="light"] body {
+  background: #fafafa;
+}
+
+html[data-theme="tiktok"][data-color-mode="light"] .appbar-top {
+  border-bottom-color: #dedee3;
+  background: rgba(250, 250, 250, 0.9);
+}
+
+html[data-theme="tiktok"][data-color-mode="light"] .pill-bar {
+  border-color: #dedee3;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 3px 3px 0 rgba(37, 244, 238, 0.22), -3px -3px 0 rgba(254, 44, 85, 0.18);
+}
+
+html[data-theme="tiktok"][data-color-mode="light"] .pill-item {
+  color: #161823;
+}
+
+html[data-theme="tiktok"][data-color-mode="light"] .pill-highlight {
+  border-color: rgba(254, 44, 85, 0.35);
+  background: rgba(254, 44, 85, 0.09);
+}
+
+html[data-theme="tiktok"][data-color-mode="light"] .pill-tooltip,
+html[data-theme="tiktok"][data-color-mode="light"] .menu-dropdown,
+html[data-theme="tiktok"][data-color-mode="light"] .notif-dropdown,
+html[data-theme="tiktok"][data-color-mode="light"] .dialog-panel-confirm,
+html[data-theme="tiktok"][data-color-mode="light"] .toast {
+  color: #161823;
+  border-color: #dedee3;
+  background: #ffffff;
+  box-shadow: 0 12px 36px rgba(22, 24, 35, 0.14);
+}
+
+html[data-theme="claude"][data-color-mode="dark"] {
+  --vercel-bg: #262624;
+  --vercel-surface: #1f1e1d;
+  --vercel-card: #2c2c2b;
+  --vercel-border: #3e3e38;
+  --vercel-border-hover: #52514a;
+  --vercel-text: #f1f1ef;
+  --vercel-text-secondary: #c3c0b6;
+  --vercel-text-tertiary: #908e84;
+  --vercel-hover: rgba(255, 255, 255, 0.045);
+  --vercel-hover-strong: rgba(255, 255, 255, 0.08);
+  --vercel-accent: #d97757;
+  --vercel-danger: #ef4444;
+  --vercel-danger-hover: #f26b6b;
+  --vercel-success: #8ca06f;
+  --vercel-success-bg: #232a1c;
+  --vercel-warning: #d2ad69;
+  --vercel-warning-bg: #332b1d;
+  --vercel-info: #8fa6ba;
+  --vercel-ring: rgba(217, 119, 87, 0.34);
+  color-scheme: dark;
+}
+
+html[data-theme="claude"][data-color-mode="dark"],
+html[data-theme="claude"][data-color-mode="dark"] body {
+  background: #262624;
+}
+
+html[data-theme="claude"][data-color-mode="dark"] .appbar-top {
+  border-bottom-color: #3e3e38;
+  background: rgba(38, 38, 36, 0.86);
+}
+
+html[data-theme="claude"][data-color-mode="dark"] .pill-bar {
+  border-color: #3e3e38;
+  background: rgba(44, 44, 43, 0.92);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.24);
+}
+
+html[data-theme="claude"][data-color-mode="dark"] .pill-item {
+  color: #c3c0b6;
+}
+
+html[data-theme="claude"][data-color-mode="dark"] .pill-item:hover,
+html[data-theme="claude"][data-color-mode="dark"] .pill-item.is-active {
+  color: #f1f1ef;
+  background: rgba(217, 119, 87, 0.1);
+}
+
+html[data-theme="claude"][data-color-mode="dark"] .pill-highlight {
+  border-color: rgba(217, 119, 87, 0.24);
+  background: rgba(217, 119, 87, 0.13);
+}
+
+html[data-theme="claude"][data-color-mode="dark"] .pill-tooltip,
+html[data-theme="claude"][data-color-mode="dark"] .menu-dropdown,
+html[data-theme="claude"][data-color-mode="dark"] .notif-dropdown,
+html[data-theme="claude"][data-color-mode="dark"] .dialog-panel-confirm,
+html[data-theme="claude"][data-color-mode="dark"] .toast {
+  color: #f1f1ef;
+  border-color: #3e3e38;
+  background: #30302e;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.24);
+}
+
+html[data-theme="claude"][data-color-mode="dark"] .btn-primary {
+  color: #141413;
+  background: #d97757;
+  border-color: #d97757;
+}
+
+html[data-theme="claude"][data-color-mode="dark"] .btn-primary:hover {
+  background: #e08d6f;
+  border-color: #e08d6f;
+}
+
+html[data-theme="claude"][data-color-mode="dark"] .input {
+  background: #2c2c2b;
+}
+
+html[data-theme="claude"][data-color-mode="dark"] .workspace-grid {
+  background: rgba(44, 44, 43, 0.76);
+}
+
+html[data-theme="claude"][data-color-mode="dark"] .stream-panel {
+  background: rgba(31, 30, 29, 0.78);
+}
+
+html[data-color-mode="light"] .workspace-grid {
+  background: rgba(255, 255, 255, 0.72);
+}
+
+html[data-color-mode="light"] .stream-panel {
+  background: rgba(247, 247, 248, 0.76);
+}
+
+html[data-theme="tiktok"][data-color-mode="light"] .stream-panel {
+  background: rgba(242, 242, 244, 0.82);
+}
+
+html[data-color-mode="light"] .feed-tabs {
+  background: rgba(17, 17, 19, 0.025);
+}
+
+html[data-color-mode="light"] .feed-tabs button:hover,
+html[data-color-mode="light"] .stream-card:hover {
+  background: rgba(17, 17, 19, 0.045);
+}
+
+html[data-color-mode="light"] .feed-tabs button.active,
+html[data-color-mode="light"] .stream-card.active {
+  background: rgba(17, 17, 19, 0.075);
+}
+
+html[data-color-mode="light"] .card-hover:hover {
+  background: var(--vercel-hover);
+}
+
+html[data-color-mode="light"] ::-webkit-scrollbar-thumb {
+  background: rgba(17, 17, 19, 0.14);
+}
+
+/* Apple-inspired Pinguo theme */
+html[data-theme="apple"] {
+  --vercel-radius: 20px;
+  --vercel-radius-lg: 22px;
+  --vercel-radius-sm: 12px;
+  --apple-theme-ease: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+html[data-theme="apple"] body,
+html[data-theme="apple"] button,
+html[data-theme="apple"] input,
+html[data-theme="apple"] textarea,
+html[data-theme="apple"] select {
+  font-family: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: 0;
+}
+
+html[data-theme="apple"] h1,
+html[data-theme="apple"] h2,
+html[data-theme="apple"] h3 {
+  font-family: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+html[data-theme="apple"][data-color-mode="light"] {
+  --vercel-bg: #ffffff;
+  --vercel-surface: #f7f7fa;
+  --vercel-card: #ffffff;
+  --vercel-border: #e5e5ea;
+  --vercel-border-hover: #d1d1d6;
+  --vercel-text: #1d1d1f;
+  --vercel-text-secondary: #6e6e73;
+  --vercel-text-tertiary: #8e8e93;
+  --vercel-hover: rgba(29, 29, 31, 0.045);
+  --vercel-hover-strong: rgba(29, 29, 31, 0.08);
+  --vercel-accent: #007aff;
+  --vercel-danger: #ff3b30;
+  --vercel-danger-hover: #e6352b;
+  --vercel-success: #34c759;
+  --vercel-success-bg: #e9f9ee;
+  --vercel-warning: #b56a00;
+  --vercel-warning-bg: #fff4e1;
+  --vercel-info: #007aff;
+  --vercel-ring: rgba(0, 122, 255, 0.3);
+  color-scheme: light;
+}
+
+html[data-theme="apple"][data-color-mode="dark"] {
+  --vercel-bg: #000000;
+  --vercel-surface: #1c1c1e;
+  --vercel-card: #1c1c1e;
+  --vercel-border: #3a3a3c;
+  --vercel-border-hover: #48484a;
+  --vercel-text: #f5f5f7;
+  --vercel-text-secondary: #c7c7cc;
+  --vercel-text-tertiary: #8e8e93;
+  --vercel-hover: rgba(255, 255, 255, 0.055);
+  --vercel-hover-strong: rgba(255, 255, 255, 0.1);
+  --vercel-accent: #2e8dff;
+  --vercel-danger: #ff453a;
+  --vercel-danger-hover: #ff6961;
+  --vercel-success: #30d158;
+  --vercel-success-bg: rgba(48, 209, 88, 0.12);
+  --vercel-warning: #ff9f0a;
+  --vercel-warning-bg: rgba(255, 159, 10, 0.12);
+  --vercel-info: #2e8dff;
+  --vercel-ring: rgba(46, 141, 255, 0.38);
+  color-scheme: dark;
+}
+
+html[data-theme="apple"],
+html[data-theme="apple"] body {
+  background: var(--vercel-bg);
+}
+
+html[data-theme="apple"] .appbar-top {
+  border-bottom-color: color-mix(in srgb, var(--vercel-text) 7%, transparent);
+  background: color-mix(in srgb, var(--vercel-bg) 78%, transparent);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+}
+
+html[data-theme="apple"] .pill-bar {
+  border-color: color-mix(in srgb, var(--vercel-text) 12%, transparent);
+  background: color-mix(in srgb, var(--vercel-card) 82%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #ffffff 34%, transparent),
+    0 8px 24px -8px color-mix(in srgb, var(--vercel-text) 18%, transparent);
+}
+
+html[data-theme="apple"] .pill-item,
+html[data-theme="apple"] .pill-highlight,
+html[data-theme="apple"] .btn,
+html[data-theme="apple"] .btn-icon {
+  border-radius: 9999px;
+}
+
+html[data-theme="apple"] .pill-item {
+  color: var(--vercel-text-secondary);
+}
+
+html[data-theme="apple"] .pill-highlight {
+  border-color: color-mix(in srgb, var(--vercel-accent) 18%, transparent);
+  background: color-mix(in srgb, var(--vercel-accent) 12%, transparent);
+  box-shadow: none;
+}
+
+html[data-theme="apple"] .pill-item:hover,
+html[data-theme="apple"] .pill-item.is-active {
+  color: var(--vercel-text);
+  background: color-mix(in srgb, var(--vercel-accent) 9%, transparent);
+}
+
+html[data-theme="apple"] .btn-primary {
+  color: #ffffff;
+  background: var(--vercel-accent);
+  border-color: var(--vercel-accent);
+}
+
+html[data-theme="apple"][data-color-mode="dark"] .btn-primary {
+  color: #000000;
+}
+
+html[data-theme="apple"] .btn,
+html[data-theme="apple"] .btn-icon,
+html[data-theme="apple"] .pill-item,
+html[data-theme="apple"] .settings-button,
+html[data-theme="apple"] .bell-btn,
+html[data-theme="apple"] .theme-option,
+html[data-theme="apple"] .browse-option {
+  transition:
+    transform 250ms var(--apple-theme-ease),
+    color 180ms ease,
+    background 180ms ease,
+    border-color 180ms ease,
+    box-shadow 250ms var(--apple-theme-ease);
+}
+
+html[data-theme="apple"] .btn:active,
+html[data-theme="apple"] .btn-icon:active,
+html[data-theme="apple"] .pill-item:active,
+html[data-theme="apple"] .settings-button:active,
+html[data-theme="apple"] .bell-btn:active {
+  transform: scale(0.96);
+}
+
+html[data-theme="apple"] .card,
+html[data-theme="apple"] .workspace-grid,
+html[data-theme="apple"] .preview-window {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+html[data-theme="apple"] .workspace-grid {
+  background: color-mix(in srgb, var(--vercel-card) 90%, transparent);
+}
+
+html[data-theme="apple"] .stream-panel {
+  background: var(--vercel-surface);
+}
+
+html[data-theme="apple"] .stream-card:hover {
+  background: color-mix(in srgb, var(--vercel-accent) 5%, transparent);
+}
+
+html[data-theme="apple"] .stream-card.active {
+  background: color-mix(in srgb, var(--vercel-accent) 8%, transparent);
+  box-shadow: inset 3px 0 var(--vercel-accent);
+}
+
+html[data-theme="apple"] .pill-tooltip,
+html[data-theme="apple"] .menu-dropdown,
+html[data-theme="apple"] .notif-dropdown,
+html[data-theme="apple"] .dialog-panel-confirm,
+html[data-theme="apple"] .toast {
+  color: var(--vercel-text);
+  border-color: var(--vercel-border);
+  background: color-mix(in srgb, var(--vercel-card) 92%, transparent);
+  box-shadow: 0 16px 40px -10px rgba(0, 0, 0, 0.18);
+  backdrop-filter: saturate(160%) blur(24px);
+  -webkit-backdrop-filter: saturate(160%) blur(24px);
+}
+
+/* Google analytical theme */
+html[data-theme="google"] {
+  --vercel-radius: 8px;
+  --vercel-radius-lg: 8px;
+  --vercel-radius-sm: 6px;
+}
+
+html[data-theme="google"] body,
+html[data-theme="google"] button,
+html[data-theme="google"] input,
+html[data-theme="google"] textarea,
+html[data-theme="google"] select {
+  font-family: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: 0;
+}
+
+html[data-theme="google"] h1,
+html[data-theme="google"] h2,
+html[data-theme="google"] h3 {
+  font-family: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: 0;
+}
+
+html[data-theme="google"][data-color-mode="light"] {
+  --vercel-bg: #ffffff;
+  --vercel-surface: #f9f9fa;
+  --vercel-card: #ffffff;
+  --vercel-border: #ebebeb;
+  --vercel-border-hover: #d8dadd;
+  --vercel-text: #0e1115;
+  --vercel-text-secondary: #566273;
+  --vercel-text-tertiary: #7f8d9f;
+  --vercel-hover: rgba(66, 133, 244, 0.055);
+  --vercel-hover-strong: rgba(66, 133, 244, 0.1);
+  --vercel-accent: #4285f4;
+  --vercel-danger: #ea4335;
+  --vercel-danger-hover: #d73a2e;
+  --vercel-success: #34a853;
+  --vercel-success-bg: #e7f5eb;
+  --vercel-warning: #9b7400;
+  --vercel-warning-bg: #fff7d6;
+  --vercel-info: #4285f4;
+  --vercel-ring: rgba(66, 133, 244, 0.32);
+  color-scheme: light;
+}
+
+html[data-theme="google"][data-color-mode="dark"] {
+  --vercel-bg: #161616;
+  --vercel-surface: #171717;
+  --vercel-card: #1d1d1c;
+  --vercel-border: #383838;
+  --vercel-border-hover: #505050;
+  --vercel-text: #eff1f4;
+  --vercel-text-secondary: #c5c7ca;
+  --vercel-text-tertiary: #949494;
+  --vercel-hover: rgba(252, 44, 80, 0.065);
+  --vercel-hover-strong: rgba(252, 44, 80, 0.12);
+  --vercel-accent: #fc2c50;
+  --vercel-danger: #fc2c50;
+  --vercel-danger-hover: #ff5873;
+  --vercel-success: #2dccd3;
+  --vercel-success-bg: rgba(45, 204, 211, 0.12);
+  --vercel-warning: #fbeb35;
+  --vercel-warning-bg: rgba(251, 235, 53, 0.1);
+  --vercel-info: #2dccd3;
+  --vercel-ring: rgba(255, 255, 255, 0.34);
+  color-scheme: dark;
+}
+
+html[data-theme="google"],
+html[data-theme="google"] body {
+  background: var(--vercel-bg);
+}
+
+html[data-theme="google"] .appbar-top {
+  border-bottom-color: var(--vercel-border);
+  background: color-mix(in srgb, var(--vercel-bg) 94%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+html[data-theme="google"] .pill-bar {
+  border-color: var(--vercel-border);
+  border-radius: 8px;
+  background: var(--vercel-card);
+  box-shadow: none;
+}
+
+html[data-theme="google"] .pill-item,
+html[data-theme="google"] .pill-highlight {
+  border-radius: 6px;
+}
+
+html[data-theme="google"] .pill-item {
+  color: var(--vercel-text-secondary);
+}
+
+html[data-theme="google"] .pill-highlight {
+  border-color: color-mix(in srgb, var(--vercel-accent) 22%, transparent);
+  background: color-mix(in srgb, var(--vercel-accent) 12%, transparent);
+  box-shadow: inset 0 -2px var(--vercel-accent);
+}
+
+html[data-theme="google"] .pill-item:hover,
+html[data-theme="google"] .pill-item.is-active {
+  color: var(--vercel-text);
+  background: color-mix(in srgb, var(--vercel-accent) 9%, transparent);
+}
+
+html[data-theme="google"] .btn-primary {
+  color: #ffffff;
+  background: var(--vercel-accent);
+  border-color: var(--vercel-accent);
+}
+
+html[data-theme="google"] .card,
+html[data-theme="google"] .workspace-grid,
+html[data-theme="google"] .preview-window,
+html[data-theme="google"] .menu-dropdown,
+html[data-theme="google"] .notif-dropdown,
+html[data-theme="google"] .toast {
+  box-shadow: none;
+}
+
+html[data-theme="google"] .workspace-grid {
+  background: var(--vercel-card);
+}
+
+html[data-theme="google"] .stream-panel {
+  background: color-mix(in srgb, var(--vercel-accent) 3%, var(--vercel-surface));
+}
+
+html[data-theme="google"] .feed-tabs {
+  border-radius: 8px;
+  background: var(--vercel-card);
+}
+
+html[data-theme="google"] .feed-tabs button {
+  border-radius: 6px;
+}
+
+html[data-theme="google"] .feed-tabs button.active {
+  color: var(--vercel-accent);
+  background: color-mix(in srgb, var(--vercel-accent) 11%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vercel-accent) 18%, transparent);
+}
+
+html[data-theme="google"] .stream-card:hover {
+  background: color-mix(in srgb, var(--vercel-accent) 5%, transparent);
+}
+
+html[data-theme="google"] .stream-card.active {
+  background: color-mix(in srgb, var(--vercel-accent) 8%, transparent);
+  box-shadow: inset 3px 0 var(--vercel-accent);
+}
+
+html[data-theme="google"] .badge,
+html[data-theme="google"] time,
+html[data-theme="google"] .notif-time {
+  font-variant-numeric: tabular-nums;
+}
+
+html[data-theme="google"] .pill-tooltip,
+html[data-theme="google"] .menu-dropdown,
+html[data-theme="google"] .notif-dropdown,
+html[data-theme="google"] .dialog-panel-confirm,
+html[data-theme="google"] .toast {
+  color: var(--vercel-text);
+  border-color: var(--vercel-border);
+  background: var(--vercel-card);
+}
+
+html[data-theme="google"] .btn:active,
+html[data-theme="google"] .btn-icon:active,
+html[data-theme="google"] .pill-item:active,
+html[data-theme="google"] .settings-button:active,
+html[data-theme="google"] .bell-btn:active {
+  transform: translateY(1px) scale(0.98);
+}
+
+/* Theme and brightness changes use the browser's root view transition. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 320ms;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+::view-transition-old(root) {
+  animation-name: agora-theme-out;
+}
+
+::view-transition-new(root) {
+  animation-name: agora-theme-in;
+}
+
+@keyframes agora-theme-out {
+  to { opacity: 0; }
+}
+
+@keyframes agora-theme-in {
+  from { opacity: 0; }
+}
+
+html[data-motion="reduced"] *,
+html[data-motion="reduced"] *::before,
+html[data-motion="reduced"] *::after {
+  scroll-behavior: auto !important;
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+}
+
+html[data-motion="reduced"]::view-transition-old(root),
+html[data-motion="reduced"]::view-transition-new(root) {
+  animation-duration: 0.001ms !important;
+}
+
+html[data-motion="comfortable"] .page-shell {
+  animation-duration: 0.28s;
+}

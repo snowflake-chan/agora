@@ -1,5 +1,6 @@
 <script lang="ts">
   import { renderMarkdown } from "../../lib/markdown";
+  import { translator } from "../../lib/i18n";
   import { createEventDispatcher } from "svelte";
   import { fly } from "svelte/transition";
   import { createPost } from "../../lib/posts";
@@ -25,7 +26,7 @@
       const post = await createPost({ title: title.trim(), content: content.trim() });
       window.location.href = `/posts/${post.id}`;
     } catch (e: any) {
-      toaster.error("发布失败", e.message ?? "请稍后重试");
+      toaster.error($translator("post.publishFailed"), $translator("common.tryAgain"));
     } finally {
       submitting = false;
     }
@@ -61,29 +62,29 @@
   >
     <!-- Header -->
     <div class="composer-header">
-      <h2 id="post-composer-title" class="sr-only">发布帖子</h2>
+      <h2 id="post-composer-title" class="sr-only">{$translator("post.new")}</h2>
       <div class="flex-1">
         <input
           data-autofocus
           bind:value={title}
           class="w-full px-4 py-2.5 text-lg font-semibold rounded-lg placeholder:text-[#555] focus:outline-none"
           style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); color: var(--vercel-text);"
-          placeholder="标题"
+          placeholder={$translator("common.title")}
         />
       </div>
-      <button class="btn btn-ghost btn-sm" onclick={close}>取消</button>
+      <button class="btn btn-ghost btn-sm" onclick={close}>{$translator("common.cancel")}</button>
       <button
         class="btn btn-primary btn-sm"
         onclick={handleSubmit}
         disabled={submitting || !title.trim() || !content.trim()}
       >
-        {submitting ? "发布中..." : "发布"}
+        {submitting ? $translator("common.publishing") : $translator("common.publish")}
       </button>
     </div>
 
-    <div class="composer-tabs" role="tablist" aria-label="编辑器视图">
-      <button class:active={mobilePane === "edit"} onclick={() => mobilePane = "edit"} role="tab" aria-selected={mobilePane === "edit"}>编辑</button>
-      <button class:active={mobilePane === "preview"} onclick={() => mobilePane = "preview"} role="tab" aria-selected={mobilePane === "preview"}>预览</button>
+    <div class="composer-tabs" role="tablist" aria-label={$translator("editor.view")}>
+      <button class:active={mobilePane === "edit"} onclick={() => mobilePane = "edit"} role="tab" aria-selected={mobilePane === "edit"}>{$translator("common.edit")}</button>
+      <button class:active={mobilePane === "preview"} onclick={() => mobilePane = "preview"} role="tab" aria-selected={mobilePane === "preview"}>{$translator("common.preview")}</button>
     </div>
 
     <!-- Split pane: edit | preview -->
@@ -91,26 +92,26 @@
       <!-- Left: editor -->
       <div class="composer-pane editor-pane" class:mobile-hidden={mobilePane !== "edit"}>
         <div class="px-4 py-2 text-xs font-medium border-b" style="color: var(--vercel-text-tertiary); border-color: rgba(255,255,255,0.06);">
-          编辑
+          {$translator("common.edit")}
         </div>
         <textarea
           bind:value={content}
           class="flex-1 w-full resize-none px-6 py-4 font-mono text-sm leading-relaxed placeholder:text-[#555] focus:outline-none"
           style="background: transparent; color: var(--vercel-text);"
-          placeholder="支持 Markdown 语法..."
+          placeholder={$translator("post.contentPlaceholder")}
         ></textarea>
       </div>
 
       <!-- Right: preview -->
       <div class="composer-pane" class:mobile-hidden={mobilePane !== "preview"}>
         <div class="px-4 py-2 text-xs font-medium border-b" style="color: var(--vercel-text-tertiary); border-color: rgba(255,255,255,0.06);">
-          预览
+          {$translator("common.preview")}
         </div>
         <div class="flex-1 overflow-y-auto px-6 py-4">
           {#if content.trim()}
             <div class="markdown-body">{@html renderMarkdown(content)}</div>
           {:else}
-            <p class="text-sm" style="color: var(--vercel-text-tertiary);">暂无内容</p>
+            <p class="text-sm" style="color: var(--vercel-text-tertiary);">{$translator("common.noContent")}</p>
           {/if}
         </div>
       </div>

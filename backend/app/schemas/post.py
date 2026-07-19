@@ -84,3 +84,7 @@ class FeedItem(BaseModel):
     status: str | None = None
     for_count: int = 0
     against_count: int = 0
+    abstain_count: int = 0
+
+    # Ranking explanation
+    ranking_reason: str | None = None

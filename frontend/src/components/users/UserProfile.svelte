@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { translator } from "../../lib/i18n";
   import {
     followUser,
     getUser,
@@ -25,6 +26,12 @@
   let filter = $state<"all" | "post" | "comment" | "patch">("all");
   let pendingDelete = $state<UserContentItem | null>(null);
   let showDeleteDialog = $state(false);
+  const filters = [
+    { value: "all", key: "common.all" },
+    { value: "post", key: "common.posts" },
+    { value: "comment", key: "common.comment" },
+    { value: "patch", key: "common.changes" },
+  ] as const;
 
   let visibleItems = $derived(
     filter === "all" ? items : items.filter((item) => item.type === filter)
@@ -36,8 +43,8 @@
         getUser(userId),
         getUserContent(userId),
       ]);
-    } catch (e) {
-      error = e instanceof Error ? e.message : "无法加载用户主页";
+    } catch {
+      error = "PROFILE_LOAD_FAILED";
     } finally {
       loading = false;
     }
@@ -56,7 +63,7 @@
         : await followUser(user.id);
       user = { ...user, ...state };
     } catch (e: any) {
-      toaster.error("操作失败", e.message ?? "请稍后重试");
+      toaster.error($translator("profile.followFailed"), $translator("common.tryAgain"));
     } finally {
       followingBusy = false;
     }
@@ -81,9 +88,9 @@
       if (pendingDelete.type === "patch") await deletePatch(pendingDelete.id);
       else await deleteContent(pendingDelete.id);
       items = items.filter((item) => item.id !== pendingDelete?.id);
-      toaster.success("内容已删除");
+      toaster.success($translator("profile.contentDeleted"));
     } catch (e: any) {
-      toaster.error("删除失败", e.message ?? "请稍后重试");
+      toaster.error($translator("profile.deleteFailed"), $translator("common.tryAgain"));
     } finally {
       pendingDelete = null;
     }
@@ -91,17 +98,17 @@
 </script>
 
 {#if loading}
-  <div class="profile-skeleton" aria-label="正在加载用户主页">
+  <div class="profile-skeleton" aria-label={$translator("profile.loading")}>
     <div></div><div></div><div></div>
   </div>
 {:else if error}
-  <div class="empty-state"><p style="color: var(--vercel-danger);">{error}</p></div>
+  <div class="empty-state"><p style="color: var(--vercel-danger);">{$translator("profile.loadFailed")}</p></div>
 {:else if user}
   <header class="profile-header">
     <div class="profile-identity">
       <div class="profile-avatar">{(user.nickname ?? user.username)[0].toUpperCase()}</div>
       <div class="min-w-0">
-        <p class="profile-kicker">Profile</p>
+        <p class="profile-kicker">{$translator("profile.kicker")}</p>
         <h1>{user.nickname ?? user.username}</h1>
         <p class="profile-handle">@{user.username}</p>
       </div>
@@ -114,50 +121,45 @@
         disabled={followingBusy}
         onclick={toggleFollow}
       >
-        {followingBusy ? "处理中…" : user.is_following ? "已关注" : "关注"}
+        {followingBusy ? $translator("common.processing") : $translator(user.is_following ? "profile.following" : "profile.follow")}
       </button>
     {/if}
 
     {#if user.bio}<p class="profile-bio">{user.bio}</p>{/if}
 
     <div class="profile-stats">
-      <span><strong>{user.follower_count}</strong> 关注者</span>
-      <span><strong>{user.following_count}</strong> 正在关注</span>
-      <span><strong>{items.length}</strong> 条动态</span>
+      <span>{$translator("profile.followers", { count: user.follower_count })}</span>
+      <span>{$translator("profile.followingCount", { count: user.following_count })}</span>
+      <span>{$translator("profile.activityCount", { count: items.length })}</span>
     </div>
   </header>
 
-  <nav class="content-filters" aria-label="内容筛选">
-    {#each [
-      ["all", "全部"],
-      ["post", "帖子"],
-      ["comment", "回复"],
-      ["patch", "变更"],
-    ] as option}
+  <nav class="content-filters" aria-label={$translator("profile.filters")}>
+    {#each filters as option}
       <button
-        class:active={filter === option[0]}
-        onclick={() => (filter = option[0] as typeof filter)}
+        class:active={filter === option.value}
+        onclick={() => (filter = option.value)}
       >
-        {option[1]}
+        {$translator(option.key)}
       </button>
     {/each}
   </nav>
 
-  <section class="profile-stream" aria-label="用户内容">
+  <section class="profile-stream" aria-label={$translator("profile.userContent")}>
     {#if visibleItems.length === 0}
-      <div class="empty-state">这里还没有内容。</div>
+      <div class="empty-state">{$translator("profile.empty")}</div>
     {:else}
       {#each visibleItems as item (item.id)}
         <article class="profile-item">
           <div class="item-rail">
-            <span>{item.type === "post" ? "帖子" : item.type === "patch" ? "变更" : "回复"}</span>
+            <span>{$translator(item.type === "post" ? "common.post" : item.type === "patch" ? "common.change" : "common.comment")}</span>
             <time>{timeAgo(item.created_at)}</time>
           </div>
 
           {#if item.type === "comment" && item.root_id}
             <a class="context-root" href={itemHref(item)}>
-              <span>回复于</span>
-              <strong>{item.root_title ?? (item.root_type === "post" ? "帖子" : "变更")}</strong>
+              <span>{$translator("profile.repliedTo")}</span>
+              <strong>{item.root_title ?? $translator(item.root_type === "post" ? "common.post" : "common.change")}</strong>
             </a>
           {/if}
 
@@ -180,10 +182,10 @@
               {#if item.type !== "patch"}<span>♡ {item.like_count}</span>{/if}
               <a href={itemHref(item)}>↳ {item.reply_count}</a>
               {#if item.pr_number}<span>PR #{item.pr_number}</span>{/if}
-              {#if item.status}<span>{item.status}</span>{/if}
+              {#if item.status}<span>{$translator(`status.${item.status}`)}</span>{/if}
             </div>
             {#if item.can_delete}
-              <button class="delete-item" onclick={() => requestDelete(item)}>删除</button>
+              <button class="delete-item" onclick={() => requestDelete(item)}>{$translator("common.delete")}</button>
             {/if}
           </footer>
         </article>
@@ -194,9 +196,9 @@
 
 <ConfirmDialog
   bind:open={showDeleteDialog}
-  title="删除内容"
-  description="确认删除这条内容？相关回复也可能一并删除，此操作不可撤销。"
-  confirmText="删除"
+  title={$translator("profile.deleteContentTitle")}
+  description={$translator("profile.deleteContentDescription")}
+  confirmText={$translator("common.delete")}
   onConfirm={confirmDelete}
 />
 

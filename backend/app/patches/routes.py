@@ -3,7 +3,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,6 +15,7 @@ from app.db.models.post_like import PostLike
 from app.db.models.vote import Vote as VoteModel
 from app.db.models.user import User
 from app.notifications.service import create_notification, notify_followers
+from app.posts.realtime import publish_feed_event
 from app.schemas.patch import (
     PatchCreate,
     PatchRead,
@@ -63,6 +64,11 @@ async def _tally(session: AsyncSession, patch: PatchModel) -> bool:
         patch.status = "rejected"
         await session.commit()
 
+    await publish_feed_event(
+        "updated",
+        item_type="patch",
+        item_id=str(patch.id),
+    )
     # Notify voters + author (fire-and-forget)
     asyncio.create_task(
         _notify_patch_voters(str(patch.id), patch.title, patch.status)
@@ -76,12 +82,12 @@ async def _notify_patch_voters(patch_id: str, patch_title: str, result: str) -> 
     from app.db import async_session as _async_session
 
     info = {
-        "passed": ("vote_passed", "投票通过", f"变更《{patch_title}》投票已通过"),
-        "rejected": ("vote_rejected", "投票未通过", f"变更《{patch_title}》投票未通过"),
-        "merged": ("patch_merged", "变更已合并", f"变更《{patch_title}》已合并到主分支"),
-        "failed": ("patch_failed", "变更合并失败", f"变更《{patch_title}》合并失败，请检查"),
+        "passed": ("vote_passed", "Vote passed", f"Change \"{patch_title}\" passed its vote"),
+        "rejected": ("vote_rejected", "Vote rejected", f"Change \"{patch_title}\" did not pass its vote"),
+        "merged": ("patch_merged", "Change merged", f"Change \"{patch_title}\" was merged into the main branch"),
+        "failed": ("patch_failed", "Merge failed", f"Change \"{patch_title}\" could not be merged"),
     }
-    notif_type, title, message = info.get(result, ("unknown", "变更状态更新", ""))
+    notif_type, title, message = info.get(result, ("unknown", "Change status updated", ""))
     try:
         async with _async_session() as session:
             vote_stmt = select(VoteModel.voter_id).where(VoteModel.patch_id == patch_id)
@@ -118,9 +124,14 @@ async def _do_merge_and_deploy(patch_id: str, pr_number: int, patch_title: str |
                 patch_title = patch.title
                 patch.status = "failed"
                 await session.commit()
+                await publish_feed_event(
+                    "updated",
+                    item_type="patch",
+                    item_id=patch_id,
+                )
         except Exception as status_exc:
             print(f"[merge] ERROR recording failure for PR #{pr_number}: {status_exc}")
-            patch_title = patch_title or "未知"
+            patch_title = patch_title or "Unknown"
         asyncio.create_task(
             _notify_patch_voters(patch_id, patch_title, "failed")
         )
@@ -134,6 +145,11 @@ async def _do_merge_and_deploy(patch_id: str, pr_number: int, patch_title: str |
             patch_title = patch.title
             patch.status = "merged"
             await session.commit()
+            await publish_feed_event(
+                "updated",
+                item_type="patch",
+                item_id=patch_id,
+            )
         asyncio.create_task(
             _notify_patch_voters(patch_id, patch_title, "merged")
         )
@@ -326,10 +342,15 @@ async def create_patch(
     result = await session.execute(stmt)
     patch = result.scalar_one()
 
+    await publish_feed_event(
+        "created",
+        item_type="patch",
+        item_id=str(patch.id),
+    )
     await notify_followers(
         author_id=user.id,
         type="following_patch",
-        title=f"{user.nickname or user.username} 发起了新变更",
+        title=f"{user.nickname or user.username} proposed a new change",
         message=patch.title,
         link=f"/patches/{patch.id}",
     )
@@ -379,6 +400,11 @@ async def delete_patch(
 
     await session.delete(patch)
     await session.commit()
+    await publish_feed_event(
+        "removed",
+        item_type="patch",
+        item_id=str(patch_id),
+    )
 
 
 @router.post("/{patch_id}/submit", response_model=PatchRead)
@@ -403,6 +429,11 @@ async def submit_patch(
     patch.voting_ends_at = now + timedelta(days=VOTING_PERIOD_DAYS)
     await session.commit()
 
+    await publish_feed_event(
+        "updated",
+        item_type="patch",
+        item_id=str(patch.id),
+    )
     counts = await _get_vote_counts(session, patch_id)
     return _patch_to_read(patch, counts)
 
@@ -458,11 +489,16 @@ async def vote_patch(
         await create_notification(
             recipient_id=patch.author_id,
             type="vote",
-            title="新投票",
-            message=f"{user.nickname or user.username} 对你的变更投了「{data.choice}」",
+            title="New vote",
+            message=f"{user.nickname or user.username} voted \"{data.choice}\" on your change",
             link=f"/patches/{patch.id}",
         )
 
+    await publish_feed_event(
+        "updated",
+        item_type="patch",
+        item_id=str(patch.id),
+    )
     return VoteRead(
         id=vote.id,
         patch_id=vote.patch_id,
@@ -640,8 +676,8 @@ async def create_patch_comment(
         await create_notification(
             recipient_id=patch.author_id,
             type="reply",
-            title="变更有新讨论",
-            message=f"{user.nickname or user.username} 评论了《{patch.title}》",
+            title="New change discussion",
+            message=f"{user.nickname or user.username} commented on \"{patch.title}\"",
             link=f"/patches/{patch.id}#{comment.id}",
         )
 
@@ -655,11 +691,16 @@ async def create_patch_comment(
             await create_notification(
                 recipient_id=reply_author_id,
                 type="reply",
-                title="你的讨论有新回复",
-                message=f"{user.nickname or user.username} 回复了你的评论",
+                title="New discussion reply",
+                message=f"{user.nickname or user.username} replied to your comment",
                 link=f"/patches/{patch.id}#{comment.id}",
             )
 
+    await publish_feed_event(
+        "updated",
+        item_type="patch",
+        item_id=str(patch.id),
+    )
     return CommentRead(
         id=comment.id,
         content=comment.content,
