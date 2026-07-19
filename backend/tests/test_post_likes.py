@@ -65,9 +65,11 @@ def test_like_requires_auth_and_a_real_post():
         headers = _register_and_login(client)
         post_id = _create_post(client, headers)
 
-        unauthenticated = client.put(f"{BASE}/api/v1/posts/{post_id}/like")
         missing = client.put(
             f"{BASE}/api/v1/posts/{uuid4()}/like", headers=headers
         )
-        assert unauthenticated.status_code == 401
         assert missing.status_code == 404
+
+    with httpx.Client() as anonymous:
+        unauthenticated = anonymous.put(f"{BASE}/api/v1/posts/{post_id}/like")
+        assert unauthenticated.status_code == 401
