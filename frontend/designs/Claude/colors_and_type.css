@@ -14,7 +14,7 @@
    3) Non-color tokens — font, spacing, radius, shadow, type.
    ============================================================ */
 :root {
-  
+
   /* solo-design consumption aliases: explicit prefix for fill-html-head.mjs */
   --claude-background: var(--background, #ffffff);
   --claude-foreground: var(--foreground, #0f172a);

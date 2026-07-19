@@ -3,7 +3,7 @@
 /* Source: structured-spec */
 
 :root {
-  
+
   /* solo-design consumption aliases: explicit prefix for fill-html-head.mjs */
   --tk-background: var(--background, #ffffff);
   --tk-foreground: var(--foreground, #0f172a);
