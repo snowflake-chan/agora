@@ -10,6 +10,7 @@ from app.db.models.patch import Patch as PatchModel
 from app.db.models.vote import Vote as VoteModel
 from app.db.models.user import User
 from app.notifications.service import create_notification
+from app.deps import check_not_banned
 from app.schemas.post import (
     CommentCreate,
     CommentRead,
@@ -89,6 +90,7 @@ async def create_post(
     user: User = Depends(current_user),
 ):
     """Create a new post."""
+    await check_not_banned(user.id, session, "mute_post")
     if not data.title.strip():
         raise HTTPException(status_code=422, detail="Title is required")
     if not data.content.strip():
@@ -332,6 +334,7 @@ async def create_comment(
     user: User = Depends(current_user),
 ):
     """Reply to a post, optionally mention which comment you're replying to."""
+    await check_not_banned(user.id, session, "mute_post")
     # Verify post exists
     post_stmt = select(ContentModel).where(
         ContentModel.id == post_id, ContentModel.type == "post"

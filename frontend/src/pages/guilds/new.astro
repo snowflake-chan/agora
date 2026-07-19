@@ -1,0 +1,12 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import AppBar from "../../components/AppBar.astro";
+import GuildForm from "../../components/guilds/GuildForm.svelte";
+---
+
+<Layout>
+  <AppBar />
+  <main class="mx-auto max-w-lg px-4 py-8">
+    <GuildForm client:load />
+  </main>
+</Layout>

@@ -5,33 +5,58 @@
     GitBranchIcon,
     LogOutIcon,
     UserIcon,
+    ShieldIcon,
   } from "@lucide/svelte";
   import { initAuth, currentUser, logout } from "../stores/auth";
   import { mainView } from "../stores/nav";
   import PostForm from "./posts/PostForm.svelte";
   import PatchForm from "./patches/PatchForm.svelte";
+  import GuildBadge from "./guilds/GuildBadge.svelte";
+  import GlassModal from "./GlassModal.svelte";
 
   // 'posts' | 'patches' = in-page view selection
   // 'post'  | 'patch'  = a composer dialog is open (its trigger is selected)
   // null                = nothing selected (e.g. user menu)
-  let activeKey = $state<"posts" | "patches" | "post" | "patch" | null>(null);
+  let activeKey = $state<"posts" | "patches" | "post" | "patch" | "guilds" | "admin" | null>(null);
   let showPostForm = $state(false);
   let showPatchForm = $state(false);
   let menuOpen = $state(false);
+  let bannedPost = $state(false);
+  let bannedPatch = $state(false);
 
   let trackEl = $state<HTMLDivElement | null>(null);
   let highlightEl = $state<HTMLDivElement | null>(null);
 
+  async function checkBanTypes() {
+    try {
+      const res = await fetch("/api/v1/users/me/ban-types", { credentials: "include" });
+      if (!res.ok) return;
+      const data = await res.json();
+      bannedPost = data.mute_post || data.ban_user;
+      bannedPatch = data.mute_patch || data.ban_user;
+    } catch {}
+  }
+
   onMount(() => initAuth());
 
-  onMount(() => {
-    let initial: "posts" | "patches" = "posts";
-    try {
-      const saved = localStorage.getItem("agora:initView");
-      if (saved === "patches") { initial = "patches"; localStorage.removeItem("agora:initView"); }
-    } catch (e) {}
+  onMount(async () => {
+    await checkBanTypes();
+    let initial: typeof activeKey = "posts";
+    const path = window.location.pathname;
+    if (path.startsWith("/admin")) {
+      initial = "admin";
+    } else if (path.startsWith("/guilds")) {
+      initial = "guilds";
+    } else if (path.startsWith("/patches")) {
+      initial = "patches";
+    } else {
+      try {
+        const saved = localStorage.getItem("agora:initView");
+        if (saved === "patches") { initial = "patches"; localStorage.removeItem("agora:initView"); }
+      } catch (e) {}
+    }
     activeKey = initial;
-    mainView.set(initial);
+    if (initial === "patches" || initial === "posts") mainView.set(initial);
     requestAnimationFrame(updateHighlight);
   });
 
@@ -85,7 +110,17 @@
     }
   }
 
-  function selectAndOpen(key: "post" | "patch") {
+  let muteAlert = $state("");
+  async function selectAndOpen(key: "post" | "patch") {
+    // Check ban status before opening composer
+    try {
+      const res = await fetch("/api/v1/users/me/ban-status", { credentials: "include" });
+      if (res.status === 403) {
+        const data = await res.json();
+        muteAlert = data.detail || "你的账号已被封禁";
+        return;
+      }
+    } catch {}
     activeKey = key;
     if (key === "post") showPostForm = true;
     else showPatchForm = true;
@@ -121,6 +156,34 @@
 <div class="pill-track" bind:this={trackEl}>
   <!-- sliding selection indicator -->
   <div class="pill-highlight is-hidden" bind:this={highlightEl}></div>
+
+  <!-- guilds shortcut (left) -->
+  <a
+    href="/guilds"
+    class="pill-item pill-slot no-underline"
+    class:is-active={activeKey === "guilds"}
+    data-key="guilds"
+    title="社团"
+  >
+    <svg
+      class="size-4.5"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+      ><path
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
+      /></svg
+    >
+    <span class="pill-tooltip">社团</span>
+  </a>
+
+  <div
+    class="w-px h-5 mx-0.5 rounded-full"
+    style="background: rgba(255,255,255,0.1);"
+  ></div>
 
   <!-- primary nav (in-page view switch) -->
   <button
@@ -178,24 +241,38 @@
   <button
     class="pill-item pill-slot"
     class:is-active={activeKey === "post"}
+    class:banned={bannedPost}
     data-key="post"
-    onclick={() => selectAndOpen("post")}
-    title="发帖"
+    onclick={() => !bannedPost && selectAndOpen("post")}
+    title={bannedPost ? "已被禁止发帖" : "发帖"}
   >
     <PlusIcon class="size-4.5" />
-    <span class="pill-tooltip">发帖</span>
+    <span class="pill-tooltip">{bannedPost ? "禁止发帖" : "发帖"}</span>
   </button>
+
+  <!-- Admin -->
+  <a
+    href="/admin"
+    class="pill-item pill-slot no-underline"
+    class:is-active={activeKey === "admin"}
+    data-key="admin"
+    title="管理后台"
+  >
+    <ShieldIcon class="size-4.5" />
+    <span class="pill-tooltip">管理后台</span>
+  </a>
 
   {#if $currentUser}
     <button
       class="pill-item pill-slot"
       class:is-active={activeKey === "patch"}
+      class:banned={bannedPatch}
       data-key="patch"
-      onclick={() => selectAndOpen("patch")}
-      title="发起变更"
+      onclick={() => !bannedPatch && selectAndOpen("patch")}
+      title={bannedPatch ? "已被禁止发起变更" : "发起变更"}
     >
       <GitBranchIcon class="size-4.5" />
-      <span class="pill-tooltip">发起变更</span>
+      <span class="pill-tooltip">{bannedPatch ? "禁止变更" : "发起变更"}</span>
     </button>
   {/if}
 
@@ -226,7 +303,8 @@
             class="px-3 py-2 text-xs"
             style="color: var(--vercel-text-tertiary);"
           >
-            {$currentUser.nickname ?? $currentUser.username}
+            <div class="mb-1">{$currentUser.nickname ?? $currentUser.username}</div>
+            <GuildBadge />
           </div>
           <div class="divider"></div>
           <a href="/my" class="menu-item">
@@ -259,3 +337,22 @@
 {#if showPatchForm}
   <PatchForm on:close={() => closeComposer("patch")} />
 {/if}
+
+<GlassModal show={muteAlert !== ""} title="操作被禁止" onclose={() => muteAlert = ""}>
+  <p style="color: var(--vercel-danger);">{muteAlert}</p>
+  <p class="mt-3 text-xs" style="color: var(--vercel-text-tertiary);">如有疑问请联系管理员</p>
+  <div style="display:flex;justify-content:flex-end;margin-top:1rem;">
+    <button class="btn btn-ghost btn-sm" onclick={() => muteAlert = ""}>知道了</button>
+  </div>
+</GlassModal>
+
+<style>
+  .pill-slot.banned {
+    opacity: 0.35 !important;
+    cursor: not-allowed !important;
+    pointer-events: none;
+  }
+  .pill-slot.banned svg {
+    color: var(--vercel-danger) !important;
+  }
+</style>

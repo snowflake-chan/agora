@@ -17,48 +17,24 @@
 
   let snippet = $derived(stripMarkdown(item.content));
   let href = $derived(item.type === "post" ? `/posts/${item.id}` : `/patches/${item.id}`);
-  let statusInfo = $derived(
-    item.type === "patch" && item.status ? STATUS_MAP[item.status] : null
-  );
+  let statusInfo = $derived(item.type === "patch" && item.status ? STATUS_MAP[item.status] : null);
 
-  // ---- voting countdown ----
   let countdown = $state("");
   let countdownUrgent = $state(false);
   let interval: ReturnType<typeof setInterval> | null = null;
 
   function tickCountdown() {
     if (item.type !== "patch" || item.status !== "voting" || !item.voting_ends_at) {
-      countdown = "";
-      return;
+      countdown = ""; return;
     }
     const end = new Date(item.voting_ends_at).getTime();
-    const now = Date.now();
-    const diff = end - now;
-
-    if (diff <= 0) {
-      countdown = "已结束";
-      countdownUrgent = true;
-      return;
-    }
-
-    const sec = Math.floor(diff / 1000);
-    const min = Math.floor(sec / 60);
-    const hour = Math.floor(min / 60);
-    const day = Math.floor(hour / 24);
-
-    if (day > 0) {
-      countdown = `剩余 ${day} 天 ${hour % 24} 时`;
-      countdownUrgent = day < 1;
-    } else if (hour > 0) {
-      countdown = `剩余 ${hour} 时 ${min % 60} 分`;
-      countdownUrgent = hour < 2;
-    } else if (min > 0) {
-      countdown = `剩余 ${min} 分`;
-      countdownUrgent = true;
-    } else {
-      countdown = `剩余 ${sec} 秒`;
-      countdownUrgent = true;
-    }
+    const diff = end - Date.now();
+    if (diff <= 0) { countdown = "已结束"; countdownUrgent = true; return; }
+    const sec = Math.floor(diff / 1000), min = Math.floor(sec / 60), hour = Math.floor(min / 60), day = Math.floor(hour / 24);
+    if (day > 0) { countdown = `剩余 ${day} 天 ${hour % 24} 时`; countdownUrgent = day < 1; }
+    else if (hour > 0) { countdown = `剩余 ${hour} 时 ${min % 60} 分`; countdownUrgent = hour < 2; }
+    else if (min > 0) { countdown = `剩余 ${min} 分`; countdownUrgent = true; }
+    else { countdown = `剩余 ${sec} 秒`; countdownUrgent = true; }
   }
 
   onMount(() => {
@@ -68,12 +44,7 @@
     }
   });
 
-  // cleanup interval on unmount
-  $effect(() => {
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  });
+  $effect(() => () => { if (interval) clearInterval(interval); });
 </script>
 
 <a
@@ -86,9 +57,7 @@
   {#if item.type === "patch"}
     <div class="flex items-center gap-2">
       {#if statusInfo}
-        <span class="badge {statusInfo.cls}">
-          {statusInfo.label}
-        </span>
+        <span class="badge {statusInfo.cls}">{statusInfo.label}</span>
       {/if}
       {#if item.pr_number}
         <span class="text-xs" style="color: var(--vercel-text-tertiary);">PR #{item.pr_number}</span>

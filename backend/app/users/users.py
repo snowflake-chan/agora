@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -11,12 +11,51 @@ from app.db.models.content import Content as ContentModel
 from app.db.models.patch import Patch as PatchModel
 from app.schemas.post import PostRead
 from app.schemas.patch import PatchRead
+from app.db.models.guild import GuildMember as GuildMemberModel
+from app.db.models.moderation import BanRecord
+from app.schemas.guild import UserGuildBadge
 from app.schemas.user import UserPublic, UserRead, UserUpdate
 from app.db.models.user import User, get_user_db
+from app.deps import check_not_banned
 from .deps import current_user
 
 router = APIRouter()
 password_helper = PasswordHelper()
+
+
+@router.get("/me/ban-status")
+async def me_ban_status(
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Check if current user is banned. Returns 403 if banned, 200 if clean."""
+    await check_not_banned(user.id, session)
+    return {"ok": True}
+
+
+@router.get("/me/ban-types")
+async def me_ban_types(
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Returns which actions are currently blocked for the user."""
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    rows = (await session.execute(
+        select(BanRecord).where(
+            BanRecord.target_user_id == user.id,
+            BanRecord.is_active == True,
+            or_(BanRecord.expires_at.is_(None), BanRecord.expires_at > now),
+        )
+    )).scalars().all()
+    result = {"ban_user": False, "mute_post": False, "mute_patch": False}
+    for r in rows:
+        if r.type in result:
+            result[r.type] = True
+        if r.type == "ban_user":
+            result["mute_post"] = True
+            result["mute_patch"] = True
+    return result
 
 
 @router.get("/me", response_model=UserRead)
@@ -171,6 +210,36 @@ async def list_user_patches(
         )
         for p in patches
     ]
+
+
+def _calc_level(member_count: int) -> int:
+    if member_count >= 50: return 5
+    if member_count >= 31: return 4
+    if member_count >= 16: return 3
+    if member_count >= 6: return 2
+    return 1
+
+
+@router.get("/{user_id}/guild", response_model=UserGuildBadge | None)
+async def get_user_guild(
+    user_id: UUID,
+    session: AsyncSession = Depends(get_session),
+):
+    """Get the guild badge info for a specific user."""
+    m = (await session.execute(
+        select(GuildMemberModel).where(GuildMemberModel.user_id == user_id)
+    )).scalar_one_or_none()
+    if not m:
+        return None
+    mc = (await session.execute(
+        select(func.count(GuildMemberModel.id)).where(GuildMemberModel.guild_id == m.guild_id)
+    )).scalar() or 0
+    return UserGuildBadge(
+        guild_id=m.guild_id,
+        guild_name=m.guild.name,
+        guild_level=_calc_level(mc),
+        role=m.role,
+    )
 
 
 @router.get("/{user_id}", response_model=UserPublic)

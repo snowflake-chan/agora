@@ -1,0 +1,14 @@
+---
+import Layout from "../../../layouts/Layout.astro";
+import AppBar from "../../../components/AppBar.astro";
+import GuildManage from "../../../components/guilds/GuildManage.svelte";
+
+const id = Astro.params.id;
+---
+
+<Layout>
+  <AppBar />
+  <main class="mx-auto max-w-3xl px-4 py-8">
+    <GuildManage guildId={id} client:load />
+  </main>
+</Layout>

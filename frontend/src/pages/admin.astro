@@ -1,0 +1,12 @@
+---
+import Layout from "../layouts/Layout.astro";
+import AppBar from "../components/AppBar.astro";
+import AdminDashboard from "../components/admin/AdminDashboard.svelte";
+---
+
+<Layout>
+  <AppBar />
+  <main class="mx-auto max-w-5xl px-4 py-8">
+    <AdminDashboard client:load />
+  </main>
+</Layout>
