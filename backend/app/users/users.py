@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,7 +11,11 @@ from app.db import get_session
 from app.db.models.content import Content as ContentModel
 from app.db.models.patch import Patch as PatchModel
 from app.db.models.follow import Follow
+from app.db.models.guild import GuildMember as GuildMemberModel
+from app.db.models.moderation import BanRecord
 from app.db.models.post_like import PostLike
+from app.deps import check_not_banned
+from app.schemas.guild import UserGuildBadge
 from app.schemas.post import PostRead
 from app.schemas.patch import PatchRead
 from app.schemas.user import (
@@ -22,6 +26,7 @@ from app.schemas.user import (
     UserUpdate,
 )
 from app.db.models.user import User, get_user_db
+from app.utils import calc_guild_level
 from .deps import current_user, optional_current_user
 
 router = APIRouter()
@@ -52,6 +57,45 @@ async def _follow_state(
         following_count=following_count or 0,
         is_following=is_following,
     )
+
+
+@router.get("/me/ban-status")
+async def me_ban_status(
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    await check_not_banned(user.id, session)
+    return {"ok": True}
+
+
+@router.get("/me/ban-types")
+async def me_ban_types(
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+    rows = (
+        await session.execute(
+            select(BanRecord).where(
+                BanRecord.target_user_id == user.id,
+                BanRecord.is_active.is_(True),
+                or_(
+                    BanRecord.expires_at.is_(None),
+                    BanRecord.expires_at > now,
+                ),
+            )
+        )
+    ).scalars().all()
+    result = {"ban_user": False, "mute_post": False, "mute_patch": False}
+    for record in rows:
+        if record.type in result:
+            result[record.type] = True
+        if record.type == "ban_user":
+            result["mute_post"] = True
+            result["mute_patch"] = True
+    return result
 
 
 @router.get("/me", response_model=UserRead)
@@ -106,6 +150,8 @@ async def list_user_posts(
     session: AsyncSession = Depends(get_session),
 ):
     """List posts by a specific user."""
+    if not await session.scalar(select(User.id).where(User.id == user_id)):
+        raise HTTPException(status_code=404, detail="USER_NOT_FOUND")
     offset = (page - 1) * page_size
 
     stmt = (
@@ -157,6 +203,8 @@ async def list_user_patches(
     session: AsyncSession = Depends(get_session),
 ):
     """List patches by a specific user."""
+    if not await session.scalar(select(User.id).where(User.id == user_id)):
+        raise HTTPException(status_code=404, detail="USER_NOT_FOUND")
     from app.db.models.vote import Vote as VoteModel
 
     offset = (page - 1) * page_size
@@ -410,6 +458,46 @@ async def list_user_content(
     items.sort(key=lambda item: item.created_at, reverse=True)
     offset = (page - 1) * page_size
     return items[offset : offset + page_size]
+
+
+@router.get("/{user_id}/guild", response_model=UserGuildBadge | None)
+async def get_user_guild(
+    user_id: UUID,
+    session: AsyncSession = Depends(get_session),
+):
+    member = (
+        await session.execute(
+            select(GuildMemberModel)
+            .where(
+                GuildMemberModel.user_id == user_id,
+                or_(
+                    GuildMemberModel.status == "approved",
+                    GuildMemberModel.status.is_(None),
+                    GuildMemberModel.status == "",
+                ),
+            )
+            .order_by(GuildMemberModel.joined_at)
+            .limit(1)
+        )
+    ).scalars().first()
+    if not member:
+        return None
+    member_count = await session.scalar(
+        select(func.count(GuildMemberModel.id)).where(
+            GuildMemberModel.guild_id == member.guild_id,
+            or_(
+                GuildMemberModel.status == "approved",
+                GuildMemberModel.status.is_(None),
+                GuildMemberModel.status == "",
+            ),
+        )
+    )
+    return UserGuildBadge(
+        guild_id=member.guild_id,
+        guild_name=member.guild.name,
+        guild_level=calc_guild_level(member_count or 0),
+        role=member.role,
+    )
 
 
 @router.get("/{user_id}", response_model=UserPublic)

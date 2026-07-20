@@ -1,3 +1,4 @@
+import asyncio
 import json
 
 import redis.asyncio as aioredis
@@ -5,17 +6,20 @@ import redis.asyncio as aioredis
 from app.config import settings
 
 _redis: aioredis.Redis | None = None
+_lock = asyncio.Lock()
 
 
 async def get_redis() -> aioredis.Redis:
-    """Lazy-init Redis connection (singleton)."""
+    """Lazy-init Redis connection (singleton, thread-safe via asyncio lock)."""
     global _redis
     if _redis is None:
-        _redis = aioredis.from_url(
-            settings.REDIS_URL,
-            decode_responses=True,
-            max_connections=10,
-        )
+        async with _lock:
+            if _redis is None:
+                _redis = aioredis.from_url(
+                    settings.REDIS_URL,
+                    decode_responses=True,
+                    max_connections=10,
+                )
     return _redis
 
 

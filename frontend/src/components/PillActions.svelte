@@ -1,5 +1,11 @@
 <script lang="ts">
-  import { GitBranchIcon, PlusIcon, UserIcon } from "@lucide/svelte";
+  import {
+    GitBranchIcon,
+    PlusIcon,
+    ShieldIcon,
+    UserIcon,
+    UsersRoundIcon,
+  } from "@lucide/svelte";
   import { onMount, tick } from "svelte";
   import { translator } from "../lib/i18n";
   import {
@@ -10,10 +16,19 @@
   import { currentUser, initAuth } from "../stores/auth";
   import { mainView } from "../stores/nav";
   import LoginDialog from "./auth/LoginDialog.svelte";
+  import GlassModal from "./GlassModal.svelte";
   import PatchForm from "./patches/PatchForm.svelte";
   import PostForm from "./posts/PostForm.svelte";
 
-  type ActiveKey = "posts" | "patches" | "post" | "patch" | "user" | null;
+  type ActiveKey =
+    | "posts"
+    | "patches"
+    | "post"
+    | "patch"
+    | "guilds"
+    | "admin"
+    | "user"
+    | null;
 
   let activeKey = $state<ActiveKey>(null);
   let showPostForm = $state(false);
@@ -22,11 +37,15 @@
   let loginReturnTo = $state("/");
   let afterLogin = $state<(() => void) | null>(null);
   let authReady = $state(false);
+  let bannedPost = $state(false);
+  let bannedPatch = $state(false);
+  let restrictionKey = $state<"post" | "patch" | null>(null);
   let trackEl = $state<HTMLDivElement | null>(null);
   let highlightEl = $state<HTMLDivElement | null>(null);
 
   onMount(async () => {
     await initAuth();
+    await refreshBanTypes();
     authReady = true;
   });
 
@@ -111,6 +130,8 @@
     if (path === "/") return $mainView === "patches" ? "patches" : "posts";
     if (path.startsWith("/patches")) return "patches";
     if (path.startsWith("/posts")) return "posts";
+    if (path.startsWith("/guilds")) return "guilds";
+    if (path.startsWith("/admin")) return "admin";
     if (path === "/my" || path.startsWith("/users/")) return "user";
     return null;
   }
@@ -141,6 +162,11 @@
       openLogin(currentLocation(), () => selectAndOpen(key));
       return;
     }
+    await refreshBanTypes();
+    if ((key === "post" && bannedPost) || (key === "patch" && bannedPatch)) {
+      restrictionKey = key;
+      return;
+    }
 
     activeKey = key;
     if (key === "post") showPostForm = true;
@@ -151,6 +177,23 @@
     if (key === "post") showPostForm = false;
     else showPatchForm = false;
     activeKey = routeKey();
+  }
+
+  async function refreshBanTypes() {
+    if (!$currentUser) {
+      bannedPost = false;
+      bannedPatch = false;
+      return;
+    }
+    try {
+      const response = await fetch("/api/v1/users/me/ban-types", {
+        credentials: "include",
+      });
+      if (!response.ok) return;
+      const restrictions = await response.json();
+      bannedPost = Boolean(restrictions.ban_user || restrictions.mute_post);
+      bannedPatch = Boolean(restrictions.ban_user || restrictions.mute_patch);
+    } catch {}
   }
 
   function openLogin(
@@ -227,30 +270,62 @@
   <button
     class="pill-item pill-slot pill-create"
     class:is-active={activeKey === "post"}
+    class:is-restricted={bannedPost}
     data-key="post"
     type="button"
     onclick={() => selectAndOpen("post")}
     aria-label={$translator("nav.newPost")}
-    title={$translator("nav.newPost")}
+    aria-disabled={bannedPost}
+    title={$translator(bannedPost ? "moderation.mutedPost" : "nav.newPost")}
   >
     <PlusIcon class="size-4.5" />
-    <span class="pill-tooltip">{$translator("nav.newPost")}</span>
-    <span class="pill-label">{$translator("nav.newPost")}</span>
+    <span class="pill-tooltip">{$translator(bannedPost ? "moderation.mutedPost" : "nav.newPost")}</span>
+    <span class="pill-label">{$translator("nav.publish")}</span>
   </button>
 
   <button
     class="pill-item pill-slot"
     class:is-active={activeKey === "patch"}
+    class:is-restricted={bannedPatch}
     data-key="patch"
     type="button"
     onclick={() => selectAndOpen("patch")}
     aria-label={$translator("nav.newChange")}
-    title={$translator("nav.newChange")}
+    aria-disabled={bannedPatch}
+    title={$translator(bannedPatch ? "moderation.mutedPatch" : "nav.newChange")}
   >
     <GitBranchIcon class="size-4.5" />
-    <span class="pill-tooltip">{$translator("nav.newChange")}</span>
-    <span class="pill-label">{$translator("nav.newChange")}</span>
+    <span class="pill-tooltip">{$translator(bannedPatch ? "moderation.mutedPatch" : "nav.newChange")}</span>
+    <span class="pill-label">{$translator("nav.propose")}</span>
   </button>
+
+  <a
+    href="/guilds"
+    class="pill-item pill-slot"
+    class:is-active={activeKey === "guilds"}
+    data-key="guilds"
+    aria-label={$translator("nav.guilds")}
+    title={$translator("nav.guilds")}
+  >
+    <UsersRoundIcon class="size-4.5" />
+    <span class="pill-tooltip">{$translator("nav.guilds")}</span>
+    <span class="pill-label">{$translator("nav.guilds")}</span>
+  </a>
+
+  {#if $currentUser?.role === "moderator" || $currentUser?.role === "super_admin"}
+    <a
+      href="/admin"
+      class="pill-item pill-slot"
+      class:is-active={activeKey === "admin"}
+      data-key="admin"
+      aria-label={$translator("nav.admin")}
+      title={$translator("nav.admin")}
+    >
+      <ShieldIcon class="size-4.5" />
+      <span class="pill-tooltip">{$translator("nav.admin")}</span>
+      <span class="pill-label">{$translator("nav.admin")}</span>
+    </a>
+  {/if}
 
   <div class="relative">
     {#if $currentUser}
@@ -301,6 +376,26 @@
   onAuthenticated={handleAuthenticated}
 />
 
+<GlassModal
+  show={restrictionKey !== null}
+  title={$translator("moderation.restrictedTitle")}
+  onclose={() => (restrictionKey = null)}
+>
+  <p>
+    {$translator(
+      restrictionKey === "patch"
+        ? "moderation.mutedPatch"
+        : "moderation.mutedPost",
+    )}
+  </p>
+  <p class="restriction-help">{$translator("moderation.contactAdmin")}</p>
+  <div class="restriction-actions">
+    <button class="btn btn-primary btn-sm" onclick={() => (restrictionKey = null)}>
+      {$translator("common.confirm")}
+    </button>
+  </div>
+</GlassModal>
+
 <style>
   .pill-label {
     display: none;
@@ -330,6 +425,24 @@
     color: var(--vercel-bg);
     background: var(--vercel-text);
     transform: translateY(-1px);
+  }
+
+  .pill-item.is-restricted,
+  .pill-item.is-restricted:hover {
+    color: var(--vercel-danger);
+    background: color-mix(in srgb, var(--vercel-danger) 10%, transparent);
+  }
+
+  .restriction-help {
+    margin-top: 0.5rem;
+    color: var(--vercel-text-tertiary);
+    font-size: 0.75rem;
+  }
+
+  .restriction-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 1rem;
   }
 
   .profile-avatar-chip {
@@ -378,16 +491,16 @@
 
     :global(.pill-item) {
       width: auto;
-      min-width: 3.1rem;
+      min-width: 2.65rem;
       height: 3rem;
-      padding: 0.35rem 0.4rem;
+      padding: 0.35rem 0.25rem;
       flex-direction: column;
       gap: 0.2rem;
       border-radius: 0.7rem;
     }
 
     .pill-create {
-      min-width: 3.4rem;
+      min-width: 2.85rem;
       border-radius: 0.85rem;
       box-shadow: 0 0.35rem 1rem rgba(0, 0, 0, 0.28);
       transform: translateY(-0.18rem);

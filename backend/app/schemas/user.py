@@ -9,6 +9,7 @@ class UserRead(BaseModel):
     username: str
     nickname: str | None
     bio: str | None = None
+    role: str = "user"
     is_active: bool
 
     model_config = {"from_attributes": True}

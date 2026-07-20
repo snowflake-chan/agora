@@ -1,4 +1,5 @@
 import asyncio
+from datetime import timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -14,6 +15,7 @@ from app.db.models.patch import Patch as PatchModel
 from app.db.models.post_like import PostLike
 from app.db.models.user import User
 from app.db.models.vote import Vote as VoteModel
+from app.deps import check_not_banned
 from app.notifications.service import create_notification, notify_followers
 from app.notifications.redis import get_redis
 from app.posts.feed import FeedMode, rank_feed_items
@@ -105,6 +107,7 @@ async def create_post(
     user: User = Depends(current_user),
 ):
     """Create a new post."""
+    await check_not_banned(user.id, session, "mute_post")
     if not data.title.strip():
         raise HTTPException(status_code=422, detail="Title is required")
     if not data.content.strip():
@@ -289,11 +292,15 @@ async def get_feed(
         ))
 
     for p in patches:
+        voting_ends_at = p.voting_ends_at
+        if voting_ends_at is None and p.status == "voting" and p.created_at:
+            voting_ends_at = p.created_at + timedelta(days=3)
         items.append(FeedItem(
             id=p.id, type="patch", title=p.title, content=p.content,
             author_id=p.author_id, author_username=p.author.username,
             created_at=p.created_at,
             pr_number=p.pr_number, status=p.status,
+            voting_ends_at=voting_ends_at,
             reply_count=patch_comment_counts.get(p.id, 0),
             for_count=vote_counts.get(str(p.id), {}).get("for", 0),
             against_count=vote_counts.get(str(p.id), {}).get("against", 0),
@@ -607,6 +614,7 @@ async def create_comment(
     user: User = Depends(current_user),
 ):
     """Reply to a post, optionally mention which comment you're replying to."""
+    await check_not_banned(user.id, session, "mute_post")
     # Verify post exists
     post_stmt = select(ContentModel).where(
         ContentModel.id == post_id, ContentModel.type == "post"

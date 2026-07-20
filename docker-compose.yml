@@ -29,6 +29,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       GITHUB_REPO: ${GITHUB_REPO:-}
+      SUPER_ADMIN_EMAIL: ${SUPER_ADMIN_EMAIL:-}
       CORS_ORIGIN: ""
       DEPLOY_ENABLED: ${DEPLOY_ENABLED:-true}
       REPO_DIR: /repo

@@ -1,5 +1,6 @@
 ---
 import PillActions from "./PillActions.svelte";
+import BanGate from "./BanGate.svelte";
 import NotificationBell from "./NotificationBell.svelte";
 import SettingsButton from "./SettingsButton.svelte";
 ---
@@ -22,6 +23,8 @@ import SettingsButton from "./SettingsButton.svelte";
 <nav class="pill-bar">
   <PillActions client:load />
 </nav>
+
+<BanGate client:load />
 
 <style is:global>
   .appbar-top {

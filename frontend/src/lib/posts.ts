@@ -96,6 +96,7 @@ export interface FeedItem {
   like_count: number;
   pr_number: number | null;
   status: string | null;
+  voting_ends_at: string | null;
   for_count: number;
   against_count: number;
   abstain_count: number;

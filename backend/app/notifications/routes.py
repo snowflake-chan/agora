@@ -20,6 +20,16 @@ from app.users.deps import current_user
 router = APIRouter()
 
 
+async def _get_unread_count_db(session: AsyncSession, user_id: str) -> int:
+    """DB fallback for unread count when Redis is unavailable or zero."""
+    return await session.scalar(
+        select(func.count(Notification.id)).where(
+            Notification.recipient_id == user_id,
+            Notification.is_read == False,
+        )
+    ) or 0
+
+
 # ── SSE stream ──
 
 
@@ -31,9 +41,13 @@ async def notification_stream(
 
     async def event_generator():
         redis = await get_redis()
-        pubsub = redis.pubsub()
+        pubsub = None
         channel = f"notif:{user.id}"
-        await pubsub.subscribe(channel)
+        try:
+            pubsub = redis.pubsub()
+            await pubsub.subscribe(channel)
+        except Exception:
+            return
 
         try:
             while True:
@@ -49,8 +63,9 @@ async def notification_stream(
         except asyncio.CancelledError:
             pass
         finally:
-            await pubsub.unsubscribe(channel)
-            await pubsub.close()
+            if pubsub is not None:
+                await pubsub.unsubscribe(channel)
+                await pubsub.close()
 
     return EventSourceResponse(event_generator())
 
@@ -86,8 +101,10 @@ async def list_notifications(
     result = await session.execute(stmt)
     items = result.scalars().all()
 
-    # Fast unread count from Redis
+    # Fast unread count from Redis; fall back to DB if Redis unavailable / zero
     unread_count = await get_unread_count(str(user.id))
+    if unread_count == 0:
+        unread_count = await _get_unread_count_db(session, str(user.id))
 
     return {
         "items": [
@@ -111,10 +128,13 @@ async def list_notifications(
 
 @router.get("/unread-count")
 async def unread_count(
+    session: AsyncSession = Depends(get_session),
     user: User = Depends(current_user),
 ):
-    """Fast unread count from Redis (no DB query)."""
+    """Unread count — Redis fast path with DB fallback."""
     count = await get_unread_count(str(user.id))
+    if count == 0:
+        count = await _get_unread_count_db(session, str(user.id))
     return {"count": count}
 
 

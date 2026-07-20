@@ -6,6 +6,7 @@ export interface User {
   username: string;
   nickname: string | null;
   bio: string | null;
+  role: "user" | "moderator" | "super_admin";
   is_active: boolean;
 }
 

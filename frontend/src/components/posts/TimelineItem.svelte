@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { onMount } from "svelte";
+  import { getUserGuild, type UserGuildBadge } from "../../lib/guilds";
   import { translator } from "../../lib/i18n";
   import { renderMarkdown } from "../../lib/markdown";
   import { timeAgo } from "../../lib/utils";
@@ -13,6 +15,7 @@
     replyingToUsername = null,
     onReply = null,
     onDelete = null,
+    onReport = null,
     liked = false,
     likeCount = null,
     replyCount = null,
@@ -33,6 +36,7 @@
     replyingToUsername: string | null;
     onReply: (() => void) | null;
     onDelete: (() => void) | null;
+    onReport?: (() => void) | null;
     liked?: boolean;
     likeCount?: number | null;
     replyCount?: number | null;
@@ -46,7 +50,17 @@
   } = $props();
 
   let menuOpen = false;
+  let guild = $state<UserGuildBadge | null>(null);
   let profileHref = $derived(userId ? `/users/${userId}` : "#");
+
+  onMount(async () => {
+    if (!userId) return;
+    try {
+      guild = await getUserGuild(userId);
+    } catch {
+      guild = null;
+    }
+  });
 
   function handleClickOutside(e: MouseEvent) {
     const target = e.target as HTMLElement;
@@ -66,14 +80,21 @@
         {(username ?? "?")[0].toUpperCase()}
       </a>
       <a href={profileHref} class="text-sm font-medium no-underline hover:underline" style="color: var(--vercel-text); cursor: {userId ? 'pointer' : 'default'};">{username ?? $translator("common.anonymous")}</a>
+      {#if guild}
+        <a class="timeline-guild" href={`/guilds/${guild.guild_id}`}>
+          Lv.{guild.guild_level} {guild.guild_name}
+        </a>
+      {/if}
       <span class="text-xs" style="color: var(--vercel-text-tertiary);">{timeAgo(createdAt)}</span>
 
-      {#if onReply || onDelete}
+      {#if onReply || onDelete || onReport}
         <div class="ml-auto timeline-menu relative">
           <button
             class="btn-icon"
             style="width: 1.5rem; height: 1.5rem;"
             on:click|stopPropagation={() => (menuOpen = !menuOpen)}
+            aria-label={$translator("common.moreActions")}
+            aria-expanded={menuOpen}
           >
             <span class="text-sm leading-none" style="color: var(--vercel-text-tertiary);">⋮</span>
           </button>
@@ -83,6 +104,11 @@
               {#if onReply}
                 <button class="menu-item" on:click={() => { menuOpen = false; onReply(); }}>
                   {$translator("common.reply")}
+                </button>
+              {/if}
+              {#if onReport}
+                <button class="menu-item" on:click={() => { menuOpen = false; onReport(); }}>
+                  {$translator("common.report")}
                 </button>
               {/if}
               {#if onDelete}
@@ -154,6 +180,21 @@
 </div>
 
 <style>
+  .timeline-guild {
+    overflow: hidden;
+    max-width: 8rem;
+    padding: 0.05rem 0.35rem;
+    border: 1px solid color-mix(in srgb, var(--vercel-warning) 28%, transparent);
+    border-radius: 999px;
+    color: var(--vercel-warning);
+    background: color-mix(in srgb, var(--vercel-warning) 10%, transparent);
+    font-size: 0.56rem;
+    font-weight: 700;
+    line-height: 1.5;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .post-actions {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import type { FeedItem } from "../lib/posts";
   import { translator } from "../lib/i18n";
   import { stripMarkdown } from "../lib/utils";
@@ -34,6 +35,39 @@
       : null
   );
   let rankingReason = $derived(formatRankingReason(item.ranking_reason));
+  let now = $state(Date.now());
+  let countdown = $derived(formatCountdown(item.voting_ends_at, now));
+  let countdownUrgent = $derived(
+    Boolean(item.voting_ends_at) &&
+      new Date(item.voting_ends_at as string).getTime() - now < 2 * 60 * 60 * 1000,
+  );
+
+  onMount(() => {
+    if (item.type !== "patch" || item.status !== "voting" || !item.voting_ends_at) {
+      return;
+    }
+    const timer = window.setInterval(() => (now = Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  });
+
+  function formatCountdown(deadline: string | null, currentTime: number): string | null {
+    if (item.type !== "patch" || item.status !== "voting" || !deadline) return null;
+    const remaining = new Date(deadline).getTime() - currentTime;
+    if (remaining <= 0) return $translator("patch.closed");
+    const totalMinutes = Math.floor(remaining / 60_000);
+    const hours = Math.floor(totalMinutes / 60);
+    const days = Math.floor(hours / 24);
+    if (days > 0) {
+      return $translator("patch.remainingDaysHours", {
+        days,
+        hours: hours % 24,
+      });
+    }
+    if (hours > 0) return $translator("patch.remainingHours", { hours });
+    return $translator("patch.remainingMinutes", {
+      minutes: Math.max(1, totalMinutes),
+    });
+  }
 
   function formatRankingReason(reason: string | null): string | null {
     if (!reason) return null;
@@ -105,6 +139,14 @@
       {/if}
       {#if item.type === "patch"}
         <span>{$translator("patch.for")} {item.for_count} · {$translator("patch.against")} {item.against_count}</span>
+        {#if countdown}
+          <span class:urgent={countdownUrgent} class="vote-countdown">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 8v4l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+            </svg>
+            {countdown}
+          </span>
+        {/if}
       {/if}
       {#if item.type === "post"}
         <span class="flex items-center gap-1">
@@ -170,6 +212,31 @@
     font-size: 0.68rem;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .vote-countdown {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.15rem 0.4rem;
+    border-radius: 999px;
+    color: var(--vercel-warning);
+    background: color-mix(in srgb, var(--vercel-warning) 10%, transparent);
+    font-size: 0.65rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .vote-countdown.urgent {
+    color: var(--vercel-danger);
+    background: color-mix(in srgb, var(--vercel-danger) 10%, transparent);
+  }
+
+  .vote-countdown svg {
+    width: 0.75rem;
+    height: 0.75rem;
+    fill: none;
+    stroke: currentColor;
   }
 
   .card-link::after {

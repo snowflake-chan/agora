@@ -2,11 +2,13 @@
   import { onMount } from "svelte";
   import { translator } from "../../lib/i18n";
   import { requestLogin } from "../../lib/login";
+  import { createReport } from "../../lib/admin";
   import { getPost, listComments, createComment, deleteContent, likePost, unlikePost, type Post, type Comment } from "../../lib/posts";
   import { toaster } from "../../stores/toaster";
   import { currentUser } from "../../stores/auth";
   import TimelineItem from "./TimelineItem.svelte";
   import ConfirmDialog from "../ConfirmDialog.svelte";
+  import GlassModal from "../GlassModal.svelte";
 
   export let postId: string;
   export let embedded = false;
@@ -22,6 +24,10 @@
   let showDeleteDialog = false;
   let pendingDelete: "post" | "comment" | null = null;
   let pendingDeleteIndex = 0;
+  let reportOpen = false;
+  let reportTarget = "";
+  let reportReason = "";
+  let reporting = false;
 
   onMount(async () => {
     try {
@@ -162,6 +168,40 @@
     }
   }
 
+  function requestReport(contentId: string) {
+    if (!$currentUser) {
+      requestLogin(window.location.pathname, () => openReport(contentId));
+      return;
+    }
+    openReport(contentId);
+  }
+
+  function openReport(contentId: string) {
+    reportTarget = contentId;
+    reportReason = "";
+    reportOpen = true;
+  }
+
+  async function submitReport() {
+    if (!reportReason.trim() || reporting) return;
+    reporting = true;
+    try {
+      await createReport(reportTarget, reportReason.trim());
+      reportOpen = false;
+      toaster.success(
+        $translator("moderation.reportSuccessTitle"),
+        $translator("moderation.reportSuccessDescription"),
+      );
+    } catch {
+      toaster.error(
+        $translator("moderation.reportFailed"),
+        $translator("common.tryAgain"),
+      );
+    } finally {
+      reporting = false;
+    }
+  }
+
   let postTitle = "";
   let postTags: string[] | null = null;
   let items: Array<{
@@ -272,6 +312,7 @@
           onLike={() => handleContentLike(item.key, item.liked)}
           onDiscuss={i === 0 ? focusReply : () => focusCommentReply(comments[i - 1])}
           onShare={() => handleShare(i === 0 ? undefined : item.key)}
+          onReport={() => requestReport(item.key)}
         />
       {/each}
     </div>
@@ -320,7 +361,45 @@
   onConfirm={confirmDelete}
 />
 
+<GlassModal
+  show={reportOpen}
+  title={$translator("moderation.reportTitle")}
+  onclose={() => (reportOpen = false)}
+>
+  <textarea
+    class="input report-reason"
+    rows="4"
+    bind:value={reportReason}
+    maxlength="500"
+    placeholder={$translator("moderation.reportReasonPlaceholder")}
+  ></textarea>
+  <div class="report-actions">
+    <button class="btn btn-ghost btn-sm" onclick={() => (reportOpen = false)}>
+      {$translator("common.cancel")}
+    </button>
+    <button
+      class="btn btn-primary btn-sm"
+      disabled={reporting || !reportReason.trim()}
+      onclick={submitReport}
+    >
+      {$translator(reporting ? "moderation.reporting" : "moderation.reportSubmit")}
+    </button>
+  </div>
+</GlassModal>
+
 <style>
+  .report-reason {
+    width: 100%;
+    resize: vertical;
+  }
+
+  .report-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 1rem;
+  }
+
   .back-btn {
     display: inline-flex;
     align-items: center;

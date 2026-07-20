@@ -1,5 +1,12 @@
 <script lang="ts">
+  import {
+    CheckIcon,
+    CircleMinusIcon,
+    ThumbsDownIcon,
+    ThumbsUpIcon,
+  } from "@lucide/svelte";
   import { onMount } from "svelte";
+  import { createReport } from "../../lib/admin";
   import { translator } from "../../lib/i18n";
   import { requestLogin } from "../../lib/login";
   import { renderMarkdown } from "../../lib/markdown";
@@ -10,6 +17,7 @@
   import { GITHUB_REPO } from "../../lib/config";
   import AuthorMeta from "../AuthorMeta.svelte";
   import ConfirmDialog from "../ConfirmDialog.svelte";
+  import GlassModal from "../GlassModal.svelte";
   import TimelineItem from "../posts/TimelineItem.svelte";
 
   let { patchId = "", embedded = false }: { patchId: string; embedded?: boolean } = $props();
@@ -28,6 +36,10 @@
   let pendingChoice = $state("");
   let showDeleteDialog = $state(false);
   let pendingCommentDelete = $state<Comment | null>(null);
+  let reportOpen = $state(false);
+  let reportTarget = $state("");
+  let reportReason = $state("");
+  let reporting = $state(false);
 
   const STATUS_TYPES: Record<string, string> = {
     draft: "neutral",
@@ -207,6 +219,40 @@
     }
   }
 
+  function requestReport(comment: Comment) {
+    if (!$currentUser) {
+      requestLogin(window.location.pathname, () => openReport(comment.id));
+      return;
+    }
+    openReport(comment.id);
+  }
+
+  function openReport(contentId: string) {
+    reportTarget = contentId;
+    reportReason = "";
+    reportOpen = true;
+  }
+
+  async function submitReport() {
+    if (!reportReason.trim() || reporting) return;
+    reporting = true;
+    try {
+      await createReport(reportTarget, reportReason.trim());
+      reportOpen = false;
+      toaster.success(
+        $translator("moderation.reportSuccessTitle"),
+        $translator("moderation.reportSuccessDescription"),
+      );
+    } catch {
+      toaster.error(
+        $translator("moderation.reportFailed"),
+        $translator("common.tryAgain"),
+      );
+    } finally {
+      reporting = false;
+    }
+  }
+
   function goBack() {
     window.history.back();
   }
@@ -297,29 +343,42 @@
       </div>
 
       {#if $currentUser}
-        {#if currentUserVote}
-          <div class="mb-3 text-sm" style="color: var(--vercel-text-secondary);">
-            {$translator("patch.yourVote", { choice: voteLabel(currentUserVote.choice) })}
-          </div>
-        {/if}
         <div class="vote-actions">
           <button
-            class="btn {currentUserVote?.choice === 'for' ? 'btn-primary' : 'btn-secondary'} btn-sm"
+            class="vote-choice"
+            class:is-for={currentUserVote?.choice === "for"}
+            class:is-other={Boolean(currentUserVote && currentUserVote.choice !== "for")}
             onclick={() => promptVote("for")}
           >
-            {$translator("patch.for")}
+            <ThumbsUpIcon size={16} strokeWidth={1.8} />
+            <span>{$translator("patch.for")}</span>
+            {#if currentUserVote?.choice === "for"}
+              <CheckIcon class="vote-check" size={14} strokeWidth={2.5} />
+            {/if}
           </button>
           <button
-            class="btn {currentUserVote?.choice === 'against' ? 'btn-primary' : 'btn-secondary'} btn-sm"
+            class="vote-choice"
+            class:is-against={currentUserVote?.choice === "against"}
+            class:is-other={Boolean(currentUserVote && currentUserVote.choice !== "against")}
             onclick={() => promptVote("against")}
           >
-            {$translator("patch.against")}
+            <ThumbsDownIcon size={16} strokeWidth={1.8} />
+            <span>{$translator("patch.against")}</span>
+            {#if currentUserVote?.choice === "against"}
+              <CheckIcon class="vote-check" size={14} strokeWidth={2.5} />
+            {/if}
           </button>
           <button
-            class="btn {currentUserVote?.choice === 'abstain' ? 'btn-primary' : 'btn-secondary'} btn-sm"
+            class="vote-choice"
+            class:is-abstain={currentUserVote?.choice === "abstain"}
+            class:is-other={Boolean(currentUserVote && currentUserVote.choice !== "abstain")}
             onclick={() => promptVote("abstain")}
           >
-            {$translator("patch.abstain")}
+            <CircleMinusIcon size={16} strokeWidth={1.8} />
+            <span>{$translator("patch.abstain")}</span>
+            {#if currentUserVote?.choice === "abstain"}
+              <CheckIcon class="vote-check" size={14} strokeWidth={2.5} />
+            {/if}
           </button>
         </div>
       {:else}
@@ -391,6 +450,7 @@
             onLike={() => toggleCommentLike(comment)}
             onDiscuss={() => beginReply(comment)}
             onShare={() => shareComment(comment)}
+            onReport={() => requestReport(comment)}
           />
         {/each}
       </div>
@@ -457,6 +517,32 @@
   confirmText={$translator("common.confirm")}
   onConfirm={confirmVote}
 />
+
+<GlassModal
+  show={reportOpen}
+  title={$translator("moderation.reportTitle")}
+  onclose={() => (reportOpen = false)}
+>
+  <textarea
+    class="input report-reason"
+    rows="4"
+    bind:value={reportReason}
+    maxlength="500"
+    placeholder={$translator("moderation.reportReasonPlaceholder")}
+  ></textarea>
+  <div class="report-actions">
+    <button class="btn btn-ghost btn-sm" onclick={() => (reportOpen = false)}>
+      {$translator("common.cancel")}
+    </button>
+    <button
+      class="btn btn-primary btn-sm"
+      disabled={reporting || !reportReason.trim()}
+      onclick={submitReport}
+    >
+      {$translator(reporting ? "moderation.reporting" : "moderation.reportSubmit")}
+    </button>
+  </div>
+</GlassModal>
 
 <style>
   .section-kicker {
@@ -539,6 +625,71 @@
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 0.5rem;
+  }
+
+  .vote-choice {
+    display: inline-flex;
+    min-width: 0;
+    min-height: 2.5rem;
+    padding: 0.5rem 0.7rem;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    border: 1px solid var(--vercel-border-hover);
+    border-radius: 0.5rem;
+    color: var(--vercel-text-secondary);
+    background: var(--vercel-hover);
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: color 180ms ease, border-color 180ms ease, background 180ms ease, opacity 180ms ease, transform 180ms ease;
+  }
+
+  .vote-choice:hover {
+    color: var(--vercel-text);
+    transform: translateY(-1px);
+  }
+
+  .vote-choice.is-for {
+    border-color: color-mix(in srgb, var(--vercel-success) 55%, transparent);
+    color: var(--vercel-success);
+    background: color-mix(in srgb, var(--vercel-success) 12%, transparent);
+  }
+
+  .vote-choice.is-against {
+    border-color: color-mix(in srgb, var(--vercel-danger) 55%, transparent);
+    color: var(--vercel-danger);
+    background: color-mix(in srgb, var(--vercel-danger) 12%, transparent);
+  }
+
+  .vote-choice.is-abstain {
+    border-color: var(--vercel-text-tertiary);
+    color: var(--vercel-text);
+    background: var(--vercel-hover-strong);
+  }
+
+  .vote-choice.is-other {
+    opacity: 0.38;
+  }
+
+  .vote-choice.is-other:hover {
+    opacity: 0.78;
+  }
+
+  .vote-check {
+    margin-left: auto;
+  }
+
+  .report-reason {
+    width: 100%;
+    resize: vertical;
+  }
+
+  .report-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 1rem;
   }
 
   .discussion-section {
