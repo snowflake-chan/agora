@@ -9,6 +9,9 @@ on:
 jobs:
   test-backend:
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql+asyncpg://agora:agora@localhost:5432/agora
+      JWT_SECRET: test-secret
 
     services:
       postgres:
@@ -53,8 +56,6 @@ jobs:
       - name: Run migrations
         run: |
           cd backend
-          DATABASE_URL=postgresql+asyncpg://agora:agora@localhost:5432/agora \
-          JWT_SECRET=test-secret \
           alembic upgrade head
 
       - name: Start server & run tests

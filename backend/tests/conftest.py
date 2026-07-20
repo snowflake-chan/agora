@@ -16,7 +16,7 @@ def run_server():
     server.run()
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="session")
 def server():
     """Start the server once per test session."""
     proc = multiprocessing.Process(target=run_server, daemon=True)

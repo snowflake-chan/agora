@@ -23,7 +23,11 @@ from app.schemas.patch import (
     VoteRead,
 )
 from app.schemas.post import CommentCreate, CommentRead
-from app.patches.github import merge_pr
+from app.patches.github import (
+    GitHubPullRequestError,
+    get_pull_request,
+    merge_pr,
+)
 from app.users.deps import current_user, optional_current_user
 
 router = APIRouter()
@@ -258,10 +262,6 @@ async def list_patches(
     if status:
         where.append(PatchModel.status == status)
 
-    total = await session.scalar(
-        select(func.count(PatchModel.id)).where(*where)
-    )
-
     stmt = (
         select(PatchModel)
         .where(*where)
@@ -328,6 +328,13 @@ async def create_patch(
         raise HTTPException(status_code=422, detail="CONTENT_REQUIRED")
     if data.pr_number < 1:
         raise HTTPException(status_code=422, detail="INVALID_PR_NUMBER")
+
+    existing_stmt = select(PatchModel.id).where(
+        PatchModel.pr_number == data.pr_number,
+        PatchModel.status.in_(("draft", "voting", "passed")),
+    )
+    if await session.scalar(existing_stmt):
+        raise HTTPException(status_code=409, detail="PATCH_PR_ALREADY_ACTIVE")
 
     patch = PatchModel(
         title=data.title.strip(),
@@ -427,6 +434,24 @@ async def submit_patch(
         raise HTTPException(status_code=403, detail="FORBIDDEN")
     if patch.status != "draft":
         raise HTTPException(status_code=422, detail="PATCH_NOT_DRAFT")
+
+    # A proposal must still point to mergeable work when voting starts. Keep
+    # draft creation available in installations that have not connected GitHub.
+    if settings.GITHUB_REPO:
+        try:
+            pull_request = await get_pull_request(patch.pr_number)
+        except GitHubPullRequestError as exc:
+            detail = str(exc)
+            if detail == "PULL_REQUEST_NOT_FOUND":
+                raise HTTPException(status_code=422, detail=detail) from exc
+            raise HTTPException(
+                status_code=502, detail="GITHUB_PR_LOOKUP_FAILED"
+            ) from exc
+
+        if pull_request.get("state") != "open":
+            raise HTTPException(status_code=422, detail="PULL_REQUEST_NOT_OPEN")
+        if pull_request.get("draft"):
+            raise HTTPException(status_code=422, detail="PULL_REQUEST_IS_DRAFT")
 
     patch.status = "voting"
     now = datetime.now(timezone.utc)
