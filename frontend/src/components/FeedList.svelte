@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from "svelte";
+  import { onDestroy, onMount, tick } from "svelte";
   import { getFeed, type FeedItem } from "../lib/posts";
   import FeedCard from "./FeedCard.svelte";
 
@@ -29,21 +29,33 @@
     observer.observe(sentinel);
   });
 
+  onDestroy(() => {
+    observer?.disconnect();
+    observer = null;
+  });
+
   /** Load the current page, then increment. Each page# runs at most once. */
   async function loadOnce() {
     if (loaded.has(page) || busy) return;
-    loaded.add(page);
+    const requestedPage = page;
+    loaded.add(requestedPage);
     busy = true;
     try {
-      const next = await getFeed(page);
+      error = null;
+      const next = await getFeed(requestedPage);
       if (next.length === 0) { hasMore = false; return; }
       items = [...items, ...next];
       page++;
     } catch (e) {
+      loaded.delete(requestedPage);
       error = e instanceof Error ? e.message : "加载失败";
     } finally {
       busy = false;
     }
+  }
+
+  function retry() {
+    loadOnce();
   }
 </script>
 
@@ -52,9 +64,13 @@
     <div class="spinner mb-3"></div>
     加载中…
   </div>
-{:else if error}
+{:else if error && items.length === 0}
   <div class="empty-state">
-    <p style="color: var(--vercel-danger);">{error}</p>
+    <p style="color: var(--vercel-danger);">动态加载失败</p>
+    <p class="mt-1 text-sm" style="color: var(--vercel-text-tertiary);">
+      请检查网络连接后重试
+    </p>
+    <button class="btn btn-secondary btn-sm mt-3" onclick={retry}>重试</button>
   </div>
 {:else if items.length === 0}
   <div class="empty-state">
@@ -69,7 +85,12 @@
     bind:this={sentinel}
     class="flex justify-center py-6 text-sm text-surface-400"
   >
-    {#if busy}
+    {#if error}
+      <div class="flex flex-col items-center gap-2">
+        <span style="color: var(--vercel-danger);">更多内容加载失败</span>
+        <button class="btn btn-secondary btn-sm" onclick={retry}>重试</button>
+      </div>
+    {:else if busy}
       加载中…
     {:else if !hasMore}
       没有更多了

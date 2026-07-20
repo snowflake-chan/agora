@@ -28,7 +28,7 @@ import NotificationBell from "./NotificationBell.svelte";
     top: 0;
     left: 0;
     right: 0;
-    z-index: 50;
+    z-index: 40;
     border-bottom: 1px solid rgba(255,255,255,0.05);
     background: rgba(12, 12, 14, 0.35);
     backdrop-filter: blur(28px) saturate(180%);
@@ -42,9 +42,9 @@ import NotificationBell from "./NotificationBell.svelte";
 
   .pill-bar {
     position: fixed;
-    bottom: 8px;
+    bottom: max(8px, env(safe-area-inset-bottom));
     left: 50%;
-    z-index: 9998;
+    z-index: 60;
     transform: translateX(-50%);
     background: rgba(18, 18, 22, 0.45);
     border: 1px solid rgba(255,255,255,0.08);
@@ -63,7 +63,7 @@ import NotificationBell from "./NotificationBell.svelte";
     height: 2.25rem;
     border-radius: 9999px;
     color: #fff;
-    transition: all 0.15s ease;
+    transition: color 0.18s ease, background 0.18s ease, transform 0.18s ease;
     cursor: pointer;
     text-decoration: none;
     background: transparent;
@@ -74,6 +74,11 @@ import NotificationBell from "./NotificationBell.svelte";
   .pill-item:hover {
     color: #fff;
     background: rgba(255, 255, 255, 0.12);
+  }
+
+  .pill-item:focus-visible {
+    outline: 2px solid rgba(255,255,255,.85);
+    outline-offset: 2px;
   }
 
   .pill-tooltip {
@@ -97,5 +102,20 @@ import NotificationBell from "./NotificationBell.svelte";
   .pill-item:hover .pill-tooltip {
     opacity: 1;
     transform: translateX(-50%) translateY(0);
+  }
+
+  @media (max-width: 40rem) {
+    body {
+      padding-bottom: calc(4.5rem + env(safe-area-inset-bottom));
+    }
+
+    .pill-bar {
+      right: .5rem;
+      bottom: max(.5rem, env(safe-area-inset-bottom));
+      left: .5rem;
+      transform: none;
+      border-radius: 1rem;
+      background: rgba(18,18,22,.82);
+    }
   }
 </style>

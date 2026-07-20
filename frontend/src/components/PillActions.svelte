@@ -17,7 +17,7 @@
   // 'posts' | 'patches' = in-page view selection
   // 'post'  | 'patch'  = a composer dialog is open (its trigger is selected)
   // null                = nothing selected (e.g. user menu)
-  let activeKey = $state<"posts" | "patches" | "post" | "patch" | "guilds" | "admin" | null>(null);
+  let activeKey = $state<"posts" | "patches" | "post" | "patch" | "user" | "guilds" | "admin" | null>(null);
   let showPostForm = $state(false);
   let showPatchForm = $state(false);
   let menuOpen = $state(false);
@@ -49,6 +49,8 @@
       initial = "guilds";
     } else if (path.startsWith("/patches")) {
       initial = "patches";
+    } else if (path === "/my") {
+      initial = "user";
     } else {
       try {
         const saved = localStorage.getItem("agora:initView");
@@ -56,7 +58,7 @@
       } catch (e) {}
     }
     activeKey = initial;
-    if (initial === "patches" || initial === "posts") mainView.set(initial);
+    if (initial !== "user") mainView.set(initial as "posts" | "patches");
     requestAnimationFrame(updateHighlight);
   });
 
@@ -87,7 +89,6 @@
 
   // Reactively re-position whenever the selection changes.
   $effect(() => {
-    // reading activeKey registers a dependency
     void activeKey;
     updateHighlight();
   });
@@ -102,7 +103,6 @@
     if (showPatchForm) showPatchForm = false;
     activeKey = key;
     mainView.set(key);
-    // On non-home pages there is no MainView listening, so navigate to /
     const path = window.location.pathname;
     if (path !== '/' && path !== '') {
       try { localStorage.setItem("agora:initView", key); } catch (e) {}
@@ -112,6 +112,10 @@
 
   let muteAlert = $state("");
   async function selectAndOpen(key: "post" | "patch") {
+    if (!$currentUser) {
+      window.location.href = "/login";
+      return;
+    }
     // Check ban status before opening composer
     try {
       const res = await fetch("/api/v1/users/me/ban-status", { credentials: "include" });
@@ -129,7 +133,6 @@
   function closeComposer(key: "post" | "patch") {
     if (key === "post") showPostForm = false;
     else showPatchForm = false;
-    // back to the current in-page view selection
     activeKey = routeKey();
   }
 
@@ -153,7 +156,7 @@
 
 <svelte:window onclick={handleClickOutside} />
 
-<div class="pill-track" bind:this={trackEl}>
+<div class="pill-track" bind:this={trackEl} aria-label="主要导航">
   <!-- sliding selection indicator -->
   <div class="pill-highlight is-hidden" bind:this={highlightEl}></div>
 
@@ -163,6 +166,7 @@
     class="pill-item pill-slot no-underline"
     class:is-active={activeKey === "guilds"}
     data-key="guilds"
+    aria-label="社团"
     title="社团"
   >
     <svg
@@ -178,12 +182,10 @@
       /></svg
     >
     <span class="pill-tooltip">社团</span>
+    <span class="pill-label">社团</span>
   </a>
 
-  <div
-    class="w-px h-5 mx-0.5 rounded-full"
-    style="background: rgba(255,255,255,0.1);"
-  ></div>
+  <div class="pill-divider" aria-hidden="true"></div>
 
   <!-- primary nav (in-page view switch) -->
   <button
@@ -192,7 +194,8 @@
     class:is-active={activeKey === "posts"}
     data-key="posts"
     onclick={() => switchView("posts")}
-    title="帖子"
+    aria-label="动态"
+    title="动态"
   >
     <svg
       class="size-4.5"
@@ -206,7 +209,8 @@
         d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
       /></svg
     >
-    <span class="pill-tooltip">帖子</span>
+    <span class="pill-tooltip">动态</span>
+    <span class="pill-label">动态</span>
   </button>
 
   <button
@@ -215,6 +219,7 @@
     class:is-active={activeKey === "patches"}
     data-key="patches"
     onclick={() => switchView("patches")}
+    aria-label="变更"
     title="变更"
   >
     <svg
@@ -230,24 +235,24 @@
       /></svg
     >
     <span class="pill-tooltip">变更</span>
+    <span class="pill-label">变更</span>
   </button>
 
-  <div
-    class="w-px h-5 mx-1 rounded-full"
-    style="background: rgba(255,255,255,0.1);"
-  ></div>
+  <div class="pill-divider" aria-hidden="true"></div>
 
   <!-- composer triggers -->
   <button
-    class="pill-item pill-slot"
+    class="pill-item pill-slot pill-create"
     class:is-active={activeKey === "post"}
     class:banned={bannedPost}
     data-key="post"
     onclick={() => !bannedPost && selectAndOpen("post")}
+    aria-label="发布帖子"
     title={bannedPost ? "已被禁止发帖" : "发帖"}
   >
     <PlusIcon class="size-4.5" />
     <span class="pill-tooltip">{bannedPost ? "禁止发帖" : "发帖"}</span>
+    <span class="pill-label">发布</span>
   </button>
 
   <!-- Admin -->
@@ -256,10 +261,12 @@
     class="pill-item pill-slot no-underline"
     class:is-active={activeKey === "admin"}
     data-key="admin"
+    aria-label="管理后台"
     title="管理后台"
   >
     <ShieldIcon class="size-4.5" />
     <span class="pill-tooltip">管理后台</span>
+    <span class="pill-label">管理</span>
   </a>
 
   {#if $currentUser}
@@ -269,10 +276,12 @@
       class:banned={bannedPatch}
       data-key="patch"
       onclick={() => !bannedPatch && selectAndOpen("patch")}
+      aria-label="发起变更"
       title={bannedPatch ? "已被禁止发起变更" : "发起变更"}
     >
       <GitBranchIcon class="size-4.5" />
       <span class="pill-tooltip">{bannedPatch ? "禁止变更" : "发起变更"}</span>
+      <span class="pill-label">提案</span>
     </button>
   {/if}
 
@@ -283,6 +292,8 @@
         class:is-active={activeKey === "user"}
         data-key="user"
         onclick={toggleMenu}
+        aria-label="账户菜单"
+        aria-expanded={menuOpen}
         title="我的"
       >
         <div
@@ -292,6 +303,7 @@
           {($currentUser.nickname ?? $currentUser.username)[0].toUpperCase()}
         </div>
         <span class="pill-tooltip">我的</span>
+        <span class="pill-label">我的</span>
       </button>
 
       {#if menuOpen}
@@ -322,10 +334,12 @@
         href="/login"
         class="pill-item pill-slot"
         data-key="login"
+        aria-label="登录"
         title="登录"
       >
         <UserIcon class="size-4.5" />
         <span class="pill-tooltip">登录</span>
+        <span class="pill-label">登录</span>
       </a>
     {/if}
   </div>
@@ -354,5 +368,20 @@
   }
   .pill-slot.banned svg {
     color: var(--vercel-danger) !important;
+  }
+  .pill-label { display:none; font-size:.625rem; font-weight:600; line-height:1; letter-spacing:.01em; }
+  .pill-divider { width:1px; height:1.25rem; margin:0 .25rem; background:rgba(255,255,255,.1); }
+  .pill-create { color:var(--vercel-bg); background:var(--vercel-text); }
+  .pill-create:hover { color:var(--vercel-bg); background:#fff; transform:translateY(-1px); }
+  .pill-create.is-active { color:var(--vercel-bg); }
+  .pill-create :global(svg) { stroke-width:2.25; }
+  @media (max-width:40rem) {
+    .pill-tooltip,.pill-divider { display:none !important; }
+    .pill-label { display:block; }
+    :global(.pill-track) { width:100%; justify-content:space-around; gap:.1rem; }
+    :global(.pill-item) { width:auto; min-width:3.1rem; height:3rem; padding:.35rem .55rem; flex-direction:column; gap:.2rem; border-radius:.7rem; }
+    .pill-create { min-width:3.4rem; transform:translateY(-.18rem); border-radius:.85rem; box-shadow:0 .35rem 1rem rgba(0,0,0,.28); }
+    .pill-create:hover { transform:translateY(-.25rem); }
+    :global(.user-menu) { display:flex; }
   }
 </style>
