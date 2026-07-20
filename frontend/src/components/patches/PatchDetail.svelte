@@ -10,7 +10,14 @@
   } from "@lucide/svelte";
   import { onMount } from "svelte";
   import { createReport, type ReportTargetType } from "../../lib/admin";
-  import { translateError, translator } from "../../lib/i18n";
+  import {
+    formatVotingPeriod,
+    getVotingCountdown,
+    isActiveCreatorWindow,
+    resolveVotingPeriodHours,
+    type VotingCountdown,
+  } from "../../lib/governance";
+  import { locale, translateError, translator } from "../../lib/i18n";
   import { requestLogin } from "../../lib/login";
   import { renderMarkdown } from "../../lib/markdown";
   import { getPatch, deletePatch, submitPatch, votePatch, listVotes, listPatchComments, createPatchComment, type Patch, type Vote } from "../../lib/patches";
@@ -22,6 +29,7 @@
   import ConfirmDialog from "../ConfirmDialog.svelte";
   import GlassModal from "../GlassModal.svelte";
   import TimelineItem from "../posts/TimelineItem.svelte";
+  import VotingWindowMeta from "./VotingWindowMeta.svelte";
 
   let { patchId = "", embedded = false }: { patchId: string; embedded?: boolean } = $props();
 
@@ -33,8 +41,10 @@
   let replyingTo = $state<Comment | null>(null);
   let replyText = $state("");
   let submittingReply = $state(false);
+  let submittingPatch = $state(false);
   let likingId = $state<string | null>(null);
 
+  let showSubmitDialog = $state(false);
   let showVoteDialog = $state(false);
   let pendingChoice = $state("");
   let showDeleteDialog = $state(false);
@@ -44,6 +54,7 @@
   let reportTargetType = $state<ReportTargetType>("content");
   let reportReason = $state("");
   let reporting = $state(false);
+  let currentTime = $state(Date.now());
 
   const STATUS_TYPES: Record<string, string> = {
     draft: "neutral",
@@ -60,29 +71,31 @@
         type: STATUS_TYPES[patch.status] ?? "neutral",
       }
     : { label: "", type: "neutral" });
-  let deadlineStr = $derived(patch?.voting_ends_at ? formatDeadline(patch.voting_ends_at) : null);
+  let deadline = $derived(getVotingCountdown(patch?.voting_ends_at ?? null, currentTime));
+  let deadlineStr = $derived(formatDeadline(deadline));
+  let votingIsOpen = $derived(
+    patch?.status === "voting" && deadline !== null && deadline.state !== "closed",
+  );
 
-  function formatDeadline(iso: string): string {
-    const end = new Date(iso);
-    const now = new Date();
-    const diff = end.getTime() - now.getTime();
-    if (diff <= 0) return $translator("patch.closed");
-    const hours = Math.floor(diff / 3600000);
-    const days = Math.floor(hours / 24);
-    if (days > 0) {
-      return $translator("patch.remainingDaysHours", { days, hours: hours % 24 });
+  function formatDeadline(value: VotingCountdown | null): string | null {
+    if (!value) return null;
+    if (value.state === "closed") return $translator("patch.closed");
+    if (value.state === "days") {
+      return $translator("patch.remainingDaysHours", {
+        days: value.days,
+        hours: value.hours,
+      });
     }
-    return $translator("patch.remainingHours", { hours });
+    if (value.state === "hours") {
+      return $translator("patch.remainingHours", { hours: value.hours });
+    }
+    return $translator("patch.remainingMinutes", { minutes: value.minutes });
   }
 
   function voteLabel(choice: string): string {
     return $translator(
       choice === "for" ? "patch.for" : choice === "against" ? "patch.against" : "patch.abstain",
     );
-  }
-
-  function votingOpen(iso: string | null): boolean {
-    return Boolean(iso && new Date(iso).getTime() > Date.now());
   }
 
   onMount(async () => {
@@ -104,6 +117,21 @@
     }
   });
 
+  onMount(() => {
+    const timer = window.setInterval(() => (currentTime = Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  });
+
+  $effect(() => {
+    const endsAt = patch?.voting_ends_at ? Date.parse(patch.voting_ends_at) : NaN;
+    if (!Number.isFinite(endsAt)) return;
+    const remaining = endsAt - Date.now();
+    if (remaining <= 0) return;
+
+    const timer = window.setTimeout(() => (currentTime = Date.now()), remaining + 25);
+    return () => window.clearTimeout(timer);
+  });
+
   function patchReturnTo(fragment?: string) {
     return `/patches/${patchId}${fragment ? `#${fragment}` : ""}`;
   }
@@ -118,20 +146,52 @@
   }
 
   async function handleSubmit() {
+    if (submittingPatch) return;
+    submittingPatch = true;
     try {
-      patch = await submitPatch(patchId);
-      toaster.success($translator("patch.submitted"), $translator("patch.votingWindow"));
+      const submittedPatch = await submitPatch(patchId);
+      patch = submittedPatch;
+      currentTime = Date.now();
+
+      const periodHours = resolveVotingPeriodHours(
+        submittedPatch.voting_period_hours,
+        submittedPatch.voting_started_at,
+        submittedPatch.voting_ends_at,
+      );
+      const duration = formatVotingPeriod(periodHours, $locale);
+      const activeCreatorWindow = isActiveCreatorWindow(
+        submittedPatch.voting_window_kind,
+        submittedPatch.voting_period_hours,
+        submittedPatch.voting_started_at,
+        submittedPatch.voting_ends_at,
+      );
+      const message = duration
+        ? $translator(
+            activeCreatorWindow
+              ? "patch.activeCreatorVotingWindow"
+              : "patch.votingWindowDuration",
+            { duration },
+          )
+        : $translator("patch.votingWindow");
+      toaster.success($translator("patch.submitted"), message);
     } catch (e: any) {
       toaster.error($translator("patch.submitFailed"), $translator("common.tryAgain"));
+    } finally {
+      submittingPatch = false;
     }
   }
 
   function promptVote(choice: string) {
+    if (!votingIsOpen) return;
     pendingChoice = choice;
     showVoteDialog = true;
   }
 
   async function confirmVote() {
+    if (!votingIsOpen) {
+      toaster.error($translator("patch.closed"), $translator("patch.awaitingTally"));
+      return;
+    }
     try {
       const v = await votePatch(patchId, pendingChoice);
       currentUserVote = v;
@@ -298,6 +358,14 @@
       <span class="badge badge-{statusInfo.type}">
         {statusInfo.label}
       </span>
+      <VotingWindowMeta
+        status={patch.status}
+        votingWindowKind={patch.voting_window_kind}
+        votingPeriodHours={patch.voting_period_hours}
+        votingStartedAt={patch.voting_started_at}
+        votingEndsAt={patch.voting_ends_at}
+        showHistory
+      />
       {#if patch.status === "voting" && deadlineStr}
         <span class="text-xs" style="color: var(--vercel-text-tertiary);">{deadlineStr}</span>
       {/if}
@@ -343,10 +411,12 @@
         {#if deadlineStr}<span class="vote-deadline">{deadlineStr}</span>{/if}
       </div>
 
-      {#if deadlineStr && votingOpen(patch.voting_ends_at)}
+      {#if deadlineStr && votingIsOpen}
         <p class="mb-3 text-xs" style="color: var(--vercel-text-tertiary);">
           {$translator("patch.autoTally", { deadline: deadlineStr })}
         </p>
+      {:else if !votingIsOpen}
+        <p class="vote-closed-note">{$translator("patch.awaitingTally")}</p>
       {/if}
 
       <!-- Vote bar -->
@@ -364,7 +434,7 @@
         <div class="vote-total"><strong>{patch.abstain_count}</strong><span>{$translator("patch.abstain")}</span></div>
       </div>
 
-      {#if $currentUser}
+      {#if votingIsOpen && $currentUser}
         <div class="vote-actions">
           <button
             class="vote-choice"
@@ -407,7 +477,7 @@
           </button>
         </div>
         <p class="vote-change-hint">{$translator("patch.voteChangeHint")}</p>
-      {:else}
+      {:else if votingIsOpen}
         <a href="/login" class="text-sm transition-colors" style="color: var(--vercel-text-secondary);">{$translator("patch.loginToVote")}</a>
       {/if}
     </section>
@@ -432,8 +502,12 @@
   {#if $currentUser?.id === patch.author_id}
     <div class="mb-8 flex gap-2">
       {#if patch.status === "draft"}
-        <button class="btn btn-primary btn-sm" onclick={handleSubmit}>
-          {$translator("patch.submit")}
+        <button
+          class="btn btn-primary btn-sm"
+          disabled={submittingPatch}
+          onclick={() => (showSubmitDialog = true)}
+        >
+          {$translator(submittingPatch ? "patch.submitting" : "patch.submit")}
         </button>
         <button class="btn btn-danger btn-sm" onclick={() => { pendingCommentDelete = null; showDeleteDialog = true; }}>
           {$translator("common.delete")}
@@ -529,6 +603,15 @@
     </div>
   {/if}
 {/if}
+
+<ConfirmDialog
+  bind:open={showSubmitDialog}
+  title={$translator("patch.submitConfirmTitle")}
+  description={$translator("patch.submitConfirmDescription")}
+  confirmText={$translator("patch.submit")}
+  tone="primary"
+  onConfirm={handleSubmit}
+/>
 
 <ConfirmDialog
   bind:open={showDeleteDialog}
@@ -753,6 +836,13 @@
     font-size: 0.75rem;
     line-height: 1.45;
     text-align: center;
+  }
+
+  .vote-closed-note {
+    margin: 0 0 0.75rem;
+    color: var(--vercel-text-tertiary);
+    font-size: 0.75rem;
+    line-height: 1.45;
   }
 
   .vote-check {

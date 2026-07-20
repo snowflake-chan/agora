@@ -248,7 +248,10 @@ async def list_user_patches(
             status=p.status,
             author_id=p.author_id,
             author_username=p.author.username,
+            voting_started_at=p.voting_started_at,
             voting_ends_at=p.voting_ends_at,
+            voting_period_hours=p.voting_period_hours,
+            voting_window_kind=p.voting_window_kind,
             for_count=counts_map.get(str(p.id), {}).get("for", 0),
             against_count=counts_map.get(str(p.id), {}).get("against", 0),
             abstain_count=counts_map.get(str(p.id), {}).get("abstain", 0),
@@ -469,6 +472,10 @@ async def list_user_content(
                 created_at=patch.created_at,
                 pr_number=patch.pr_number,
                 status=patch.status,
+                voting_started_at=patch.voting_started_at,
+                voting_ends_at=patch.voting_ends_at,
+                voting_period_hours=patch.voting_period_hours,
+                voting_window_kind=patch.voting_window_kind,
                 reply_count=patch_comment_counts.get(patch.id, 0),
                 can_delete=bool(
                     viewer and viewer.id == patch.author_id and patch.status == "draft"

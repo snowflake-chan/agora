@@ -82,7 +82,10 @@ class FeedItem(BaseModel):
     # Patch-specific
     pr_number: int | None = None
     status: str | None = None
+    voting_started_at: datetime | None = None
     voting_ends_at: datetime | None = None
+    voting_period_hours: int | None = None
+    voting_window_kind: str | None = None
     for_count: int = 0
     against_count: int = 0
     abstain_count: int = 0

@@ -3,6 +3,7 @@
   import { translator } from "../../lib/i18n";
   import { stripMarkdown } from "../../lib/utils";
   import AuthorMeta from "../AuthorMeta.svelte";
+  import VotingWindowMeta from "./VotingWindowMeta.svelte";
 
   let { patch }: { patch: Patch } = $props();
 
@@ -27,11 +28,18 @@
 >
   <div class="flex items-start gap-3">
     <div class="min-w-0 flex-1">
-      <div class="flex items-center gap-2">
+      <div class="flex flex-wrap items-center gap-2">
         <span class="badge badge-{statusInfo.type}">
           {statusInfo.label}
         </span>
         <span class="text-xs" style="color: var(--vercel-text-tertiary);">#{patch.pr_number}</span>
+        <VotingWindowMeta
+          status={patch.status}
+          votingWindowKind={patch.voting_window_kind}
+          votingPeriodHours={patch.voting_period_hours}
+          votingStartedAt={patch.voting_started_at}
+          votingEndsAt={patch.voting_ends_at}
+        />
       </div>
       <h2 class="mt-1 text-base font-semibold">
         <a class="card-link" href={`/patches/${patch.id}`} style="color: var(--vercel-text);">

@@ -17,6 +17,7 @@
   import { Flag, LockKeyhole, RefreshCw, Trash2 } from "@lucide/svelte";
   import ConfirmDialog from "../ConfirmDialog.svelte";
   import GlassModal from "../GlassModal.svelte";
+  import VotingWindowMeta from "../patches/VotingWindowMeta.svelte";
   import GuildMemberCard from "./GuildMemberCard.svelte";
 
   let { guildId }: { guildId: string } = $props();
@@ -313,10 +314,17 @@
         {#each patches as p (p.id)}
           <a href="/patches/{p.id}" class="patch-card card p-4 block no-underline">
             <h3 class="font-semibold text-sm" style="color: var(--vercel-text);">{p.title}</h3>
-            <div class="flex items-center gap-2 mt-2 text-xs" style="color: var(--vercel-text-tertiary);">
+            <div class="flex flex-wrap items-center gap-2 mt-2 text-xs" style="color: var(--vercel-text-tertiary);">
               <span>{$translator("guild.voteSummary", { for: p.for_count, against: p.against_count })}</span>
               <span>·</span>
               <span>{timeAgo(p.created_at)}</span>
+              <VotingWindowMeta
+                status={p.status}
+                votingWindowKind={p.voting_window_kind}
+                votingPeriodHours={p.voting_period_hours}
+                votingStartedAt={p.voting_started_at}
+                votingEndsAt={p.voting_ends_at}
+              />
             </div>
           </a>
         {/each}

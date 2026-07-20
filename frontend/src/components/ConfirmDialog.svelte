@@ -6,12 +6,14 @@
     title = "",
     description = "",
     confirmText = "",
+    tone = "danger",
     onConfirm = () => {},
   }: {
     open: boolean;
     title: string;
     description: string;
     confirmText: string;
+    tone?: "primary" | "danger";
     onConfirm: () => void;
   } = $props();
 
@@ -55,7 +57,13 @@
       {/if}
       <div class="dialog-actions">
         <button class="btn btn-ghost btn-sm" onclick={() => (open = false)}>{$translator("common.cancel")}</button>
-        <button data-autofocus class="btn btn-danger btn-sm" onclick={handleConfirm}>
+        <button
+          data-autofocus
+          class="btn btn-sm"
+          class:btn-primary={tone === "primary"}
+          class:btn-danger={tone === "danger"}
+          onclick={handleConfirm}
+        >
           {confirmText || $translator("common.confirm")}
         </button>
       </div>

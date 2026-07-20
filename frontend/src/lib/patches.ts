@@ -1,5 +1,6 @@
 import { API_BASE } from "./config";
 import { ApiError } from "./auth";
+import type { VotingWindowKind } from "./governance";
 import type { Comment } from "./posts";
 
 export interface Patch {
@@ -10,7 +11,10 @@ export interface Patch {
   status: string;
   author_id: string;
   author_username: string | null;
+  voting_started_at: string | null;
   voting_ends_at: string | null;
+  voting_period_hours: number | null;
+  voting_window_kind: VotingWindowKind | null;
   for_count: number;
   against_count: number;
   abstain_count: number;

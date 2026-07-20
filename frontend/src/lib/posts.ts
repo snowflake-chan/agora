@@ -2,6 +2,7 @@ import type { User } from "./auth";
 import { ApiError } from "./auth";
 
 import { API_BASE } from "./config";
+import type { VotingWindowKind } from "./governance";
 
 export interface Post {
   id: string;
@@ -96,7 +97,10 @@ export interface FeedItem {
   like_count: number;
   pr_number: number | null;
   status: string | null;
+  voting_started_at: string | null;
   voting_ends_at: string | null;
+  voting_period_hours: number | null;
+  voting_window_kind: VotingWindowKind | null;
   for_count: number;
   against_count: number;
   abstain_count: number;
