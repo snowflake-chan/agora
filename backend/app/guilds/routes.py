@@ -36,7 +36,8 @@ async def _guild_to_read(g: Guild, session: AsyncSession) -> GuildRead:
         president_id=g.president_id,
         president_username=g.president.username if g.president else "",
         member_count=mc,
-        level=g.level or calc_guild_level(mc),
+        points=g.points,
+        level=g.level or calc_guild_level(g.points),
         created_at=g.created_at,
     )
 
@@ -75,6 +76,21 @@ async def create_guild(
 
     m = GuildMember(guild_id=g.id, user_id=user.id, role="president")
     session.add(m)
+
+    # First guild for the creator
+    if not user.first_guild_id:
+        user.first_guild_id = g.id
+        if user.points > 0:
+            from app.db.models.points import PointTransaction
+            g.points = (g.points or 0) + user.points
+            session.add(PointTransaction(
+                user_id=user.id,
+                guild_id=g.id,
+                amount=user.points,
+                reason="first_guild_credit",
+                note=f"创建社团，历史积分 {user.points} 归属「{g.name}」",
+            ))
+
     await session.commit()
     await session.refresh(g)
     return await _guild_to_read(g, session)
@@ -221,6 +237,23 @@ async def approve_request(
     if not m or m.status != "pending":
         raise HTTPException(404)
     m.status = "approved"
+
+    # First-guild credit: if this is the user's first ever guild, credit all historical points
+    member_user = await session.get(User, m.user_id)
+    if member_user and not member_user.first_guild_id:
+        member_user.first_guild_id = guild_id
+        g = await session.get(Guild, guild_id)
+        if g and member_user.points > 0:
+            from app.db.models.points import PointTransaction
+            g.points = (g.points or 0) + member_user.points
+            session.add(PointTransaction(
+                user_id=member_user.id,
+                guild_id=guild_id,
+                amount=member_user.points,
+                reason="first_guild_credit",
+                note=f"用户首次加入社团，历史积分 {member_user.points} 归属「{g.name}」",
+            ))
+
     await session.commit()
     return {"ok": True}
 
@@ -277,7 +310,7 @@ async def promote_member(
                 GuildMember.guild_id == guild_id, GuildMember.role == "vice_president", GuildMember.status == "approved"
             )
         )).scalar() or 0
-        max_vp = _MAX_VP.get(calc_guild_level(mc), 1)
+        max_vp = _MAX_VP.get(calc_guild_level(g.points), 1)
         if vp_count >= max_vp:
             raise HTTPException(400, detail=f"MAX_VP_{max_vp}")
 
@@ -532,12 +565,9 @@ async def my_guild(
     )).scalar_one_or_none()
     if not m:
         return None
-    mc = (await session.execute(
-        select(func.count(GuildMember.id)).where(GuildMember.guild_id == m.guild_id)
-    )).scalar() or 0
     return UserGuildBadge(
         guild_id=m.guild_id,
         guild_name=m.guild.name,
-        guild_level=calc_guild_level(mc),
+        guild_level=calc_guild_level(m.guild.points),
         role=m.role,
     )

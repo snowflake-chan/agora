@@ -27,6 +27,7 @@ class GuildRead(BaseModel):
     president_id: uuid.UUID
     president_username: str = ""
     member_count: int = 0
+    points: int = 0
     level: int = 1
     created_at: datetime
 

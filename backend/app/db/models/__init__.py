@@ -6,8 +6,10 @@ from .notification import Notification
 from .guild import Guild, GuildMember
 from .moderation import Report, BanRecord
 from .settings import SiteSetting
+from .points import PointTransaction
 
 __all__ = [
     "User", "Content", "Patch", "Vote", "Notification",
     "Guild", "GuildMember", "Report", "BanRecord", "SiteSetting",
+    "PointTransaction",
 ]

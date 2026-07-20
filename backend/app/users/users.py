@@ -232,13 +232,10 @@ async def get_user_guild(
     )).scalar_one_or_none()
     if not m:
         return None
-    mc = (await session.execute(
-        select(func.count(GuildMemberModel.id)).where(GuildMemberModel.guild_id == m.guild_id)
-    )).scalar() or 0
     return UserGuildBadge(
         guild_id=m.guild_id,
         guild_name=m.guild.name,
-        guild_level=calc_guild_level(mc),
+        guild_level=calc_guild_level(m.guild.points),
         role=m.role,
     )
 

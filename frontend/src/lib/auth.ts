@@ -7,6 +7,8 @@ export interface User {
   nickname: string | null;
   bio: string | null;
   is_active: boolean;
+  points: number;
+  first_guild_id: string | null;
 }
 
 export interface UserPublic {
@@ -14,6 +16,8 @@ export interface UserPublic {
   username: string;
   nickname: string | null;
   bio: string | null;
+  points: number;
+  first_guild_id: string | null;
 }
 
 export interface UserUpdateData {

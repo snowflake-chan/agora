@@ -9,6 +9,8 @@ class UserRead(BaseModel):
     nickname: str | None
     bio: str | None = None
     is_active: bool
+    points: int = 0
+    first_guild_id: uuid.UUID | None = None
 
     model_config = {"from_attributes": True}
 
@@ -19,6 +21,8 @@ class UserPublic(BaseModel):
     username: str
     nickname: str | None
     bio: str | None = None
+    points: int = 0
+    first_guild_id: uuid.UUID | None = None
 
     model_config = {"from_attributes": True}
 

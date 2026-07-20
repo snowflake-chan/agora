@@ -98,6 +98,42 @@ async def _notify_patch_voters(patch_id: str, patch_title: str, result: str) -> 
         print(f"[notif] patch voters error: {e}")
 
 
+async def _award_merge_points(session: AsyncSession, patch: PatchModel, patch_title: str) -> None:
+    """Award 10 points to author and 10 to their first guild on merge."""
+    from app.db.models.points import PointTransaction
+    from app.db.models.user import User
+
+    PATCH_MERGE_POINTS = 10
+
+    # Award author
+    author = await session.get(User, patch.author_id)
+    if author:
+        author.points = (author.points or 0) + PATCH_MERGE_POINTS
+        session.add(PointTransaction(
+            user_id=author.id,
+            patch_id=patch.id,
+            amount=PATCH_MERGE_POINTS,
+            reason="patch_merged",
+            note=f"变更「{patch_title}」合并通过",
+        ))
+
+    # Award first guild (if any)
+    if author and author.first_guild_id:
+        guild = await session.get(Guild, author.first_guild_id)
+        if guild:
+            guild.points = (guild.points or 0) + PATCH_MERGE_POINTS
+            session.add(PointTransaction(
+                user_id=author.id,
+                guild_id=guild.id,
+                patch_id=patch.id,
+                amount=PATCH_MERGE_POINTS,
+                reason="patch_merged",
+                note=f"变更「{patch_title}」合并通过，积分归属社团「{guild.name}」",
+            ))
+
+    await session.commit()
+
+
 async def _do_merge_and_deploy(patch_id: str, pr_number: int, patch_title: str | None = None) -> None:
     """Merge PR via GitHub and trigger deploy (background task, own session)."""
     from app.db import async_session as _async_session
@@ -111,6 +147,13 @@ async def _do_merge_and_deploy(patch_id: str, pr_number: int, patch_title: str |
             patch_title = patch.title
             patch.status = "merged"
             await session.commit()
+
+            # Award points — isolated from merge failure handling
+            try:
+                await _award_merge_points(session, patch, patch_title)
+            except Exception as e:
+                print(f"[points] merge award error for {patch_id}: {e}")
+
         await _trigger_deploy()
         # Notify voters + author
         asyncio.create_task(

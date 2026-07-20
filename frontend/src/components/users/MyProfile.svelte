@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { ExternalLinkIcon, LockKeyholeIcon, LogOutIcon, UserRoundIcon } from "@lucide/svelte";
+  import { ExternalLinkIcon, LockKeyholeIcon, LogOutIcon, StarIcon, UserRoundIcon } from "@lucide/svelte";
   import { initAuth, currentUser, updateProfile, logout } from "../../stores/auth";
   import type { UserUpdateData } from "../../lib/auth";
 
@@ -96,6 +96,10 @@
         <p class="settings-kicker">账户</p>
         <h1>个人设置</h1>
         <p>管理公开身份、登录邮箱和账户安全。</p>
+        <div class="points-badge">
+          <StarIcon size={14} />
+          <span>{$currentUser.points ?? 0} 积分</span>
+        </div>
       </div>
       <a class="public-profile-link" href="/users/{$currentUser.id}">
         查看公开主页
@@ -200,6 +204,7 @@
   .settings-kicker,.section-number { color:var(--vercel-text-tertiary); font-size:.6875rem; font-weight:650; letter-spacing:.12em; }
   .settings-heading h1 { margin:.15rem 0 .2rem; color:var(--vercel-text); font-size:clamp(1.65rem,3vw,2.25rem); font-weight:650; letter-spacing:-.045em; line-height:1; }
   .settings-heading > div > p:last-child,.section-copy p:last-child { color:var(--vercel-text-tertiary); font-size:.8125rem; line-height:1.5; }
+  .points-badge { display:inline-flex; align-items:center; gap:.35rem; margin-top:.35rem; padding:.2rem .55rem; background:rgba(250,204,21,.12); border:1px solid rgba(250,204,21,.2); border-radius:9999px; color:#facc15; font-size:.6875rem; font-weight:600; }
   .public-profile-link { display:flex; align-items:center; gap:.4rem; color:var(--vercel-text-secondary); font-size:.75rem; font-weight:550; transition:color .18s ease; }
   .public-profile-link:hover { color:var(--vercel-text); }
   .settings-message { margin-top:1rem; padding:.75rem 1rem; border:1px solid; border-radius:.65rem; font-size:.8125rem; }

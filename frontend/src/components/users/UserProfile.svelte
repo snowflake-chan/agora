@@ -1,15 +1,18 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { StarIcon } from "@lucide/svelte";
   import { getUser, getUserPosts, getUserPatches, type UserPublic } from "../../lib/auth";
   import type { Post } from "../../lib/posts";
   import type { Patch } from "../../lib/patches";
   import { timeAgo } from "../../lib/utils";
+  import { API_BASE } from "../../lib/config";
 
   let { userId }: { userId: string } = $props();
 
   let user = $state<UserPublic | null>(null);
   let posts = $state<Post[]>([]);
   let patches = $state<Patch[]>([]);
+  let guildBadge = $state<{ guild_id: string; guild_name: string; guild_level: number; role: string } | null>(null);
   let loading = $state(true);
   let error = $state<string | null>(null);
   let tab = $state<"posts" | "patches">("posts");
@@ -24,6 +27,15 @@
       user = u;
       posts = p;
       patches = pt;
+
+      // Fetch guild badge
+      try {
+        const res = await fetch(`${API_BASE}/users/${userId}/guild`, { credentials: "include" });
+        if (res.ok) {
+          const data = await res.json();
+          if (data) guildBadge = data;
+        }
+      } catch { /* ignore */ }
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to load user";
     } finally {
@@ -60,6 +72,17 @@
             {user.bio}
           </p>
         {/if}
+        <div class="mt-2 flex flex-wrap items-center gap-2">
+          <span class="points-badge">
+            <StarIcon size={12} />
+            {user.points ?? 0} 积分
+          </span>
+          {#if guildBadge}
+            <a href="/guilds/{guildBadge.guild_id}" class="guild-badge" title="Lv.{guildBadge.guild_level} {guildBadge.guild_name}">
+              Lv.{guildBadge.guild_level} {guildBadge.guild_name}
+            </a>
+          {/if}
+        </div>
       </div>
     </div>
   </div>
@@ -136,3 +159,34 @@
     {/if}
   {/if}
 {/if}
+
+<style>
+  .points-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.15rem 0.5rem;
+    background: rgba(250, 204, 21, 0.12);
+    border: 1px solid rgba(250, 204, 21, 0.2);
+    border-radius: 9999px;
+    color: #facc15;
+    font-size: 0.6875rem;
+    font-weight: 600;
+  }
+  .guild-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.15rem 0.5rem;
+    background: rgba(59, 130, 246, 0.12);
+    border: 1px solid rgba(59, 130, 246, 0.2);
+    border-radius: 9999px;
+    color: #60a5fa;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: background 0.18s ease;
+  }
+  .guild-badge:hover {
+    background: rgba(59, 130, 246, 0.2);
+  }
+</style>
