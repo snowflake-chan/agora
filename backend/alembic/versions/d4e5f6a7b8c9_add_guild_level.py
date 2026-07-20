@@ -18,6 +18,7 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     op.add_column('guild', sa.Column('level', sa.Integer(), nullable=True, server_default='1'))
     op.execute(sa.text("UPDATE guild SET level = 1 WHERE level IS NULL"))
+    op.alter_column('guild', 'level', nullable=False)
 
 
 def downgrade() -> None:

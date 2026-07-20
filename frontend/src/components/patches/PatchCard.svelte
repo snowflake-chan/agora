@@ -1,28 +1,29 @@
 <script lang="ts">
   import type { Patch } from "../../lib/patches";
+  import { translator } from "../../lib/i18n";
   import { stripMarkdown } from "../../lib/utils";
   import AuthorMeta from "../AuthorMeta.svelte";
 
   let { patch }: { patch: Patch } = $props();
 
-  const STATUS_MAP: Record<string, { label: string; type: string }> = {
-    draft: { label: "草稿", type: "neutral" },
-    voting: { label: "投票中", type: "warning" },
-    passed: { label: "通过待合并", type: "info" },
-    merged: { label: "已合并", type: "success" },
-    rejected: { label: "未通过", type: "danger" },
-    failed: { label: "合并失败", type: "danger" },
+  const STATUS_TYPES: Record<string, string> = {
+    draft: "neutral",
+    voting: "warning",
+    passed: "info",
+    merged: "success",
+    rejected: "danger",
+    failed: "danger",
   };
 
-  let statusInfo = $derived(STATUS_MAP[patch.status] ?? { label: patch.status, type: "neutral" });
+  let statusInfo = $derived({
+    label: $translator(`status.${patch.status}`),
+    type: STATUS_TYPES[patch.status] ?? "neutral",
+  });
   let snippet = $derived(stripMarkdown(patch.content));
 </script>
 
 <article
-  class="patch-card relative px-4 py-4 border-b transition-colors"
-  style="border-color: var(--vercel-border);"
-  onmouseenter={(e) => e.currentTarget.style.background = '#141417'}
-  onmouseleave={(e) => e.currentTarget.style.background = ''}
+  class="patch-card"
 >
   <div class="flex items-start gap-3">
     <div class="min-w-0 flex-1">
@@ -44,14 +45,30 @@
   <div class="mt-2 flex items-center justify-between gap-2">
     <div class="flex items-center gap-3 text-xs" style="color: var(--vercel-text-tertiary);">
       {#if patch.status !== "draft"}
-        <span>赞成 {patch.for_count} · 反对 {patch.against_count}</span>
+        <span>{$translator("patch.for")} {patch.for_count} · {$translator("patch.against")} {patch.against_count}</span>
       {/if}
     </div>
-    <AuthorMeta username={patch.author_username ?? "匿名"} userId={patch.author_id} createdAt={patch.created_at} />
+    <AuthorMeta username={patch.author_username ?? $translator("common.anonymous")} userId={patch.author_id} createdAt={patch.created_at} />
   </div>
 </article>
 
 <style>
+  .patch-card {
+    position: relative;
+    padding: 1rem;
+    border-bottom: 1px solid var(--vercel-border);
+    transition: background 180ms ease, box-shadow 180ms ease;
+  }
+
+  .patch-card:last-child {
+    border-bottom: 0;
+  }
+
+  .patch-card:hover {
+    background: var(--vercel-hover);
+    box-shadow: inset 2px 0 var(--vercel-border-hover);
+  }
+
   .card-link::after {
     content: "";
     position: absolute;

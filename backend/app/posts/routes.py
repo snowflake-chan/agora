@@ -1,25 +1,34 @@
+import asyncio
 from datetime import timedelta
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, select
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import delete, func, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
+from sse_starlette.sse import EventSourceResponse
 
 from app.db import get_session
 from app.db.models.content import Content as ContentModel
+from app.db.models.follow import Follow
 from app.db.models.patch import Patch as PatchModel
-from app.db.models.vote import Vote as VoteModel
+from app.db.models.post_like import PostLike
 from app.db.models.user import User
-from app.notifications.service import create_notification
+from app.db.models.vote import Vote as VoteModel
 from app.deps import check_not_banned
+from app.notifications.service import create_notification, notify_followers
+from app.notifications.redis import get_redis
+from app.posts.feed import FeedMode, rank_feed_items
+from app.posts.realtime import FEED_CHANNEL, publish_feed_event
 from app.schemas.post import (
     CommentCreate,
     CommentRead,
     FeedItem,
     PostCreate,
+    PostLikeRead,
     PostRead,
-    PostUpdate,
 )
-from app.users.deps import current_user
+from app.users.deps import current_user, optional_current_user
 
 router = APIRouter()
 
@@ -55,6 +64,7 @@ async def list_posts(
     # Attach reply counts
     post_ids = [p.id for p in posts]
     counts = {}
+    like_counts = {}
     if post_ids:
         count_stmt = (
             select(ContentModel.parent_id, func.count(ContentModel.id))
@@ -66,6 +76,12 @@ async def list_posts(
         )
         count_result = await session.execute(count_stmt)
         counts = dict(count_result.all())
+        like_result = await session.execute(
+            select(PostLike.post_id, func.count(PostLike.id))
+            .where(PostLike.post_id.in_(post_ids))
+            .group_by(PostLike.post_id)
+        )
+        like_counts = dict(like_result.all())
 
     return [
         PostRead(
@@ -76,6 +92,7 @@ async def list_posts(
             tags=p.tags,
             author_username=p.author.username,
             reply_count=counts.get(p.id, 0),
+            like_count=like_counts.get(p.id, 0),
             created_at=p.created_at,
             updated_at=p.updated_at,
         )
@@ -112,6 +129,19 @@ async def create_post(
     result = await session.execute(stmt)
     post = result.scalar_one()
 
+    await publish_feed_event(
+        "created",
+        item_type="post",
+        item_id=str(post.id),
+    )
+    await notify_followers(
+        author_id=user.id,
+        type="following_post",
+        title=f"{user.nickname or user.username} published a new post",
+        message=post.title or "",
+        link=f"/posts/{post.id}",
+    )
+
     return PostRead(
         id=post.id,
         title=post.title or "",
@@ -132,49 +162,78 @@ async def create_post(
 async def get_feed(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
+    mode: FeedMode = Query("recommended"),
     session: AsyncSession = Depends(get_session),
+    user: User | None = Depends(optional_current_user),
 ):
-    """Unified feed of posts and patches, newest first."""
+    """Unified feed ranked for the requested home view."""
     offset = (page - 1) * page_size
+    if mode == "following" and user is None:
+        raise HTTPException(status_code=401, detail="LOGIN_REQUIRED")
 
-    # Fetch recent posts
+    following_author_ids: set[UUID] = set()
+    interest_tags: set[str] = set()
+    if user:
+        following_author_ids = set(
+            (
+                await session.execute(
+                    select(Follow.following_id).where(
+                        Follow.follower_id == user.id
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        authored_tags = (
+            await session.execute(
+                select(ContentModel.tags)
+                .where(
+                    ContentModel.type == "post",
+                    ContentModel.author_id == user.id,
+                    ContentModel.tags.is_not(None),
+                )
+                .order_by(ContentModel.created_at.desc())
+                .limit(50)
+            )
+        ).scalars().all()
+        liked_tags = (
+            await session.execute(
+                select(ContentModel.tags)
+                .join(PostLike, PostLike.post_id == ContentModel.id)
+                .where(
+                    ContentModel.type == "post",
+                    PostLike.user_id == user.id,
+                    ContentModel.tags.is_not(None),
+                )
+                .order_by(ContentModel.created_at.desc())
+                .limit(50)
+            )
+        ).scalars().all()
+        for tags in [*authored_tags, *liked_tags]:
+            interest_tags.update(tag.casefold() for tag in tags or [])
+
+    # Fetch a bounded candidate pool; ranking happens after all signals are attached.
     posts = (
         await session.execute(
             select(ContentModel)
             .where(ContentModel.type == "post")
             .order_by(ContentModel.created_at.desc())
-            .limit(1000)
+            .limit(500)
         )
     ).scalars().all()
 
-    # Fetch recent patches
     patches = (
         await session.execute(
             select(PatchModel)
             .order_by(PatchModel.created_at.desc())
-            .limit(1000)
+            .limit(500)
         )
     ).scalars().all()
 
-    # Attach vote counts for patches in feed
-    patch_ids = [str(p.id) for p in patches]
-    vote_counts: dict = {}
-    if patch_ids:
-        vote_stmt = (
-            select(VoteModel.patch_id, VoteModel.choice, func.count(VoteModel.id))
-            .where(VoteModel.patch_id.in_(patch_ids))
-            .group_by(VoteModel.patch_id, VoteModel.choice)
-        )
-        vote_rows = (await session.execute(vote_stmt)).all()
-        for pid, choice, cnt in vote_rows:
-            key = str(pid)
-            if key not in vote_counts:
-                vote_counts[key] = {"for": 0, "against": 0, "abstain": 0}
-            vote_counts[key][choice] = cnt
-
-    # Attach reply counts for posts in feed
     post_ids = [p.id for p in posts]
     reply_counts: dict = {}
+    like_counts: dict = {}
     if post_ids:
         count_stmt = (
             select(ContentModel.parent_id, func.count(ContentModel.id))
@@ -186,43 +245,109 @@ async def get_feed(
         )
         count_result = await session.execute(count_stmt)
         reply_counts = dict(count_result.all())
+        like_result = await session.execute(
+            select(PostLike.post_id, func.count(PostLike.id))
+            .where(PostLike.post_id.in_(post_ids))
+            .group_by(PostLike.post_id)
+        )
+        like_counts = dict(like_result.all())
 
-    # Merge & sort by created_at desc
+    patch_comment_counts: dict = {}
+    patch_ids = [p.id for p in patches]
+    if patch_ids:
+        patch_comment_counts = dict(
+            (
+                await session.execute(
+                    select(ContentModel.patch_id, func.count(ContentModel.id))
+                    .where(
+                        ContentModel.patch_id.in_(patch_ids),
+                        ContentModel.type == "comment",
+                    )
+                    .group_by(ContentModel.patch_id)
+                )
+            ).all()
+        )
+    vote_counts: dict[str, dict[str, int]] = {}
+    if patch_ids:
+        vote_rows = (
+            await session.execute(
+                select(VoteModel.patch_id, VoteModel.choice, func.count(VoteModel.id))
+                .where(VoteModel.patch_id.in_(patch_ids))
+                .group_by(VoteModel.patch_id, VoteModel.choice)
+            )
+        ).all()
+        for patch_id, choice, count in vote_rows:
+            vote_counts.setdefault(
+                str(patch_id),
+                {"for": 0, "against": 0, "abstain": 0},
+            )[choice] = count
+
     items: list[FeedItem] = []
-
     for p in posts:
         items.append(FeedItem(
             id=p.id, type="post", title=p.title or "", content=p.content,
             author_id=p.author_id, author_username=p.author.username,
             created_at=p.created_at, tags=p.tags, reply_count=reply_counts.get(p.id, 0),
+            like_count=like_counts.get(p.id, 0),
         ))
 
     for p in patches:
-        # Backfill voting_ends_at for legacy voting patches that were created
-        # before submit_patch initialized it. Default to created_at + 3 days
-        # (matches the canonical 3-day voting window).
-        ends = p.voting_ends_at
-        if ends is None and p.status == "voting" and p.created_at is not None:
-            ends = p.created_at + timedelta(days=3)
-        vc = vote_counts.get(str(p.id), {})
+        voting_ends_at = p.voting_ends_at
+        if voting_ends_at is None and p.status == "voting" and p.created_at:
+            voting_ends_at = p.created_at + timedelta(days=3)
         items.append(FeedItem(
             id=p.id, type="patch", title=p.title, content=p.content,
             author_id=p.author_id, author_username=p.author.username,
             created_at=p.created_at,
             pr_number=p.pr_number, status=p.status,
-            voting_ends_at=ends,
-            for_count=vc.get("for", 0),
-            against_count=vc.get("against", 0),
+            voting_ends_at=voting_ends_at,
+            reply_count=patch_comment_counts.get(p.id, 0),
+            for_count=vote_counts.get(str(p.id), {}).get("for", 0),
+            against_count=vote_counts.get(str(p.id), {}).get("against", 0),
+            abstain_count=vote_counts.get(str(p.id), {}).get("abstain", 0),
         ))
 
-    items.sort(key=lambda x: x.created_at, reverse=True)
-    return items[offset:offset + page_size]
+    ranked = rank_feed_items(
+        items,
+        mode=mode,
+        following_author_ids=following_author_ids,
+        interest_tags=interest_tags,
+    )
+    return ranked[offset:offset + page_size]
+
+
+@router.get("/-/feed/stream")
+async def feed_stream():
+    """SSE stream for home feed changes shared by all connected visitors."""
+
+    async def event_generator():
+        redis = await get_redis()
+        pubsub = redis.pubsub()
+        await pubsub.subscribe(FEED_CHANNEL)
+        try:
+            while True:
+                message = await pubsub.get_message(timeout=25.0)
+                if message and message["type"] == "message":
+                    yield {
+                        "event": "feed",
+                        "data": message["data"],
+                    }
+                else:
+                    yield {"comment": "ping"}
+        except asyncio.CancelledError:
+            pass
+        finally:
+            await pubsub.unsubscribe(FEED_CHANNEL)
+            await pubsub.close()
+
+    return EventSourceResponse(event_generator())
 
 
 @router.get("/{post_id}", response_model=PostRead)
 async def get_post(
-    post_id: str,
+    post_id: UUID,
     session: AsyncSession = Depends(get_session),
+    user: User | None = Depends(optional_current_user),
 ):
     """Get a single post by ID."""
     stmt = select(ContentModel).where(
@@ -239,6 +364,18 @@ async def get_post(
             ContentModel.parent_id == post.id, ContentModel.type == "comment"
         )
     )
+    like_count = await session.scalar(
+        select(func.count(PostLike.id)).where(PostLike.post_id == post.id)
+    )
+    liked_by_me = False
+    if user:
+        liked_by_me = bool(
+            await session.scalar(
+                select(PostLike.id).where(
+                    PostLike.post_id == post.id, PostLike.user_id == user.id
+                )
+            )
+        )
 
     return PostRead(
         id=post.id,
@@ -248,14 +385,99 @@ async def get_post(
         tags=post.tags,
         author_username=post.author.username,
         reply_count=reply_count or 0,
+        like_count=like_count or 0,
+        liked_by_me=liked_by_me,
         created_at=post.created_at,
         updated_at=post.updated_at,
     )
 
 
+async def _post_like_state(
+    session: AsyncSession, post_id: UUID, user_id
+) -> PostLikeRead:
+    like_count = await session.scalar(
+        select(func.count(PostLike.id)).where(PostLike.post_id == post_id)
+    )
+    liked_by_me = bool(
+        await session.scalar(
+            select(PostLike.id).where(
+                PostLike.post_id == post_id, PostLike.user_id == user_id
+            )
+        )
+    )
+    return PostLikeRead(like_count=like_count or 0, liked_by_me=liked_by_me)
+
+
+@router.put("/{post_id}/like", response_model=PostLikeRead)
+async def like_post(
+    post_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(current_user),
+):
+    """Like a post. Repeated requests are idempotent."""
+    await check_not_banned(user.id, session)
+    content = await session.scalar(
+        select(ContentModel).where(
+            ContentModel.id == post_id, ContentModel.type.in_(("post", "comment"))
+        )
+    )
+    if not content:
+        raise HTTPException(status_code=404, detail="CONTENT_NOT_FOUND")
+
+    await session.execute(
+        insert(PostLike)
+        .values(post_id=content.id, user_id=user.id)
+        .on_conflict_do_nothing(constraint="uq_post_like_post_user")
+    )
+    await session.commit()
+    state = await _post_like_state(session, post_id, user.id)
+    root_type = "post" if content.type == "post" else "patch" if content.patch_id else "post"
+    root_id = content.id if content.type == "post" else content.patch_id or content.parent_id
+    if root_id:
+        await publish_feed_event(
+            "updated",
+            item_type=root_type,
+            item_id=str(root_id),
+        )
+    return state
+
+
+@router.delete("/{post_id}/like", response_model=PostLikeRead)
+async def unlike_post(
+    post_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(current_user),
+):
+    """Remove the current user's like. Repeated requests are idempotent."""
+    content = await session.scalar(
+        select(ContentModel).where(
+            ContentModel.id == post_id, ContentModel.type.in_(("post", "comment"))
+        )
+    )
+    if not content:
+        raise HTTPException(status_code=404, detail="CONTENT_NOT_FOUND")
+
+    await session.execute(
+        delete(PostLike).where(
+            PostLike.post_id == content.id, PostLike.user_id == user.id
+        )
+    )
+    await session.commit()
+    state = await _post_like_state(session, post_id, user.id)
+    root_type = "post" if content.type == "post" else "patch" if content.patch_id else "post"
+    root_id = content.id if content.type == "post" else content.patch_id or content.parent_id
+    if root_id:
+        await publish_feed_event(
+            "updated",
+            item_type=root_type,
+            item_id=str(root_id),
+        )
+    return state
+
+
 @router.delete("/{content_id}", status_code=204)
 async def delete_content(
-    content_id: str,
+    content_id: UUID,
     session: AsyncSession = Depends(get_session),
     user: User = Depends(current_user),
 ):
@@ -268,8 +490,24 @@ async def delete_content(
     if content.author_id != user.id:
         raise HTTPException(status_code=403, detail="FORBIDDEN")
 
+    if content.type == "post":
+        root_type = "post"
+        root_id = content.id
+    elif content.patch_id:
+        root_type = "patch"
+        root_id = content.patch_id
+    else:
+        root_type = "post"
+        root_id = content.parent_id
+
     await session.delete(content)
     await session.commit()
+    if root_id:
+        await publish_feed_event(
+            "removed" if content.type == "post" else "updated",
+            item_type=root_type,
+            item_id=str(root_id),
+        )
 
 
 # ── Comments (nested under posts) ──
@@ -277,8 +515,9 @@ async def delete_content(
 
 @router.get("/{post_id}/comments", response_model=list[CommentRead])
 async def list_comments(
-    post_id: str,
+    post_id: UUID,
     session: AsyncSession = Depends(get_session),
+    user: User | None = Depends(optional_current_user),
 ):
     """List comments for a post, flat with replying_id markers."""
     # Verify post exists
@@ -301,15 +540,53 @@ async def list_comments(
     result = await session.execute(stmt)
     comments = result.scalars().all()
 
-    # Build lookup for replying_to usernames
+    # Build traceability, reply counts and reaction state in batches.
     replying_ids = [c.replying_id for c in comments if c.replying_id]
     usernames = {}
+    reply_content = {}
     if replying_ids:
-        user_stmt = select(ContentModel.id, User.username).join(
+        user_stmt = select(ContentModel.id, User.username, ContentModel.content).join(
             User, ContentModel.author_id == User.id
         ).where(ContentModel.id.in_(replying_ids))
         user_result = await session.execute(user_stmt)
-        usernames = {str(row[0]): row[1] for row in user_result}
+        rows = user_result.all()
+        usernames = {str(row[0]): row[1] for row in rows}
+        reply_content = {str(row[0]): row[2] for row in rows}
+
+    comment_ids = [c.id for c in comments]
+    reply_counts = {}
+    like_counts = {}
+    liked_ids = set()
+    if comment_ids:
+        reply_counts = dict(
+            (
+                await session.execute(
+                    select(ContentModel.replying_id, func.count(ContentModel.id))
+                    .where(ContentModel.replying_id.in_(comment_ids))
+                    .group_by(ContentModel.replying_id)
+                )
+            ).all()
+        )
+        like_counts = dict(
+            (
+                await session.execute(
+                    select(PostLike.post_id, func.count(PostLike.id))
+                    .where(PostLike.post_id.in_(comment_ids))
+                    .group_by(PostLike.post_id)
+                )
+            ).all()
+        )
+        if user:
+            liked_ids = set(
+                (
+                    await session.execute(
+                        select(PostLike.post_id).where(
+                            PostLike.post_id.in_(comment_ids),
+                            PostLike.user_id == user.id,
+                        )
+                    )
+                ).scalars()
+            )
 
     return [
         CommentRead(
@@ -320,6 +597,10 @@ async def list_comments(
             replying_id=c.replying_id,
             author_username=c.author.username,
             replying_to_username=usernames.get(str(c.replying_id)) if c.replying_id else None,
+            replying_to_content=reply_content.get(str(c.replying_id)) if c.replying_id else None,
+            reply_count=reply_counts.get(c.id, 0),
+            like_count=like_counts.get(c.id, 0),
+            liked_by_me=c.id in liked_ids,
             created_at=c.created_at,
         )
         for c in comments
@@ -328,7 +609,7 @@ async def list_comments(
 
 @router.post("/{post_id}/comments", response_model=CommentRead, status_code=201)
 async def create_comment(
-    post_id: str,
+    post_id: UUID,
     data: CommentCreate,
     session: AsyncSession = Depends(get_session),
     user: User = Depends(current_user),
@@ -352,6 +633,7 @@ async def create_comment(
         reply_stmt = select(ContentModel).where(
             ContentModel.id == data.replying_id,
             ContentModel.type == "comment",
+            ContentModel.parent_id == post.id,
         )
         reply_result = await session.execute(reply_stmt)
         if not reply_result.scalar_one_or_none():
@@ -374,9 +656,9 @@ async def create_comment(
         await create_notification(
             recipient_id=post.author_id,
             type="reply",
-            title="新回复",
-            message=f"{user.nickname or user.username} 回复了你的帖子《{post.title or ''}》",
-            link=f"/posts/{post.id}",
+            title="New reply",
+            message=f"{user.nickname or user.username} replied to your post \"{post.title or ''}\"",
+            link=f"/posts/{post.id}#{comment.id}",
         )
 
     # Notify replied-to comment author (if replying to a specific comment)
@@ -389,11 +671,16 @@ async def create_comment(
             await create_notification(
                 recipient_id=reply_author_id,
                 type="reply",
-                title="新回复",
-                message=f"{user.nickname or user.username} 回复了你的评论",
-                link=f"/posts/{post.id}",
+                title="New reply",
+                message=f"{user.nickname or user.username} replied to your comment",
+                link=f"/posts/{post.id}#{comment.id}",
             )
 
+    await publish_feed_event(
+        "updated",
+        item_type="post",
+        item_id=str(post.id),
+    )
     return CommentRead(
         id=comment.id,
         content=comment.content,
@@ -402,5 +689,6 @@ async def create_comment(
         replying_id=comment.replying_id,
         author_username=comment.author.username,
         replying_to_username=None,
+        replying_to_content=None,
         created_at=comment.created_at,
     )

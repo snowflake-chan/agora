@@ -1,0 +1,12 @@
+---
+import Layout from "../layouts/Layout.astro";
+import AppBar from "../components/AppBar.astro";
+import NotificationCenter from "../components/NotificationCenter.svelte";
+---
+
+<Layout>
+  <AppBar />
+  <main class="mx-auto max-w-5xl px-4 py-8">
+    <NotificationCenter client:load />
+  </main>
+</Layout>

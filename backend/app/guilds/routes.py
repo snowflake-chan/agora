@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from app.deps import check_not_banned
 from app.db import get_session
 from app.db.models.content import Content as ContentModel
 from app.db.models.guild import Guild, GuildMember
@@ -22,10 +23,21 @@ from app.utils import calc_guild_level
 router = APIRouter()
 
 
+def _approved_membership():
+    return or_(
+        GuildMember.status == "approved",
+        GuildMember.status.is_(None),
+        GuildMember.status == "",
+    )
+
+
 async def _guild_to_read(g: Guild, session: AsyncSession) -> GuildRead:
     mc = (
         await session.execute(
-            select(func.count(GuildMember.id)).where(GuildMember.guild_id == g.id)
+            select(func.count(GuildMember.id)).where(
+                GuildMember.guild_id == g.id,
+                _approved_membership(),
+            )
         )
     ).scalar() or 0
     return GuildRead(
@@ -56,13 +68,17 @@ async def create_guild(
     user: User = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    from app.deps import check_not_banned
     await check_not_banned(user.id, session)
     existing = (await session.execute(
         select(Guild).where(Guild.president_id == user.id)
     )).scalar_one_or_none()
     if existing:
-        raise HTTPException(400, detail="你已经是社团「{existing.name}」的社长，每人只能创建一个社团")
+        raise HTTPException(409, detail="GUILD_PRESIDENT_ALREADY_EXISTS")
+    duplicate_name = (await session.execute(
+        select(Guild.id).where(Guild.name == body.name)
+    )).scalar_one_or_none()
+    if duplicate_name:
+        raise HTTPException(409, detail="GUILD_NAME_TAKEN")
 
     g = Guild(
         name=body.name,
@@ -87,7 +103,7 @@ async def create_guild(
 async def get_guild(guild_id: UUID, session: AsyncSession = Depends(get_session)):
     g = (await session.execute(select(Guild).where(Guild.id == guild_id))).scalar_one_or_none()
     if not g:
-        raise HTTPException(404, detail="社团不存在")
+        raise HTTPException(404, detail="GUILD_NOT_FOUND")
     return await _guild_to_read(g, session)
 
 
@@ -100,14 +116,14 @@ async def update_guild(
 ):
     g = (await session.execute(select(Guild).where(Guild.id == guild_id))).scalar_one_or_none()
     if not g:
-        raise HTTPException(404, detail="社团不存在")
+        raise HTTPException(404, detail="GUILD_NOT_FOUND")
     if g.president_id != user.id:
-        raise HTTPException(403, detail="只有社长才能修改社团信息")
+        raise HTTPException(403, detail="GUILD_PRESIDENT_REQUIRED")
     if body.name is not None:
         g.name = body.name
-    if body.logo is not None:
+    if "logo" in body.model_fields_set:
         g.logo = body.logo
-    if body.description is not None:
+    if "description" in body.model_fields_set:
         g.description = body.description
     if body.level is not None and user.role == "super_admin":
         g.level = body.level
@@ -126,7 +142,7 @@ async def delete_guild(
     if not g:
         raise HTTPException(404)
     if g.president_id != user.id:
-        raise HTTPException(403, detail="只有社长才能解散社团")
+        raise HTTPException(403, detail="GUILD_PRESIDENT_REQUIRED")
     await session.delete(g)
     await session.commit()
     return {"ok": True}
@@ -143,14 +159,14 @@ async def join_guild(
 ):
     g = (await session.execute(select(Guild).where(Guild.id == guild_id))).scalar_one_or_none()
     if not g:
-        raise HTTPException(404, detail="社团不存在")
-    from app.deps import check_not_banned
+        raise HTTPException(404, detail="GUILD_NOT_FOUND")
     await check_not_banned(user.id, session)
     existing = (await session.execute(
         select(GuildMember).where(GuildMember.guild_id == guild_id, GuildMember.user_id == user.id)
     )).scalar_one_or_none()
     if existing and existing.status != "rejected":
-        raise HTTPException(400, detail="你已提交过申请，请等待审核" if existing.status == "pending" else "你已经是社团成员")
+        code = "GUILD_REQUEST_PENDING" if existing.status == "pending" else "GUILD_ALREADY_MEMBER"
+        raise HTTPException(409, detail=code)
     if existing and existing.status == "rejected":
         await session.delete(existing)
         await session.flush()
@@ -170,9 +186,9 @@ async def leave_guild(
         select(GuildMember).where(GuildMember.guild_id == guild_id, GuildMember.user_id == user.id)
     )).scalar_one_or_none()
     if not m:
-        raise HTTPException(400, detail="你不是社团成员")
+        raise HTTPException(404, detail="GUILD_MEMBERSHIP_NOT_FOUND")
     if m.role == "president":
-        raise HTTPException(400, detail="社长不能退出社团，请先转让或解散")
+        raise HTTPException(409, detail="GUILD_PRESIDENT_CANNOT_LEAVE")
     await session.delete(m)
     await session.commit()
     return {"ok": True}
@@ -184,12 +200,12 @@ async def _require_guild_admin(guild_id: UUID, user: User, session: AsyncSession
     m = (await session.execute(
         select(GuildMember).where(
             GuildMember.guild_id == guild_id, GuildMember.user_id == user.id,
-            or_(GuildMember.status == "approved", GuildMember.status == None, GuildMember.status == ""),
+            _approved_membership(),
             GuildMember.role.in_(["president", "vice_president"])
         )
     )).scalar_one_or_none()
     if not m:
-        raise HTTPException(403, detail="需要社长或副社长权限")
+        raise HTTPException(403, detail="GUILD_ADMIN_REQUIRED")
     return m
 
 
@@ -258,7 +274,7 @@ async def promote_member(
 ):
     g = (await session.execute(select(Guild).where(Guild.id == guild_id))).scalar_one_or_none()
     if not g or g.president_id != me.id:
-        raise HTTPException(403, detail="需要社长权限")
+        raise HTTPException(403, detail="GUILD_PRESIDENT_REQUIRED")
     if role not in ("vice_president", "member"):
         raise HTTPException(400)
 
@@ -267,6 +283,8 @@ async def promote_member(
     )).scalar_one_or_none()
     if not target or target.status != "approved":
         raise HTTPException(404)
+    if target.user_id == g.president_id:
+        raise HTTPException(409, detail="GUILD_PRESIDENT_ROLE_LOCKED")
 
     if role == "vice_president":
         mc = (await session.execute(
@@ -293,14 +311,16 @@ async def guild_remove_member(
     me: User = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    await _require_guild_admin(guild_id, me, session)
+    actor = await _require_guild_admin(guild_id, me, session)
     target = (await session.execute(
         select(GuildMember).where(GuildMember.guild_id == guild_id, GuildMember.user_id == user_id)
     )).scalar_one_or_none()
     if not target:
         raise HTTPException(404)
     if target.role == "president":
-        raise HTTPException(400, detail="不能移除社长")
+        raise HTTPException(409, detail="GUILD_PRESIDENT_ROLE_LOCKED")
+    if actor.role != "president" and target.role != "member":
+        raise HTTPException(403, detail="GUILD_PRESIDENT_REQUIRED")
     await session.delete(target)
     await session.commit()
     return {"ok": True}
@@ -315,7 +335,7 @@ async def list_members(guild_id: UUID, session: AsyncSession = Depends(get_sessi
         await session.execute(
             select(GuildMember).where(
                 GuildMember.guild_id == guild_id,
-                or_(GuildMember.status == "approved", GuildMember.status == None, GuildMember.status == ""),
+                _approved_membership(),
             ).order_by(GuildMember.joined_at)
         )
     ).scalars().all()
@@ -326,10 +346,36 @@ async def list_members(guild_id: UUID, session: AsyncSession = Depends(get_sessi
             username=m.user.username if m.user else "",
             nickname=m.user.nickname if m.user else None,
             role=m.role,
+            status=m.status or "approved",
             joined_at=m.joined_at,
         )
         for m in rows
     ]
+
+
+@router.get("/{guild_id}/membership", response_model=GuildMemberRead | None)
+async def get_my_membership(
+    guild_id: UUID,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    member = (await session.execute(
+        select(GuildMember).where(
+            GuildMember.guild_id == guild_id,
+            GuildMember.user_id == user.id,
+        )
+    )).scalar_one_or_none()
+    if not member:
+        return None
+    return GuildMemberRead(
+        id=member.id,
+        user_id=member.user_id,
+        username=member.user.username if member.user else "",
+        nickname=member.user.nickname if member.user else None,
+        role=member.role,
+        status=member.status or "approved",
+        joined_at=member.joined_at,
+    )
 
 
 @router.patch("/{guild_id}/members/{user_id}", response_model=GuildMemberRead)
@@ -341,15 +387,17 @@ async def update_member_role(
     session: AsyncSession = Depends(get_session),
 ):
     if role not in ("vice_president", "member"):
-        raise HTTPException(400, detail="无效的角色")
+        raise HTTPException(400, detail="INVALID_GUILD_ROLE")
     g = (await session.execute(select(Guild).where(Guild.id == guild_id))).scalar_one_or_none()
     if not g or g.president_id != me.id:
-        raise HTTPException(403, detail="需要社长权限")
+        raise HTTPException(403, detail="GUILD_PRESIDENT_REQUIRED")
     m = (await session.execute(
         select(GuildMember).where(GuildMember.guild_id == guild_id, GuildMember.user_id == user_id)
     )).scalar_one_or_none()
     if not m:
-        raise HTTPException(404, detail="成员不存在")
+        raise HTTPException(404, detail="GUILD_MEMBERSHIP_NOT_FOUND")
+    if m.user_id == g.president_id:
+        raise HTTPException(409, detail="GUILD_PRESIDENT_ROLE_LOCKED")
     m.role = role
     await session.commit()
     await session.refresh(m)
@@ -357,7 +405,7 @@ async def update_member_role(
         id=m.id, user_id=m.user_id,
         username=m.user.username if m.user else "",
         nickname=m.user.nickname if m.user else None,
-        role=m.role, joined_at=m.joined_at,
+        role=m.role, status=m.status or "approved", joined_at=m.joined_at,
     )
 
 
@@ -373,7 +421,10 @@ async def list_guild_patches(
 ):
     # Get member user IDs
     member_ids = (await session.execute(
-        select(GuildMember.user_id).where(GuildMember.guild_id == guild_id)
+        select(GuildMember.user_id).where(
+            GuildMember.guild_id == guild_id,
+            _approved_membership(),
+        )
     )).scalars().all()
 
     if not member_ids:
@@ -425,8 +476,8 @@ async def list_guild_patches(
 
 
 def _guild_forbidden(member):
-    if not member:
-        raise HTTPException(403, detail="成员不存在")
+    if not member or member.status not in (None, "", "approved"):
+        raise HTTPException(403, detail="GUILD_MEMBERSHIP_REQUIRED")
 
 
 @router.get("/{guild_id}/discussions", response_model=list[GuildDiscussionRead])
@@ -474,6 +525,7 @@ async def create_discussion(
         )
     )).scalar_one_or_none()
     _guild_forbidden(member)
+    await check_not_banned(user.id, session, "mute_post")
 
     c = ContentModel(
         type="guild_post",
@@ -513,7 +565,7 @@ async def delete_discussion(
     if not c:
         raise HTTPException(404)
     if c.author_id != user.id:
-        raise HTTPException(403, detail="只有作者才能删除")
+        raise HTTPException(403, detail="GUILD_DISCUSSION_AUTHOR_REQUIRED")
     await session.delete(c)
     await session.commit()
     return {"ok": True}
@@ -528,12 +580,18 @@ async def my_guild(
     session: AsyncSession = Depends(get_session),
 ):
     m = (await session.execute(
-        select(GuildMember).where(GuildMember.user_id == user.id)
-    )).scalar_one_or_none()
+        select(GuildMember)
+        .where(GuildMember.user_id == user.id, _approved_membership())
+        .order_by(GuildMember.joined_at)
+        .limit(1)
+    )).scalars().first()
     if not m:
         return None
     mc = (await session.execute(
-        select(func.count(GuildMember.id)).where(GuildMember.guild_id == m.guild_id)
+        select(func.count(GuildMember.id)).where(
+            GuildMember.guild_id == m.guild_id,
+            _approved_membership(),
+        )
     )).scalar() or 0
     return UserGuildBadge(
         guild_id=m.guild_id,

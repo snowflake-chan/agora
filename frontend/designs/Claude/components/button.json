@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 2,
+  "slug": "button",
+  "name": "Button",
+  "category": "component",
+  "sourceKind": "preview-derived",
+  "confidence": "medium",
+  "semanticTypeCandidates": [
+    "primary action",
+    "secondary action",
+    "quiet icon button"
+  ],
+  "variantDimensions": [
+    "priority",
+    "size",
+    "icon placement",
+    "disabled state"
+  ],
+  "coverageMatrix": {},
+  "sizeDeltas": {},
+  "stateCoverage": {},
+  "representativeVariants": [],
+  "anatomy": [
+    "button.root",
+    "button.icon",
+    "button.label"
+  ],
+  "structurePatterns": [
+    "Keep button height stable across variants.",
+    "Use primary only for the strongest action and quiet surfaces for secondary actions."
+  ],
+  "usageHints": [
+    "Keep button height stable across variants.",
+    "Use primary only for the strongest action and quiet surfaces for secondary actions."
+  ],
+  "doNotInvent": [],
+  "unknowns": []
+}

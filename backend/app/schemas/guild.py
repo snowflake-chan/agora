@@ -1,22 +1,40 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 
 # ── Guild ──
 
 class GuildCreate(BaseModel):
-    name: str
-    logo: str | None = None
-    description: str | None = None
+    name: str = Field(min_length=1, max_length=80)
+    logo: str | None = Field(default=None, max_length=500)
+    description: str | None = Field(default=None, max_length=2000)
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("GUILD_NAME_REQUIRED")
+        return normalized
 
 
 class GuildUpdate(BaseModel):
-    name: str | None = None
-    logo: str | None = None
-    description: str | None = None
-    level: int | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    logo: str | None = Field(default=None, max_length=500)
+    description: str | None = Field(default=None, max_length=2000)
+    level: int | None = Field(default=None, ge=1, le=5)
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("GUILD_NAME_REQUIRED")
+        return normalized
 
 
 class GuildRead(BaseModel):
@@ -41,6 +59,7 @@ class GuildMemberRead(BaseModel):
     username: str = ""
     nickname: str | None = None
     role: str
+    status: str = "approved"
     joined_at: datetime
 
     model_config = {"from_attributes": True}
@@ -49,8 +68,16 @@ class GuildMemberRead(BaseModel):
 # ── Guild Discussion ──
 
 class GuildDiscussionCreate(BaseModel):
-    title: str | None = None
-    content: str
+    title: str | None = Field(default=None, max_length=200)
+    content: str = Field(min_length=1, max_length=20_000)
+
+    @field_validator("content")
+    @classmethod
+    def normalize_content(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("GUILD_DISCUSSION_REQUIRED")
+        return normalized
 
 
 class GuildDiscussionRead(BaseModel):

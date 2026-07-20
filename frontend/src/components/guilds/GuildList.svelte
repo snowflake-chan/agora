@@ -1,11 +1,13 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { translator } from "../../lib/i18n";
   import { listGuilds, type Guild } from "../../lib/guilds";
   import { currentUser, initAuth } from "../../stores/auth";
   import GuildCard from "./GuildCard.svelte";
 
   let guilds = $state<Guild[]>([]);
   let loading = $state(true);
+  let error = $state(false);
 
   const LEVELS = [
     { label: "heiker", color: "#cd7f32", min: 1 },
@@ -17,11 +19,20 @@
 
   onMount(async () => {
     await initAuth();
+    await loadGuilds();
+  });
+
+  async function loadGuilds() {
+    loading = true;
+    error = false;
     try {
       guilds = await listGuilds();
-    } catch {}
-    loading = false;
-  });
+    } catch {
+      error = true;
+    } finally {
+      loading = false;
+    }
+  }
 
   function grouped() {
     const map: Record<number, Guild[]> = {};
@@ -35,19 +46,26 @@
 </script>
 
 {#if loading}
-  <div class="empty-state"><div class="spinner mb-3"></div>加载中...</div>
+  <div class="empty-state"><div class="spinner mb-3"></div>{$translator("guild.loading")}</div>
+{:else if error}
+  <div class="empty-state">
+    <p>{$translator("guild.loadFailed")}</p>
+    <button class="btn btn-secondary btn-sm mt-4" onclick={loadGuilds}>
+      {$translator("common.retry")}
+    </button>
+  </div>
 {:else if guilds.length === 0}
   <div class="empty-state">
-    <p>还没有社团</p>
+    <p>{$translator("guild.empty")}</p>
     {#if $currentUser}
-      <a href="/guilds/new" class="btn btn-primary btn-sm mt-4">创建第一个社团</a>
+      <a href="/guilds/new" class="btn btn-primary btn-sm mt-4">{$translator("guild.createFirst")}</a>
     {/if}
   </div>
 {:else}
   <div class="flex items-center justify-between mb-4">
-    <h1 class="view-title">社团</h1>
+    <h1 class="view-title">{$translator("guild.title")}</h1>
     {#if $currentUser}
-      <a href="/guilds/new" class="btn btn-primary btn-sm">创建社团</a>
+      <a href="/guilds/new" class="btn btn-primary btn-sm">{$translator("guild.create")}</a>
     {/if}
   </div>
 
@@ -66,7 +84,7 @@
       </div>
     </div>
     {#if i < grouped().length - 1}
-      <div class="h-px mb-5" style="background: linear-gradient(90deg, transparent, var(--vercel-border), transparent);"></div>
+      <div class="h-px mb-5" style="background: var(--vercel-border);"></div>
     {/if}
   {/each}
 {/if}

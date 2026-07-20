@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 2,
+  "slug": "chat-bubble",
+  "name": "Chat Bubble",
+  "category": "component",
+  "sourceKind": "preview-derived",
+  "confidence": "medium",
+  "semanticTypeCandidates": [
+    "assistant message",
+    "user message",
+    "thread item"
+  ],
+  "variantDimensions": [
+    "speaker",
+    "alignment",
+    "density"
+  ],
+  "coverageMatrix": {},
+  "sizeDeltas": {},
+  "stateCoverage": {},
+  "representativeVariants": [],
+  "anatomy": [
+    "thread.root",
+    "message.row",
+    "message.avatar",
+    "message.bubble",
+    "message.meta"
+  ],
+  "structurePatterns": [
+    "Assistant bubbles sit on soft surfaces; user bubbles use brand emphasis.",
+    "Constrain bubble width and keep line-height editorial."
+  ],
+  "usageHints": [
+    "Assistant bubbles sit on soft surfaces; user bubbles use brand emphasis.",
+    "Constrain bubble width and keep line-height editorial."
+  ],
+  "doNotInvent": [],
+  "unknowns": []
+}

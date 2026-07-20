@@ -4,7 +4,7 @@ import AppBar from "../components/AppBar.astro";
 import MyProfile from "../components/users/MyProfile.svelte";
 ---
 
-<Layout>
+<Layout title="Profile settings · Agora" titleKey="profile.settingsTitle">
   <AppBar />
   <main class="mx-auto max-w-6xl px-4 py-8">
     <MyProfile client:load />

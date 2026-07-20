@@ -1,22 +1,70 @@
 ---
 import "../styles/global.css";
+import "../styles/themes.css";
+import PreferenceInitializer from "../components/PreferenceInitializer.svelte";
 import ToastShell from "../components/ToastShell.svelte";
+
+interface Props {
+  title?: string;
+  titleKey?: string;
+}
+
+const { title = "Agora", titleKey = "" } = Astro.props;
 ---
 
 <!doctype html>
-<html lang="zh-CN">
+<html
+  lang="en"
+  data-theme="default"
+  data-color-mode="dark"
+  data-motion="system"
+  data-home-layout="split"
+  data-ui-ready="true"
+  data-title-key={titleKey}
+>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" href="/favicon.ico" />
     <meta name="generator" content={Astro.generator} />
-    <title>Agora</title>
+    <title>{title}</title>
+    <script is:inline>
+      (() => {
+        try {
+          const theme = localStorage.getItem("agora:theme");
+          const colorMode = localStorage.getItem("agora:colorMode");
+          const motion = localStorage.getItem("agora:motion");
+          const locale = localStorage.getItem("agora:locale");
+          const homeLayout = localStorage.getItem("agora:homeLayout");
+          document.documentElement.dataset.theme =
+            theme === "tiktok" ||
+            theme === "claude" ||
+            theme === "apple" ||
+            theme === "google"
+              ? theme
+              : "default";
+          document.documentElement.dataset.colorMode =
+            colorMode === "light" ? "light" : "dark";
+          document.documentElement.dataset.motion =
+            motion === "comfortable" || motion === "reduced" ? motion : "system";
+          document.documentElement.lang =
+            locale === "ja" ? "ja" : locale === "zh-TW" ? "zh-Hant-TW" : "en";
+          document.documentElement.dataset.homeLayout =
+            homeLayout === "pages" ? "pages" : "split";
+          document.documentElement.dataset.uiReady =
+            locale === "ja" || locale === "zh-TW" || homeLayout === "pages"
+              ? "false"
+              : "true";
+        } catch {}
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Newsreader:opsz,wght@6..72,400;6..72,500&family=Poppins:wght@400;500;600&display=swap" rel="stylesheet" />
   </head>
   <body>
+    <PreferenceInitializer client:load />
     <div class="page-shell">
       <slot />
     </div>

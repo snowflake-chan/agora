@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 2,
+  "slug": "video-card",
+  "name": "Video Card",
+  "category": "component",
+  "sourceKind": "preview-derived",
+  "confidence": "medium",
+  "semanticTypeCandidates": [
+    "short video card",
+    "media thumbnail"
+  ],
+  "variantDimensions": [
+    "overlay density",
+    "view count",
+    "live state"
+  ],
+  "coverageMatrix": {},
+  "sizeDeltas": {},
+  "stateCoverage": {},
+  "representativeVariants": [],
+  "anatomy": [
+    "video.root",
+    "video.media",
+    "video.overlay",
+    "video.title",
+    "video.meta",
+    "video.badge"
+  ],
+  "structurePatterns": [
+    "Use aspect-ratio to prevent layout shifts.",
+    "Overlay text uses on-media tokens and gradient scrims."
+  ],
+  "usageHints": [
+    "Use aspect-ratio to prevent layout shifts.",
+    "Overlay text uses on-media tokens and gradient scrims."
+  ],
+  "doNotInvent": [],
+  "unknowns": []
+}

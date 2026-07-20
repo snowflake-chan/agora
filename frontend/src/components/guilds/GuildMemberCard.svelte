@@ -1,13 +1,18 @@
 <script lang="ts">
+  import { translator } from "../../lib/i18n";
   import type { GuildMember } from "../../lib/guilds";
 
   let { member }: { member: GuildMember } = $props();
 
-  const ROLE_BADGES: Record<string, { label: string; color: string }> = {
-    president: { label: "社长", color: "#ffd700" },
-    vice_president: { label: "副社长", color: "#b9f2ff" },
-    member: { label: "", color: "" },
+  const ROLE_COLORS: Record<string, string> = {
+    president: "#d7a928",
+    vice_president: "#73a9b8",
+    member: "",
   };
+
+  function roleLabel(role: string) {
+    return $translator(`guild.role.${role}`);
+  }
 </script>
 
 <a
@@ -22,12 +27,12 @@
     <p class="text-sm font-medium truncate" style="color: var(--vercel-text);">{member.nickname ?? member.username}</p>
     <p class="text-xs truncate" style="color: var(--vercel-text-tertiary);">@{member.username}</p>
   </div>
-  {#if ROLE_BADGES[member.role]?.label}
+  {#if member.role !== "member"}
     <span
       class="absolute top-2 right-2 text-[10px] font-bold px-1.5 py-0.5 rounded"
-      style="background: {ROLE_BADGES[member.role].color}22; color: {ROLE_BADGES[member.role].color}; border: 1px solid {ROLE_BADGES[member.role].color}44;"
+      style="background: {ROLE_COLORS[member.role]}22; color: {ROLE_COLORS[member.role]}; border: 1px solid {ROLE_COLORS[member.role]}44;"
     >
-      {ROLE_BADGES[member.role].label}
+      {roleLabel(member.role)}
     </span>
   {/if}
 </a>

@@ -1,69 +1,129 @@
 <script lang="ts">
-  import { onDestroy, onMount } from "svelte";
+  import { onMount } from "svelte";
   import type { FeedItem } from "../lib/posts";
+  import { translator } from "../lib/i18n";
   import { stripMarkdown } from "../lib/utils";
   import AuthorMeta from "./AuthorMeta.svelte";
 
-  let { item }: { item: FeedItem } = $props();
+  let {
+    item,
+    selected = false,
+    onSelect = null,
+  }: {
+    item: FeedItem;
+    selected?: boolean;
+    onSelect?: ((item: FeedItem) => void) | null;
+  } = $props();
 
-  const STATUS_MAP: Record<string, { label: string; cls: string }> = {
-    draft: { label: "草稿", cls: "badge-neutral" },
-    voting: { label: "投票中", cls: "badge-warning" },
-    passed: { label: "通过待合并", cls: "badge-info" },
-    merged: { label: "已合并", cls: "badge-success" },
-    rejected: { label: "未通过", cls: "badge-danger" },
-    failed: { label: "合并失败", cls: "badge-danger" },
+  const STATUS_CLASSES: Record<string, string> = {
+    draft: "badge-neutral",
+    voting: "badge-warning",
+    passed: "badge-info",
+    merged: "badge-success",
+    rejected: "badge-danger",
+    failed: "badge-danger",
   };
 
   let snippet = $derived(stripMarkdown(item.content));
   let href = $derived(item.type === "post" ? `/posts/${item.id}` : `/patches/${item.id}`);
-  let statusInfo = $derived(item.type === "patch" && item.status ? STATUS_MAP[item.status] : null);
-
-  let countdown = $state("");
-  let countdownUrgent = $state(false);
-  let interval: ReturnType<typeof setInterval> | null = null;
-
-  function tickCountdown() {
-    if (item.type !== "patch" || item.status !== "voting" || !item.voting_ends_at) {
-      countdown = ""; return;
-    }
-    const end = new Date(item.voting_ends_at).getTime();
-    const diff = end - Date.now();
-    if (diff <= 0) { countdown = "已结束"; countdownUrgent = true; return; }
-    const sec = Math.floor(diff / 1000), min = Math.floor(sec / 60), hour = Math.floor(min / 60), day = Math.floor(hour / 24);
-    if (day > 0) { countdown = `剩余 ${day} 天 ${hour % 24} 时`; countdownUrgent = false; }
-    else if (hour > 0) { countdown = `剩余 ${hour} 时 ${min % 60} 分`; countdownUrgent = hour < 2; }
-    else if (min > 0) { countdown = `剩余 ${min} 分`; countdownUrgent = true; }
-    else { countdown = `剩余 ${sec} 秒`; countdownUrgent = true; }
-  }
+  let statusInfo = $derived(
+    item.type === "patch" && item.status
+      ? {
+          label: $translator(`status.${item.status}`),
+          cls: STATUS_CLASSES[item.status] ?? "badge-neutral",
+        }
+      : null
+  );
+  let rankingReason = $derived(formatRankingReason(item.ranking_reason));
+  let now = $state(Date.now());
+  let countdown = $derived(formatCountdown(item.voting_ends_at, now));
+  let countdownUrgent = $derived(
+    Boolean(item.voting_ends_at) &&
+      new Date(item.voting_ends_at as string).getTime() - now < 2 * 60 * 60 * 1000,
+  );
 
   onMount(() => {
-    tickCountdown();
-    if (item.type === "patch" && item.status === "voting" && item.voting_ends_at) {
-      interval = setInterval(tickCountdown, 30_000);
+    if (item.type !== "patch" || item.status !== "voting" || !item.voting_ends_at) {
+      return;
     }
+    const timer = window.setInterval(() => (now = Date.now()), 30_000);
+    return () => window.clearInterval(timer);
   });
 
-  onDestroy(() => { if (interval) { clearInterval(interval); interval = null; } });
+  function formatCountdown(deadline: string | null, currentTime: number): string | null {
+    if (item.type !== "patch" || item.status !== "voting" || !deadline) return null;
+    const remaining = new Date(deadline).getTime() - currentTime;
+    if (remaining <= 0) return $translator("patch.closed");
+    const totalMinutes = Math.floor(remaining / 60_000);
+    const hours = Math.floor(totalMinutes / 60);
+    const days = Math.floor(hours / 24);
+    if (days > 0) {
+      return $translator("patch.remainingDaysHours", {
+        days,
+        hours: hours % 24,
+      });
+    }
+    if (hours > 0) return $translator("patch.remainingHours", { hours });
+    return $translator("patch.remainingMinutes", {
+      minutes: Math.max(1, totalMinutes),
+    });
+  }
+
+  function formatRankingReason(reason: string | null): string | null {
+    if (!reason) return null;
+    const [code, detail] = reason.split(":", 2);
+    if (code === "followed_author") return $translator("feed.reasonFollowed");
+    if (code === "topic") {
+      return $translator("feed.reasonTopic").replace("{topic}", detail ?? "");
+    }
+    if (code === "community_voting") return $translator("feed.reasonVoting");
+    if (code === "rising") return $translator("feed.reasonRising");
+    if (code === "latest") return $translator("feed.reasonLatest");
+    if (code === "trending") {
+      return $translator("feed.reasonTrending").replace("{count}", detail ?? "0");
+    }
+    return $translator("feed.reasonRecent");
+  }
+
+  function handleOpen(event: MouseEvent) {
+    if (window.matchMedia("(min-width: 64rem)").matches && onSelect) {
+      event.preventDefault();
+      onSelect(item);
+    }
+  }
 </script>
 
 <article
-  class="feed-card relative px-4 py-4 border-b transition-colors"
-  style="border-color: var(--vercel-border);"
+  class:active={selected}
+  class="stream-card"
+  aria-current={selected ? "true" : undefined}
 >
-  {#if item.type === "patch"}
-    <div class="flex items-center gap-2">
+  <div class="stream-card-topline">
+    <span class="content-kind">{$translator(item.type === "post" ? "common.discussion" : "common.change")}</span>
+    {#if rankingReason}
+      <span class="ranking-reason">{rankingReason}</span>
+    {/if}
+    {#if item.type === "patch"}
       {#if statusInfo}
-        <span class="badge {statusInfo.cls}">{statusInfo.label}</span>
+        <span class="badge {statusInfo.cls}">
+          {statusInfo.label}
+        </span>
       {/if}
       {#if item.pr_number}
         <span class="text-xs" style="color: var(--vercel-text-tertiary);">PR #{item.pr_number}</span>
       {/if}
-    </div>
-  {/if}
+    {:else if item.tags && item.tags.length > 0}
+      <span class="stream-tag">{item.tags[0]}</span>
+    {/if}
+  </div>
 
   <h2 class="mt-1 text-base font-semibold">
-    <a class="card-link" href={href} style="color: var(--vercel-text);">
+    <a
+      class="card-link"
+      href={href}
+      style="color: var(--vercel-text);"
+      onclick={handleOpen}
+    >
       {item.title}
     </a>
   </h2>
@@ -78,19 +138,11 @@
         <span>{item.tags.join(", ")}</span>
       {/if}
       {#if item.type === "patch"}
-        <span>赞成 {item.for_count} · 反对 {item.against_count}</span>
+        <span>{$translator("patch.for")} {item.for_count} · {$translator("patch.against")} {item.against_count}</span>
         {#if countdown}
-          <span
-            class="flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium"
-            style="background: {countdownUrgent
-              ? 'rgba(239, 68, 68, 0.12)'
-              : 'rgba(245, 158, 11, 0.12)'};
-              color: {countdownUrgent
-              ? 'var(--vercel-danger)'
-              : 'var(--vercel-warning)'};"
-          >
-            <svg class="size-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          <span class:urgent={countdownUrgent} class="vote-countdown">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 8v4l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
             </svg>
             {countdown}
           </span>
@@ -98,19 +150,93 @@
       {/if}
       {#if item.type === "post"}
         <span class="flex items-center gap-1">
-          <svg class="size-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
-          {item.reply_count}
+          <svg class="size-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1.1L12 21l7.8-7.5 1.1-1.1a5.5 5.5 0 0 0-.1-7.8Z"/></svg>
+          {item.like_count}
         </span>
       {/if}
+      <span class="flex items-center gap-1">
+        <svg class="size-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+        {item.reply_count}
+      </span>
     </div>
 
-    <AuthorMeta username={item.author_username ?? "匿名"} userId={item.author_id} createdAt={item.created_at} />
+    <AuthorMeta username={item.author_username ?? $translator("common.anonymous")} userId={item.author_id} createdAt={item.created_at} />
   </div>
 </article>
 
 <style>
-  .feed-card:hover {
-    background: #141417;
+  .stream-card {
+    position: relative;
+    display: block;
+    padding: 1rem;
+    border-bottom: 1px solid var(--vercel-border);
+    transition: background 180ms ease, box-shadow 180ms ease;
+  }
+
+  .stream-card:hover {
+    background: rgba(255, 255, 255, 0.035);
+  }
+
+  .stream-card.active {
+    background: rgba(255, 255, 255, 0.055);
+    box-shadow: inset 2px 0 var(--vercel-text);
+  }
+
+  .stream-card-topline {
+    display: flex;
+    min-height: 1.25rem;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .content-kind {
+    color: var(--vercel-text-tertiary);
+    font-size: 0.65rem;
+    font-weight: 650;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .stream-tag {
+    overflow: hidden;
+    color: var(--vercel-text-tertiary);
+    font-size: 0.7rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ranking-reason {
+    overflow: hidden;
+    max-width: 12rem;
+    color: var(--vercel-text-secondary);
+    font-size: 0.68rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .vote-countdown {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.15rem 0.4rem;
+    border-radius: 999px;
+    color: var(--vercel-warning);
+    background: color-mix(in srgb, var(--vercel-warning) 10%, transparent);
+    font-size: 0.65rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .vote-countdown.urgent {
+    color: var(--vercel-danger);
+    background: color-mix(in srgb, var(--vercel-danger) 10%, transparent);
+  }
+
+  .vote-countdown svg {
+    width: 0.75rem;
+    height: 0.75rem;
+    fill: none;
+    stroke: currentColor;
   }
 
   .card-link::after {
@@ -119,7 +245,7 @@
     inset: 0;
   }
 
-  .feed-card:has(.card-link:focus-visible) {
+  .stream-card:has(.card-link:focus-visible) {
     outline: 2px solid var(--vercel-text);
     outline-offset: -2px;
   }

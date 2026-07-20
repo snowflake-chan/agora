@@ -4,6 +4,11 @@
 /* ── Vercel-inspired dark theme ── */
 
 :root {
+  --z-header: 40;
+  --z-nav: 60;
+  --z-dropdown: 70;
+  --z-modal: 100;
+  --z-toast: 110;
   --vercel-bg: #0c0c0e;
   --vercel-surface: #0e0e10;
   --vercel-card: #151517;
@@ -335,7 +340,7 @@ textarea.input {
   position: fixed;
   bottom: 1rem;
   right: 1rem;
-  z-index: 9999;
+  z-index: var(--z-toast);
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -509,7 +514,7 @@ textarea.input {
 .dialog-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 90;
+  z-index: var(--z-modal);
   display: flex;
   align-items: center;
   justify-content: center;

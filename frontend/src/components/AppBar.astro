@@ -2,6 +2,7 @@
 import PillActions from "./PillActions.svelte";
 import BanGate from "./BanGate.svelte";
 import NotificationBell from "./NotificationBell.svelte";
+import SettingsButton from "./SettingsButton.svelte";
 ---
 
 <!-- Top header -->
@@ -11,7 +12,10 @@ import NotificationBell from "./NotificationBell.svelte";
       <img src="/favicon.svg" alt="" width="22" height="22" class="size-[22px]" />
       <span class="text-lg font-bold tracking-tight" style="color: var(--vercel-text);">Agora</span>
     </a>
-    <NotificationBell client:load />
+    <div class="flex items-center gap-1">
+      <SettingsButton client:load />
+      <NotificationBell client:load />
+    </div>
   </div>
 </header>
 
@@ -28,7 +32,7 @@ import NotificationBell from "./NotificationBell.svelte";
     top: 0;
     left: 0;
     right: 0;
-    z-index: 40;
+    z-index: var(--z-header);
     border-bottom: 1px solid rgba(255,255,255,0.05);
     background: rgba(12, 12, 14, 0.35);
     backdrop-filter: blur(28px) saturate(180%);
@@ -44,7 +48,7 @@ import NotificationBell from "./NotificationBell.svelte";
     position: fixed;
     bottom: max(8px, env(safe-area-inset-bottom));
     left: 50%;
-    z-index: 60;
+    z-index: var(--z-nav);
     transform: translateX(-50%);
     background: rgba(18, 18, 22, 0.45);
     border: 1px solid rgba(255,255,255,0.08);
@@ -63,7 +67,7 @@ import NotificationBell from "./NotificationBell.svelte";
     height: 2.25rem;
     border-radius: 9999px;
     color: #fff;
-    transition: color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+    transition: color 0.15s ease, background 0.15s ease, transform 0.15s ease;
     cursor: pointer;
     text-decoration: none;
     background: transparent;
@@ -77,8 +81,12 @@ import NotificationBell from "./NotificationBell.svelte";
   }
 
   .pill-item:focus-visible {
-    outline: 2px solid rgba(255,255,255,.85);
+    outline: 2px solid color-mix(in srgb, var(--vercel-text) 88%, transparent);
     outline-offset: 2px;
+  }
+
+  .pill-item:active {
+    transform: scale(0.94);
   }
 
   .pill-tooltip {
@@ -96,7 +104,7 @@ import NotificationBell from "./NotificationBell.svelte";
     white-space: nowrap;
     pointer-events: none;
     opacity: 0;
-    transition: all 0.15s ease;
+    transition: opacity 0.15s ease, transform 0.15s ease;
   }
 
   .pill-item:hover .pill-tooltip {
@@ -110,12 +118,12 @@ import NotificationBell from "./NotificationBell.svelte";
     }
 
     .pill-bar {
-      right: .5rem;
-      bottom: max(.5rem, env(safe-area-inset-bottom));
-      left: .5rem;
+      right: 0.5rem;
+      bottom: max(0.5rem, env(safe-area-inset-bottom));
+      left: 0.5rem;
       transform: none;
       border-radius: 1rem;
-      background: rgba(18,18,22,.82);
+      background: color-mix(in srgb, var(--vercel-card) 82%, transparent);
     }
   }
 </style>

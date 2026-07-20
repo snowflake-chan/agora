@@ -19,6 +19,7 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     op.add_column('user', sa.Column('role', sa.String(length=20), nullable=True, server_default='user'))
     op.execute(sa.text("UPDATE \"user\" SET role = 'user' WHERE role IS NULL"))
+    op.alter_column('user', 'role', nullable=False)
 
 
 def downgrade() -> None:

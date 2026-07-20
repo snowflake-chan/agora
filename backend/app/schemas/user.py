@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 from pydantic import BaseModel, EmailStr
 
 
@@ -8,6 +9,7 @@ class UserRead(BaseModel):
     username: str
     nickname: str | None
     bio: str | None = None
+    role: str = "user"
     is_active: bool
 
     model_config = {"from_attributes": True}
@@ -19,6 +21,9 @@ class UserPublic(BaseModel):
     username: str
     nickname: str | None
     bio: str | None = None
+    follower_count: int = 0
+    following_count: int = 0
+    is_following: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -40,4 +45,29 @@ class UserUpdate(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+
+
+class FollowState(BaseModel):
+    follower_count: int
+    following_count: int
+    is_following: bool
+
+
+class UserContentItem(BaseModel):
+    id: uuid.UUID
+    type: str
+    title: str | None = None
+    content: str
+    created_at: datetime
+    root_type: str | None = None
+    root_id: uuid.UUID | None = None
+    root_title: str | None = None
+    replying_to_id: uuid.UUID | None = None
+    replying_to_username: str | None = None
+    replying_to_content: str | None = None
+    reply_count: int = 0
+    like_count: int = 0
+    pr_number: int | None = None
+    status: str | None = None
+    can_delete: bool = False
 

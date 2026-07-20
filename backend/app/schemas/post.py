@@ -14,6 +14,8 @@ class PostRead(BaseModel):
     tags: list[str] | None
     author_username: str | None = None
     reply_count: int = 0
+    like_count: int = 0
+    liked_by_me: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -32,6 +34,11 @@ class PostUpdate(BaseModel):
     tags: list[str] | None = None
 
 
+class PostLikeRead(BaseModel):
+    like_count: int
+    liked_by_me: bool
+
+
 # ── Comment ──
 
 class CommentRead(BaseModel):
@@ -42,6 +49,10 @@ class CommentRead(BaseModel):
     replying_id: UUID | None
     author_username: str | None = None
     replying_to_username: str | None = None
+    replying_to_content: str | None = None
+    reply_count: int = 0
+    like_count: int = 0
+    liked_by_me: bool = False
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -66,6 +77,7 @@ class FeedItem(BaseModel):
     # Post-specific
     tags: list[str] | None = None
     reply_count: int = 0
+    like_count: int = 0
 
     # Patch-specific
     pr_number: int | None = None
@@ -73,3 +85,7 @@ class FeedItem(BaseModel):
     voting_ends_at: datetime | None = None
     for_count: int = 0
     against_count: int = 0
+    abstain_count: int = 0
+
+    # Ranking explanation
+    ranking_reason: str | None = None

@@ -35,7 +35,7 @@ def upgrade() -> None:
         sa.Column('id', sa.Uuid(), nullable=False),
         sa.Column('guild_id', sa.Uuid(), nullable=False),
         sa.Column('user_id', sa.Uuid(), nullable=False),
-        sa.Column('role', sa.String(length=20), nullable=True, server_default='member'),
+        sa.Column('role', sa.String(length=20), nullable=False, server_default='member'),
         sa.Column('joined_at', sa.TIMESTAMP(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(['guild_id'], ['guild.id'], ondelete='CASCADE'),
         sa.ForeignKeyConstraint(['user_id'], ['user.id'], ondelete='CASCADE'),

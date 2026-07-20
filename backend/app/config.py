@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     JWT_SECRET: str = ""
     GITHUB_TOKEN: str = ""
     GITHUB_REPO: str = ""
+    SUPER_ADMIN_EMAIL: str = ""
     CORS_ORIGIN: str = ""
     DEPLOY_ENABLED: bool = True
     REPO_DIR: str = "/repo"

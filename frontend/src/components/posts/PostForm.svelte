@@ -1,16 +1,19 @@
 <script lang="ts">
   import { renderMarkdown } from "../../lib/markdown";
+  import { translator } from "../../lib/i18n";
   import { createEventDispatcher } from "svelte";
   import { fly } from "svelte/transition";
   import { createPost } from "../../lib/posts";
   import { toaster } from "../../stores/toaster";
   import { appleEase } from "../../lib/motion";
+  import { modal } from "../../lib/modal";
 
   const dispatch = createEventDispatcher();
 
   let title = "";
   let content = "";
   let submitting = false;
+  let mobilePane: "edit" | "preview" = "edit";
 
   function close() {
     dispatch("close");
@@ -23,7 +26,7 @@
       const post = await createPost({ title: title.trim(), content: content.trim() });
       window.location.href = `/posts/${post.id}`;
     } catch (e: any) {
-      toaster.error("发布失败", e.message ?? "请稍后重试");
+      toaster.error($translator("post.publishFailed"), $translator("common.tryAgain"));
     } finally {
       submitting = false;
     }
@@ -42,71 +45,96 @@
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div use:portal
-  class="fixed inset-0 z-50 flex items-center justify-center p-4 dialog-backdrop"
+  class="fixed inset-0 flex items-center justify-center p-4 dialog-backdrop composer-backdrop"
   onclick={handleBackdropClick}
 >
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
-    class="dialog-panel flex flex-col w-full h-[calc(100vh-1rem)] max-w-[1400px] rounded-xl overflow-hidden"
-    style="
-      background: rgba(22, 22, 26, 0.94);
-      border: 1px solid rgba(255,255,255,0.07);
-      backdrop-filter: blur(24px);
-      -webkit-backdrop-filter: blur(24px);
-      box-shadow: 0 8px 48px rgba(0,0,0,0.5);
-    "
+    use:modal={{ onClose: close }}
+    class="dialog-panel composer-dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="post-composer-title"
+    tabindex="-1"
     onclick={(e) => e.stopPropagation()}
     out:fly={{ y: 36, duration: 300, easing: appleEase }}
   >
     <!-- Header -->
-    <div class="flex items-center gap-4 border-b px-6 py-3" style="border-color: rgba(255,255,255,0.06);">
+    <div class="composer-header">
+      <h2 id="post-composer-title" class="sr-only">{$translator("post.new")}</h2>
       <div class="flex-1">
         <input
+          data-autofocus
           bind:value={title}
           class="w-full px-4 py-2.5 text-lg font-semibold rounded-lg placeholder:text-[#555] focus:outline-none"
           style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); color: var(--vercel-text);"
-          placeholder="标题"
+          placeholder={$translator("common.title")}
         />
       </div>
-      <button class="btn btn-ghost btn-sm" onclick={close}>取消</button>
+      <button class="btn btn-ghost btn-sm" onclick={close}>{$translator("common.cancel")}</button>
       <button
         class="btn btn-primary btn-sm"
         onclick={handleSubmit}
         disabled={submitting || !title.trim() || !content.trim()}
       >
-        {submitting ? "发布中..." : "发布"}
+        {submitting ? $translator("common.publishing") : $translator("common.publish")}
       </button>
     </div>
 
+    <div class="composer-tabs" role="tablist" aria-label={$translator("editor.view")}>
+      <button class:active={mobilePane === "edit"} onclick={() => mobilePane = "edit"} role="tab" aria-selected={mobilePane === "edit"}>{$translator("common.edit")}</button>
+      <button class:active={mobilePane === "preview"} onclick={() => mobilePane = "preview"} role="tab" aria-selected={mobilePane === "preview"}>{$translator("common.preview")}</button>
+    </div>
+
     <!-- Split pane: edit | preview -->
-    <div class="flex flex-1 overflow-hidden">
+    <div class="composer-workspace">
       <!-- Left: editor -->
-      <div class="flex-1 flex flex-col border-r" style="border-color: rgba(255,255,255,0.06);">
+      <div class="composer-pane editor-pane" class:mobile-hidden={mobilePane !== "edit"}>
         <div class="px-4 py-2 text-xs font-medium border-b" style="color: var(--vercel-text-tertiary); border-color: rgba(255,255,255,0.06);">
-          编辑
+          {$translator("common.edit")}
         </div>
         <textarea
           bind:value={content}
           class="flex-1 w-full resize-none px-6 py-4 font-mono text-sm leading-relaxed placeholder:text-[#555] focus:outline-none"
           style="background: transparent; color: var(--vercel-text);"
-          placeholder="支持 Markdown 语法..."
+          placeholder={$translator("post.contentPlaceholder")}
         ></textarea>
       </div>
 
       <!-- Right: preview -->
-      <div class="flex-1 flex flex-col">
+      <div class="composer-pane" class:mobile-hidden={mobilePane !== "preview"}>
         <div class="px-4 py-2 text-xs font-medium border-b" style="color: var(--vercel-text-tertiary); border-color: rgba(255,255,255,0.06);">
-          预览
+          {$translator("common.preview")}
         </div>
         <div class="flex-1 overflow-y-auto px-6 py-4">
           {#if content.trim()}
             <div class="markdown-body">{@html renderMarkdown(content)}</div>
           {:else}
-            <p class="text-sm" style="color: var(--vercel-text-tertiary);">暂无内容</p>
+            <p class="text-sm" style="color: var(--vercel-text-tertiary);">{$translator("common.noContent")}</p>
           {/if}
         </div>
       </div>
     </div>
   </div>
 </div>
+
+<style>
+  .composer-dialog { display:flex; flex-direction:column; width:100%; height:min(54rem,calc(100dvh - 2rem)); max-width:87.5rem; overflow:hidden; border:1px solid rgba(255,255,255,.07); border-radius:.75rem; background:rgba(22,22,26,.96); box-shadow:0 8px 48px rgba(0,0,0,.5); backdrop-filter:blur(24px); }
+  .composer-header { display:flex; align-items:center; gap:1rem; padding:.75rem 1.5rem; border-bottom:1px solid rgba(255,255,255,.06); }
+  .composer-workspace { display:flex; flex:1; min-height:0; overflow:hidden; }
+  .composer-pane { display:flex; flex:1; min-width:0; flex-direction:column; }
+  .editor-pane { border-right:1px solid rgba(255,255,255,.06); }
+  .composer-tabs { display:none; }
+  @media (max-width: 48rem) {
+    .composer-backdrop { padding:.5rem; }
+    .composer-dialog { height:calc(100dvh - 1rem); border-radius:.875rem; }
+    .composer-header { flex-wrap:wrap; gap:.5rem; padding:.75rem; }
+    .composer-header > div { flex-basis:100%; order:-1; }
+    .composer-tabs { display:grid; grid-template-columns:1fr 1fr; gap:.25rem; margin:.5rem .75rem 0; padding:.2rem; border-radius:.6rem; background:rgba(255,255,255,.05); }
+    .composer-tabs button { padding:.45rem; border-radius:.45rem; color:var(--vercel-text-tertiary); font-size:.75rem; font-weight:600; }
+    .composer-tabs button.active { color:var(--vercel-text); background:rgba(255,255,255,.09); }
+    .editor-pane { border-right:0; }
+    .composer-pane.mobile-hidden { display:none; }
+  }
+</style>

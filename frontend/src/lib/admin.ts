@@ -21,6 +21,33 @@ export interface AdminUser {
   is_active: boolean; role: string; created_at: string;
 }
 
+export interface AdminPost {
+  id: string;
+  title: string | null;
+  content: string;
+  author_username: string;
+  author_id: string;
+  created_at: string;
+}
+
+export interface AdminPatch {
+  id: string;
+  title: string;
+  pr_number: number;
+  status: string;
+  author_username: string;
+  author_id: string;
+  created_at: string;
+}
+
+export interface AdminGuildDiscussion {
+  id: string;
+  title: string | null;
+  content: string;
+  author_username: string;
+  created_at: string;
+}
+
 export async function setUserRole(userId: string, role: string) {
   return req(`/users/${userId}/role?role=${role}`, { method: "POST" });
 }
@@ -37,6 +64,14 @@ export async function createReport(contentId: string, reason: string) {
 export async function listReports(status?: string): Promise<ReportItem[]> {
   const qs = status ? `?status=${status}` : "";
   return req(`/reports${qs}`);
+}
+
+export async function listAdminPosts(): Promise<AdminPost[]> {
+  return req("/posts");
+}
+
+export async function listAdminPatches(): Promise<AdminPatch[]> {
+  return req("/patches");
 }
 
 export async function resolveReport(reportId: string, action: string) {
@@ -78,11 +113,12 @@ export async function deletePatchAdmin(patchId: string) {
 }
 
 // Guild admin
-export async function adminUpdateGuild(guildId: string, data: { name?: string; logo?: string; description?: string }) {
+export async function adminUpdateGuild(guildId: string, data: { name?: string; logo?: string; description?: string; level?: number }) {
   const params = new URLSearchParams();
   if (data.name) params.set("name", data.name);
   if (data.logo !== undefined) params.set("logo", data.logo);
   if (data.description !== undefined) params.set("description", data.description);
+  if (data.level !== undefined) params.set("level", String(data.level));
   return req(`/guilds/${guildId}?${params}`, { method: "PATCH" });
 }
 
@@ -94,10 +130,17 @@ export async function adminRemoveMember(guildId: string, userId: string) {
   return req(`/guilds/${guildId}/members/${userId}`, { method: "DELETE" });
 }
 
-// Check if current user is super admin
+export async function listAdminGuildDiscussions(guildId: string): Promise<AdminGuildDiscussion[]> {
+  return req(`/guilds/${guildId}/discussions`);
+}
+
+export async function adminDeleteGuildDiscussion(guildId: string, postId: string) {
+  return req(`/guilds/${guildId}/discussions/${postId}`, { method: "DELETE" });
+}
+
 export async function checkAdmin(): Promise<boolean> {
   try {
-    await req("/users");  // 403 if not admin
+    await req("/reports?status=pending");
     return true;
   } catch {
     return false;

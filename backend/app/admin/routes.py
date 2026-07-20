@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.config import settings
+from app.deps import check_not_banned
 from app.db import get_session
 from app.db.models.content import Content as ContentModel
 from app.db.models.guild import Guild, GuildMember
@@ -44,15 +45,15 @@ async def create_report(
     user: User = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ):
+    await check_not_banned(user.id, session)
     c = (await session.execute(select(ContentModel).where(ContentModel.id == content_id))).scalar_one_or_none()
     if not c:
-        raise HTTPException(404, detail="内容不存在")
-    # 一个用户只能举报同一内容一次
+        raise HTTPException(404, detail="CONTENT_NOT_FOUND")
     dup = (await session.execute(
         select(Report).where(Report.content_id == content_id, Report.reporter_id == user.id)
     )).scalar_one_or_none()
     if dup:
-        raise HTTPException(400, detail="你已经举报过该内容，请等待管理员处理")
+        raise HTTPException(409, detail="REPORT_ALREADY_EXISTS")
     r = Report(content_id=content_id, reporter_id=user.id, reason=reason)
     session.add(r)
     await session.commit()
@@ -103,6 +104,8 @@ async def resolve_report(
     user: User = Depends(admin_required),
     session: AsyncSession = Depends(get_session),
 ):
+    if action not in ("resolved", "dismissed", "delete_post"):
+        raise HTTPException(400, detail="INVALID_REPORT_ACTION")
     r = (await session.execute(select(Report).where(Report.id == report_id))).scalar_one_or_none()
     if not r:
         raise HTTPException(404)
@@ -111,7 +114,7 @@ async def resolve_report(
 
     if action == "delete_post" and content:
         await session.delete(content)
-    r.status = "resolved"
+    r.status = "dismissed" if action == "dismissed" else "resolved"
 
     # 批量处理：将该内容的所有其他待处理举报也标记为已处理
     others = []
@@ -170,7 +173,7 @@ async def delete_post_admin(post_id: UUID, user: User = Depends(super_admin_requ
 
 
 @router.post("/posts/{post_id}/mute")
-async def mute_post_admin(post_id: UUID, hours: int = Query(...), user: User = Depends(super_admin_required), session: AsyncSession = Depends(get_session)):
+async def mute_post_admin(post_id: UUID, hours: int = Query(..., ge=1, le=87_600), user: User = Depends(super_admin_required), session: AsyncSession = Depends(get_session)):
     c = (await session.execute(select(ContentModel).where(ContentModel.id == post_id))).scalar_one_or_none()
     if not c: raise HTTPException(404)
     now = datetime.now(timezone.utc)
@@ -183,14 +186,14 @@ async def mute_post_admin(post_id: UUID, hours: int = Query(...), user: User = D
 @router.post("/users/{user_id}/ban")
 async def ban_user(
     user_id: UUID,
-    hours: int = Query(...),
+    hours: int = Query(..., ge=0, le=87_600),
     type: str = Query("ban_user"),
     reason: str = Query(""),
     user: User = Depends(super_admin_required),
     session: AsyncSession = Depends(get_session),
 ):
     if type not in ("ban_user", "mute_post", "mute_patch"):
-        raise HTTPException(400, detail="无效的封禁类型")
+        raise HTTPException(400, detail="INVALID_BAN_TYPE")
     now = datetime.now(timezone.utc)
     br = BanRecord(
         target_user_id=user_id,
@@ -204,7 +207,11 @@ async def ban_user(
 
 
 @router.get("/users/{user_id}/ban-status")
-async def get_ban_status(user_id: UUID, session: AsyncSession = Depends(get_session)):
+async def get_ban_status(
+    user_id: UUID,
+    user: User = Depends(admin_required),
+    session: AsyncSession = Depends(get_session),
+):
     now = datetime.now(timezone.utc)
     rows = (await session.execute(
         select(BanRecord).where(
@@ -255,7 +262,7 @@ async def delete_patch_admin(patch_id: UUID, user: User = Depends(super_admin_re
 
 
 @router.patch("/guilds/{guild_id}")
-async def admin_update_guild(guild_id: UUID, name: str | None = Query(None), logo: str | None = Query(None), description: str | None = Query(None), level: int | None = Query(None), user: User = Depends(super_admin_required), session: AsyncSession = Depends(get_session)):
+async def admin_update_guild(guild_id: UUID, name: str | None = Query(None, min_length=1, max_length=80), logo: str | None = Query(None, max_length=500), description: str | None = Query(None, max_length=2000), level: int | None = Query(None, ge=1, le=5), user: User = Depends(super_admin_required), session: AsyncSession = Depends(get_session)):
     g = (await session.execute(select(Guild).where(Guild.id == guild_id))).scalar_one_or_none()
     if not g: raise HTTPException(404)
     if name: g.name = name
@@ -278,6 +285,8 @@ async def admin_delete_guild(guild_id: UUID, user: User = Depends(super_admin_re
 async def admin_remove_member(guild_id: UUID, member_id: UUID, user: User = Depends(super_admin_required), session: AsyncSession = Depends(get_session)):
     m = (await session.execute(select(GuildMember).where(GuildMember.guild_id == guild_id, GuildMember.user_id == member_id))).scalar_one_or_none()
     if not m: raise HTTPException(404)
+    if m.role == "president":
+        raise HTTPException(409, detail="GUILD_PRESIDENT_ROLE_LOCKED")
     await session.delete(m); await session.commit()
     return {"ok": True}
 
@@ -333,9 +342,12 @@ async def seed_super_admin(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(current_user),
 ):
-    """Ensure current user is super_admin if their email matches the admin email."""
-    if user.email != "3121601311@qq.com":
-        raise HTTPException(403, detail="只有超级管理员邮箱才能初始化")
+    """Promote the configured bootstrap account without embedding an identity."""
+    configured_email = settings.SUPER_ADMIN_EMAIL.strip().lower()
+    if not configured_email:
+        raise HTTPException(404, detail="ADMIN_BOOTSTRAP_DISABLED")
+    if user.email.strip().lower() != configured_email:
+        raise HTTPException(403, detail="FORBIDDEN")
     from sqlalchemy import update
     await session.execute(
         update(User).where(User.id == user.id).values(role="super_admin")

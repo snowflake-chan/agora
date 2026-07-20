@@ -9,6 +9,11 @@ on:
 jobs:
   test-backend:
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql+asyncpg://agora:agora@localhost:5432/agora
+      JWT_SECRET: test-secret
+      SUPER_ADMIN_EMAIL: admin-test@example.com
+      AUTH_REGISTER_ATTEMPTS: 10000
 
     services:
       postgres:
@@ -24,7 +29,6 @@ jobs:
           --health-interval=5s
           --health-timeout=5s
           --health-retries=5
-
       redis:
         image: redis:7-alpine
         ports:
@@ -42,27 +46,27 @@ jobs:
         with:
           python-version: "3.12"
           cache: "pip"
-          cache-dependency-path: backend/requirements.txt
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
 
       - name: Install dependencies
         run: |
           cd backend
-          pip install -r requirements.txt pytest pytest-asyncio
+          pip install -r requirements-dev.txt
 
       - name: Run migrations
         run: |
           cd backend
-          DATABASE_URL=postgresql+asyncpg://agora:agora@localhost:5432/agora \
-          JWT_SECRET=test-secret \
-          REDIS_URL=redis://localhost:6379/0 \
           alembic upgrade head
 
       - name: Start server & run tests
+        env:
+          DATABASE_URL: postgresql+asyncpg://agora:agora@localhost:5432/agora
+          JWT_SECRET: test-secret
+          REDIS_URL: redis://localhost:6379/0
         run: |
           cd backend
-          DATABASE_URL=postgresql+asyncpg://agora:agora@localhost:5432/agora \
-          JWT_SECRET=test-secret \
-          REDIS_URL=redis://localhost:6379/0 \
           uvicorn app.main:app --host 0.0.0.0 --port 8000 &
           sleep 2
           python -m pytest tests/ -v --tb=short

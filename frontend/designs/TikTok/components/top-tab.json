@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 2,
+  "slug": "top-tab",
+  "name": "Top Tab",
+  "category": "component",
+  "sourceKind": "preview-derived",
+  "confidence": "medium",
+  "semanticTypeCandidates": [
+    "feed tabs",
+    "section switcher"
+  ],
+  "variantDimensions": [
+    "active tab",
+    "scroll state"
+  ],
+  "coverageMatrix": {},
+  "sizeDeltas": {},
+  "stateCoverage": {},
+  "representativeVariants": [],
+  "anatomy": [
+    "tabs.root",
+    "tabs.item",
+    "tabs.activeIndicator"
+  ],
+  "structurePatterns": [
+    "Keep active tab centered with a compact underline.",
+    "Avoid card framing; tabs sit directly on media/surface."
+  ],
+  "usageHints": [
+    "Keep active tab centered with a compact underline.",
+    "Avoid card framing; tabs sit directly on media/surface."
+  ],
+  "doNotInvent": [],
+  "unknowns": []
+}

@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 2,
+  "summary": "Recovered component index from preview files during zip structure repair.",
+  "components": [
+    {
+      "slug": "badge",
+      "name": "Badge",
+      "category": "component",
+      "sourceKind": "legacy-inferred",
+      "confidence": "low"
+    },
+    {
+      "slug": "button",
+      "name": "Button",
+      "category": "component",
+      "sourceKind": "legacy-inferred",
+      "confidence": "low"
+    },
+    {
+      "slug": "card",
+      "name": "Card",
+      "category": "component",
+      "sourceKind": "legacy-inferred",
+      "confidence": "low"
+    },
+    {
+      "slug": "chat-bubble",
+      "name": "Chat Bubble",
+      "category": "component",
+      "sourceKind": "legacy-inferred",
+      "confidence": "low"
+    },
+    {
+      "slug": "input",
+      "name": "Input",
+      "category": "component",
+      "sourceKind": "legacy-inferred",
+      "confidence": "low"
+    },
+    {
+      "slug": "navigation",
+      "name": "Navigation",
+      "category": "component",
+      "sourceKind": "legacy-inferred",
+      "confidence": "low"
+    }
+  ],
+  "crossComponentPatterns": []
+}

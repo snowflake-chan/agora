@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 2,
+  "summary": "Recovered component index from preview files during zip structure repair.",
+  "components": [
+    {
+      "slug": "bottom-info",
+      "name": "Bottom Info",
+      "category": "component",
+      "sourceKind": "legacy-inferred",
+      "confidence": "low"
+    },
+    {
+      "slug": "bottom-nav",
+      "name": "Bottom Nav",
+      "category": "component",
+      "sourceKind": "legacy-inferred",
+      "confidence": "low"
+    },
+    {
+      "slug": "editorial-cover",
+      "name": "Editorial Cover",
+      "category": "component",
+      "sourceKind": "legacy-inferred",
+      "confidence": "low"
+    },
+    {
+      "slug": "right-rail",
+      "name": "Right Rail",
+      "category": "component",
+      "sourceKind": "legacy-inferred",
+      "confidence": "low"
+    },
+    {
+      "slug": "top-tab",
+      "name": "Top Tab",
+      "category": "component",
+      "sourceKind": "legacy-inferred",
+      "confidence": "low"
+    },
+    {
+      "slug": "video-card",
+      "name": "Video Card",
+      "category": "component",
+      "sourceKind": "legacy-inferred",
+      "confidence": "low"
+    }
+  ],
+  "crossComponentPatterns": []
+}

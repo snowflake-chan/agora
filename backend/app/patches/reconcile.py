@@ -13,6 +13,7 @@ async def reconcile() -> None:
     """Retry any patches stuck in 'passed' or tally expired 'voting' patches."""
     print("[reconcile] Checking patches...")
     try:
+        deploy_required = False
         async with async_session() as session:
             # Patches that passed but never merged (crash during deploy)
             passed = (
@@ -25,6 +26,7 @@ async def reconcile() -> None:
                 try:
                     await merge_pr(patch.pr_number)
                     patch.status = "merged"
+                    deploy_required = True
                     print(f"[reconcile] Merged #{patch.pr_number} ({patch.title})")
                 except Exception:
                     patch.status = "failed"
@@ -47,6 +49,13 @@ async def reconcile() -> None:
                 print(f"[reconcile] Tallied expired #{patch.pr_number} ({patch.title})")
 
             await session.commit()
+        if deploy_required:
+            from app.patches.routes import _trigger_deploy
+
+            try:
+                await _trigger_deploy()
+            except Exception as deploy_exc:
+                print(f"[reconcile] Deployment launch FAILED: {deploy_exc}")
     except Exception as e:
         print(f"[reconcile] Error: {e}")
 

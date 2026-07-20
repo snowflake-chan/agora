@@ -1,4 +1,4 @@
-const API_BASE = "/api/v1";
+import { API_BASE } from "./config";
 
 export interface Guild {
   id: string;
@@ -18,6 +18,7 @@ export interface GuildMember {
   username: string;
   nickname: string | null;
   role: string; // "president" | "vice_president" | "member"
+  status: string; // "pending" | "approved" | "rejected"
   joined_at: string;
 }
 
@@ -46,6 +47,8 @@ async function req(path: string, options?: RequestInit) {
   if (res.status === 204) return null;
   return res.json();
 }
+
+const userGuildCache = new Map<string, Promise<UserGuildBadge | null>>();
 
 // ── Guilds ──
 
@@ -83,6 +86,10 @@ export async function listMembers(guildId: string): Promise<GuildMember[]> {
   return req(`/guilds/${guildId}/members`);
 }
 
+export async function getMyMembership(guildId: string): Promise<GuildMember | null> {
+  return req(`/guilds/${guildId}/membership`);
+}
+
 // ── Patches ──
 
 export async function listGuildPatches(guildId: string): Promise<import("./patches").Patch[]> {
@@ -112,5 +119,13 @@ export async function getMyGuild(): Promise<UserGuildBadge | null> {
 // ── User Guild ──
 
 export async function getUserGuild(userId: string): Promise<UserGuildBadge | null> {
-  return req(`/users/${userId}/guild`);
+  let request = userGuildCache.get(userId);
+  if (!request) {
+    request = req(`/users/${userId}/guild`).catch((error) => {
+      userGuildCache.delete(userId);
+      throw error;
+    });
+    userGuildCache.set(userId, request);
+  }
+  return request;
 }

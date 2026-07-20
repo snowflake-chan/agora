@@ -1,12 +1,13 @@
 <script lang="ts">
+  import { translator } from "../../lib/i18n";
   import type { Guild } from "../../lib/guilds";
 
   let { guild }: { guild: Guild } = $props();
 </script>
 
-<a href="/guilds/{guild.id}" class="card p-4 block no-underline hover-card transition-colors" style="border: 1px solid var(--vercel-border);">
+<a href="/guilds/{guild.id}" class="guild-card card p-4 block no-underline">
   <div class="flex items-center gap-3">
-    <div class="flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center text-xl" style="background: linear-gradient(135deg, var(--vercel-surface-highlight), var(--vercel-surface)); border: 1px solid var(--vercel-border);">
+    <div class="guild-mark flex-shrink-0 w-12 h-12 flex items-center justify-center text-xl">
       {guild.logo || guild.name[0].toUpperCase()}
     </div>
     <div class="min-w-0">
@@ -17,20 +18,36 @@
       <div class="flex items-center gap-2 mt-1.5 text-xs" style="color: var(--vercel-text-tertiary);">
         <span>Lv.{guild.level}</span>
         <span>·</span>
-        <span>{guild.member_count} 成员</span>
+        <span>{$translator("guild.membersCount", { count: guild.member_count })}</span>
         <span>·</span>
-        <span>社长 {guild.president_username}</span>
+        <span>{$translator("guild.presidentName", { name: guild.president_username })}</span>
       </div>
     </div>
   </div>
 </a>
 
 <style>
-  .hover-card {
-    transition: border-color 0.2s, box-shadow 0.2s;
+  .guild-card {
+    border: 1px solid var(--vercel-border);
+    transition:
+      border-color 220ms var(--apple-ease),
+      background 220ms var(--apple-ease),
+      transform 220ms var(--apple-ease);
   }
-  .hover-card:hover {
-    border-color: rgba(255,255,255,0.15) !important;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+
+  .guild-card:hover {
+    border-color: var(--vercel-border-hover);
+    background: var(--vercel-hover);
+    transform: translateY(-1px);
+  }
+
+  .guild-card:active {
+    transform: translateY(0) scale(0.99);
+  }
+
+  .guild-mark {
+    border: 1px solid var(--vercel-border);
+    border-radius: var(--vercel-radius);
+    background: var(--vercel-surface);
   }
 </style>

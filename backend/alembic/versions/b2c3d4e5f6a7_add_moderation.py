@@ -22,7 +22,7 @@ def upgrade() -> None:
         sa.Column('content_id', sa.Uuid(), nullable=False),
         sa.Column('reporter_id', sa.Uuid(), nullable=True),
         sa.Column('reason', sa.Text(), nullable=False),
-        sa.Column('status', sa.String(length=20), nullable=True, server_default='pending'),
+        sa.Column('status', sa.String(length=20), nullable=False, server_default='pending'),
         sa.Column('created_at', sa.TIMESTAMP(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(['content_id'], ['content.id'], ondelete='CASCADE'),
         sa.ForeignKeyConstraint(['reporter_id'], ['user.id'], ondelete='SET NULL'),
@@ -33,18 +33,18 @@ def upgrade() -> None:
         sa.Column('id', sa.Uuid(), nullable=False),
         sa.Column('target_user_id', sa.Uuid(), nullable=False),
         sa.Column('content_id', sa.Uuid(), nullable=True),
-        sa.Column('type', sa.String(length=20), nullable=True),
+        sa.Column('type', sa.String(length=20), nullable=False),
         sa.Column('reason', sa.Text(), nullable=True),
         sa.Column('duration_hours', sa.Integer(), nullable=True),
         sa.Column('expires_at', sa.TIMESTAMP(timezone=True), nullable=True),
         sa.Column('created_at', sa.TIMESTAMP(timezone=True), nullable=False),
-        sa.Column('is_active', sa.Boolean(), nullable=True, server_default='true'),
+        sa.Column('is_active', sa.Boolean(), nullable=False, server_default='true'),
         sa.ForeignKeyConstraint(['content_id'], ['content.id'], ondelete='SET NULL'),
         sa.ForeignKeyConstraint(['target_user_id'], ['user.id'], ondelete='CASCADE'),
         sa.PrimaryKeyConstraint('id'),
     )
     op.create_index('ix_ban_record_target_user_id', 'ban_record', ['target_user_id'])
-    op.add_column('guild_member', sa.Column('status', sa.String(length=20), nullable=True, server_default='approved'))
+    op.add_column('guild_member', sa.Column('status', sa.String(length=20), nullable=False, server_default='approved'))
 
 
 def downgrade() -> None:

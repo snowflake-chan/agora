@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 2,
+  "slug": "input",
+  "name": "Input",
+  "category": "component",
+  "sourceKind": "preview-derived",
+  "confidence": "medium",
+  "semanticTypeCandidates": [
+    "prompt input",
+    "field control",
+    "composer"
+  ],
+  "variantDimensions": [
+    "state",
+    "leading icon",
+    "helper text"
+  ],
+  "coverageMatrix": {},
+  "sizeDeltas": {},
+  "stateCoverage": {},
+  "representativeVariants": [],
+  "anatomy": [
+    "field.root",
+    "field.label",
+    "field.control",
+    "field.helper",
+    "field.action"
+  ],
+  "structurePatterns": [
+    "Use border and surface contrast for state, not bright fills.",
+    "Keep helper/error text close to the control."
+  ],
+  "usageHints": [
+    "Use border and surface contrast for state, not bright fills.",
+    "Keep helper/error text close to the control."
+  ],
+  "doNotInvent": [],
+  "unknowns": []
+}

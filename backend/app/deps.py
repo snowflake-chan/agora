@@ -27,10 +27,9 @@ async def check_not_banned(user_id, session: AsyncSession, action: str = "ban_us
         )
     ).scalars().first()
     if ban:
-        expire_str = ban.expires_at.strftime("%Y-%m-%d %H:%M") if ban.expires_at else "永久"
-        msg = {
-            "ban_user": f"你的账号已被封禁至 {expire_str}",
-            "mute_post": f"你已被禁止发帖至 {expire_str}",
-            "mute_patch": f"你已被禁止发起变更至 {expire_str}",
-        }.get(ban.type, f"你的账号已被限制至 {expire_str}")
-        raise HTTPException(403, detail=msg)
+        code = {
+            "ban_user": "ACCOUNT_BANNED",
+            "mute_post": "POSTING_RESTRICTED",
+            "mute_patch": "PATCHING_RESTRICTED",
+        }.get(ban.type, "ACCOUNT_RESTRICTED")
+        raise HTTPException(403, detail=code)

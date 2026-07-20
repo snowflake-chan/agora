@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "tokenSource": "css.json",
+  "componentIndex": "components/index.json",
+  "recommendedReadOrder": [
+    "SKILL.md",
+    "README.md",
+    "css.json",
+    "components/index.json",
+    "components/{slug}.json",
+    "components.css",
+    "preview/component-{slug}.html",
+    "ui_kits/app/index.html"
+  ],
+  "coreComponents": [
+    "mobile-top-tab",
+    "mobile-right-rail",
+    "mobile-bottom-info",
+    "mobile-bottom-nav",
+    "web-video-card",
+    "editorial-mag-cover"
+  ],
+  "supportComponents": [],
+  "tokenCSS": "colors_and_type.css",
+  "componentsCSS": "components.css",
+  "componentContractKind": "legacy-json",
+  "previewFiles": [
+    "preview/component-bottom-info.html",
+    "preview/component-bottom-nav.html",
+    "preview/component-editorial-cover.html",
+    "preview/component-right-rail.html",
+    "preview/component-top-tab.html",
+    "preview/component-video-card.html"
+  ],
+  "allowedComponents": [
+    "bottom-info",
+    "bottom-nav",
+    "editorial-cover",
+    "right-rail",
+    "top-tab",
+    "video-card"
+  ],
+  "soloDesignConsumption": {
+    "prefix": "tk",
+    "themeCss": "colors_and_type.css",
+    "componentCss": "components.css",
+    "fillHtmlHead": "supported",
+    "notes": "Prefixed semantic aliases are intentionally added for solo-design fill-html-head.mjs prefix detection."
+  }
+}
