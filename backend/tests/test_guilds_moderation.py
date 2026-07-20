@@ -155,6 +155,26 @@ def test_admin_bootstrap_role_boundaries_bans_and_reports():
         )
         assert post.status_code == 201, post.text
 
+        missing_report_target = client.post(
+            f"{BASE}/admin/reports",
+            headers=moderator_headers,
+            params={"reason": "Missing target"},
+        )
+        assert missing_report_target.status_code == 422
+        assert missing_report_target.json()["detail"] == "REPORT_TARGET_REQUIRED"
+
+        ambiguous_report_target = client.post(
+            f"{BASE}/admin/reports",
+            headers=moderator_headers,
+            params={
+                "content_id": post.json()["id"],
+                "patch_id": str(uuid4()),
+                "reason": "Ambiguous target",
+            },
+        )
+        assert ambiguous_report_target.status_code == 422
+        assert ambiguous_report_target.json()["detail"] == "REPORT_TARGET_AMBIGUOUS"
+
         first_report = client.post(
             f"{BASE}/admin/reports",
             headers=moderator_headers,
@@ -168,6 +188,88 @@ def test_admin_bootstrap_role_boundaries_bans_and_reports():
         )
         assert duplicate_report.status_code == 409
         assert duplicate_report.json()["detail"] == "REPORT_ALREADY_EXISTS"
+
+        patch = client.post(
+            f"{BASE}/patches",
+            headers=target_headers,
+            json={
+                "title": f"Reported patch {uuid4().hex[:8]}",
+                "content": "Patch content that should be reviewable",
+                "pr_number": 900_000 + int(uuid4().hex[:5], 16),
+            },
+        )
+        assert patch.status_code == 201, patch.text
+        patch_id = patch.json()["id"]
+
+        patch_report = client.post(
+            f"{BASE}/admin/reports",
+            headers=moderator_headers,
+            params={"patch_id": patch_id, "reason": "Review this patch"},
+        )
+        assert patch_report.status_code == 200, patch_report.text
+        duplicate_patch_report = client.post(
+            f"{BASE}/admin/reports",
+            headers=moderator_headers,
+            params={"patch_id": patch_id, "reason": "Duplicate patch report"},
+        )
+        assert duplicate_patch_report.status_code == 409
+        assert duplicate_patch_report.json()["detail"] == "REPORT_ALREADY_EXISTS"
+
+        report_list = client.get(
+            f"{BASE}/admin/reports",
+            headers=admin_headers,
+        )
+        assert report_list.status_code == 200
+        listed_patch_report = next(
+            item for item in report_list.json() if item["id"] == patch_report.json()["id"]
+        )
+        assert listed_patch_report["target_type"] == "patch"
+        assert listed_patch_report["patch_id"] == patch_id
+        assert listed_patch_report["content_title"] == patch.json()["title"]
+
+        resolve_patch_report = client.post(
+            f"{BASE}/admin/reports/{patch_report.json()['id']}/resolve",
+            headers=moderator_headers,
+            params={"action": "resolved"},
+        )
+        assert resolve_patch_report.status_code == 200
+
+        second_reporter, second_reporter_headers = _register(client)
+        second_report = client.post(
+            f"{BASE}/admin/reports",
+            headers=second_reporter_headers,
+            params={"content_id": post.json()["id"], "reason": "Second report"},
+        )
+        assert second_report.status_code == 200
+
+        moderator_delete = client.post(
+            f"{BASE}/admin/reports/{first_report.json()['id']}/resolve",
+            headers=moderator_headers,
+            params={"action": "delete_post"},
+        )
+        assert moderator_delete.status_code == 403
+
+        admin_delete = client.post(
+            f"{BASE}/admin/reports/{first_report.json()['id']}/resolve",
+            headers=admin_headers,
+            params={"action": "delete_post"},
+        )
+        assert admin_delete.status_code == 200, admin_delete.text
+        assert admin_delete.json()["also_resolved"] == 1
+
+        reports_after_delete = client.get(
+            f"{BASE}/admin/reports",
+            headers=admin_headers,
+        )
+        assert reports_after_delete.status_code == 200
+        deleted_target_reports = [
+            item
+            for item in reports_after_delete.json()
+            if item["id"] in (first_report.json()["id"], second_report.json()["id"])
+        ]
+        assert len(deleted_target_reports) == 2
+        assert {item["status"] for item in deleted_target_reports} == {"resolved"}
+        assert {item["content_id"] for item in deleted_target_reports} == {None}
 
         global_ban = client.post(
             f"{BASE}/admin/users/{target['id']}/ban?hours=1&type=ban_user",

@@ -417,13 +417,13 @@
   }
 
   .pill-create {
-    color: var(--vercel-bg);
-    background: var(--vercel-text);
+    color: var(--vercel-accent-foreground);
+    background: var(--vercel-accent);
   }
 
   .pill-create:hover {
-    color: var(--vercel-bg);
-    background: var(--vercel-text);
+    color: var(--vercel-accent-foreground);
+    background: var(--vercel-accent-hover);
     transform: translateY(-1px);
   }
 
@@ -451,8 +451,8 @@
     height: 1.2rem;
     place-items: center;
     border-radius: 38%;
-    color: var(--vercel-bg);
-    background: var(--vercel-text);
+    color: var(--vercel-accent-foreground);
+    background: var(--vercel-accent);
     font-size: 0.5rem;
     font-weight: 700;
   }

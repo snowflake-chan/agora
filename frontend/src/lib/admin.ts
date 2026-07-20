@@ -11,9 +11,21 @@ async function req(path: string, options?: RequestInit) {
 }
 
 export interface ReportItem {
-  id: string; content_id: string; content_title: string; content_body: string;
-  content_author: string; content_author_id: string; reporter_username: string; reason: string;
-  status: string; created_at: string; report_count?: number;
+  id: string;
+  target_type: "content" | "patch" | "deleted";
+  target_id: string | null;
+  content_id: string | null;
+  patch_id: string | null;
+  content_title: string;
+  content_body: string;
+  content_author: string;
+  content_author_id: string | null;
+  patch_title?: string | null;
+  reporter_username: string;
+  reason: string;
+  status: string;
+  created_at: string;
+  report_count?: number;
 }
 
 export interface AdminUser {
@@ -57,8 +69,16 @@ export async function seedSuperAdmin() {
 }
 
 // Reports
-export async function createReport(contentId: string, reason: string) {
-  return req(`/reports?content_id=${contentId}&reason=${encodeURIComponent(reason)}`, { method: "POST" });
+export type ReportTargetType = "content" | "patch";
+
+export async function createReport(
+  targetId: string,
+  reason: string,
+  targetType: ReportTargetType = "content",
+) {
+  const params = new URLSearchParams({ reason });
+  params.set(targetType === "patch" ? "patch_id" : "content_id", targetId);
+  return req(`/reports?${params}`, { method: "POST" });
 }
 
 export async function listReports(status?: string): Promise<ReportItem[]> {

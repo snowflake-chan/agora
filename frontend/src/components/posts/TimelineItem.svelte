@@ -1,4 +1,13 @@
 <script lang="ts">
+  import {
+    EllipsisIcon,
+    FlagIcon,
+    HeartIcon,
+    MessageCircleIcon,
+    ReplyIcon,
+    Share2Icon,
+    Trash2Icon,
+  } from "@lucide/svelte";
   import { onMount } from "svelte";
   import { getUserGuild, type UserGuildBadge } from "../../lib/guilds";
   import { translator } from "../../lib/i18n";
@@ -49,9 +58,13 @@
     replyingToId?: string | null;
   } = $props();
 
-  let menuOpen = false;
+  let menuOpen = $state(false);
+  let menuButton = $state<HTMLButtonElement | null>(null);
   let guild = $state<UserGuildBadge | null>(null);
   let profileHref = $derived(userId ? `/users/${userId}` : "#");
+  let menuId = $derived(
+    `timeline-actions-${(contentId ?? `${userId ?? "anonymous"}-${createdAt}`).replace(/[^a-zA-Z0-9_-]/g, "-")}`,
+  );
 
   onMount(async () => {
     if (!userId) return;
@@ -68,52 +81,79 @@
       menuOpen = false;
     }
   }
+
+  function handleKeydown(event: KeyboardEvent) {
+    if (!menuOpen || event.key !== "Escape") return;
+    event.preventDefault();
+    menuOpen = false;
+    menuButton?.focus();
+  }
+
+  function runMenuAction(action: () => void) {
+    menuOpen = false;
+    action();
+  }
 </script>
 
-<svelte:window on:click={handleClickOutside} />
+<svelte:window onclick={handleClickOutside} onkeydown={handleKeydown} />
 
 <div id={contentId ?? undefined} class="relative mb-6 ml-7 content-node">
   <div class="card">
     <!-- Header -->
-    <div class="flex items-center gap-2 px-4 py-2 border-b" style="border-color: var(--vercel-border);">
+    <div class="timeline-header px-4 py-2 border-b" style="border-color: var(--vercel-border);">
       <a href={profileHref} class="avatar avatar-sm no-underline hover:opacity-80 transition-opacity" style="cursor: {userId ? 'pointer' : 'default'};">
         {(username ?? "?")[0].toUpperCase()}
       </a>
-      <a href={profileHref} class="text-sm font-medium no-underline hover:underline" style="color: var(--vercel-text); cursor: {userId ? 'pointer' : 'default'};">{username ?? $translator("common.anonymous")}</a>
-      {#if guild}
-        <a class="timeline-guild" href={`/guilds/${guild.guild_id}`}>
-          Lv.{guild.guild_level} {guild.guild_name}
-        </a>
-      {/if}
-      <span class="text-xs" style="color: var(--vercel-text-tertiary);">{timeAgo(createdAt)}</span>
+      <div class="timeline-identity">
+        <a href={profileHref} class="timeline-author text-sm font-medium no-underline hover:underline" style="cursor: {userId ? 'pointer' : 'default'};">{username ?? $translator("common.anonymous")}</a>
+        {#if guild}
+          <a class="timeline-guild" href={`/guilds/${guild.guild_id}`}>
+            Lv.{guild.guild_level} {guild.guild_name}
+          </a>
+        {/if}
+        <span class="timeline-time text-xs">{timeAgo(createdAt)}</span>
+      </div>
 
       {#if onReply || onDelete || onReport}
-        <div class="ml-auto timeline-menu relative">
+        <div class="timeline-menu relative">
           <button
-            class="btn-icon"
-            style="width: 1.5rem; height: 1.5rem;"
-            on:click|stopPropagation={() => (menuOpen = !menuOpen)}
+            bind:this={menuButton}
+            type="button"
+            class="btn-icon timeline-menu-trigger"
+            onclick={(event) => {
+              event.stopPropagation();
+              menuOpen = !menuOpen;
+            }}
             aria-label={$translator("common.moreActions")}
             aria-expanded={menuOpen}
+            aria-controls={menuOpen ? menuId : undefined}
+            title={$translator("common.moreActions")}
           >
-            <span class="text-sm leading-none" style="color: var(--vercel-text-tertiary);">⋮</span>
+            <EllipsisIcon size={17} strokeWidth={2} aria-hidden="true" />
           </button>
 
           {#if menuOpen}
-            <div class="menu-dropdown absolute right-0 top-full mt-1 z-50" style="min-width: 8rem;">
+            <div
+              id={menuId}
+              class="menu-dropdown timeline-menu-dropdown absolute right-0 top-full mt-1"
+              aria-label={$translator("common.moreActions")}
+            >
               {#if onReply}
-                <button class="menu-item" on:click={() => { menuOpen = false; onReply(); }}>
-                  {$translator("common.reply")}
+                <button type="button" class="menu-item" onclick={() => runMenuAction(onReply)}>
+                  <ReplyIcon size={15} strokeWidth={1.8} aria-hidden="true" />
+                  <span>{$translator("common.reply")}</span>
                 </button>
               {/if}
               {#if onReport}
-                <button class="menu-item" on:click={() => { menuOpen = false; onReport(); }}>
-                  {$translator("common.report")}
+                <button type="button" class="menu-item" onclick={() => runMenuAction(onReport)}>
+                  <FlagIcon size={15} strokeWidth={1.8} aria-hidden="true" />
+                  <span>{$translator("common.report")}</span>
                 </button>
               {/if}
               {#if onDelete}
-                <button class="menu-item menu-item-danger" on:click={() => { menuOpen = false; onDelete(); }}>
-                  {$translator("common.delete")}
+                <button type="button" class="menu-item menu-item-danger" onclick={() => runMenuAction(onDelete)}>
+                  <Trash2Icon size={15} strokeWidth={1.8} aria-hidden="true" />
+                  <span>{$translator("common.delete")}</span>
                 </button>
               {/if}
             </div>
@@ -153,25 +193,19 @@
           aria-pressed={liked}
           aria-label={$translator(liked ? "common.unlike" : "common.like")}
           disabled={liking}
-          on:click={onLike}
+          onclick={onLike}
         >
-          <svg viewBox="0 0 24 24" aria-hidden="true" fill={liked ? "currentColor" : "none"}>
-            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1.1L12 21l7.8-7.5 1.1-1.1a5.5 5.5 0 0 0-.1-7.8Z"/>
-          </svg>
+          <HeartIcon size={16} strokeWidth={1.8} fill={liked ? "currentColor" : "none"} aria-hidden="true" />
           <span>{$translator("common.like")}</span>
           {#if likeCount > 0}<span class="action-count">{likeCount}</span>{/if}
         </button>
-        <button type="button" class="post-action" on:click={onDiscuss}>
-          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none">
-            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M21 12a8.4 8.4 0 0 1-9 8 9.8 9.8 0 0 1-4.3-1L3 20l1.4-3.7A7.4 7.4 0 0 1 3 12a8.4 8.4 0 0 1 9-8 8.4 8.4 0 0 1 9 8Z"/>
-          </svg>
+        <button type="button" class="post-action" onclick={onDiscuss}>
+          <MessageCircleIcon size={16} strokeWidth={1.8} aria-hidden="true" />
           <span>{$translator("common.reply")}</span>
           {#if replyCount > 0}<span class="action-count">{replyCount}</span>{/if}
         </button>
-        <button type="button" class="post-action" on:click={onShare}>
-          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none">
-            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7M16 6l-4-4-4 4M12 2v14"/>
-          </svg>
+        <button type="button" class="post-action" onclick={onShare}>
+          <Share2Icon size={16} strokeWidth={1.8} aria-hidden="true" />
           <span>{$translator("common.share")}</span>
         </button>
       </div>
@@ -180,6 +214,54 @@
 </div>
 
 <style>
+  .timeline-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .timeline-identity {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    align-items: center;
+    gap: 0.45rem;
+  }
+
+  .timeline-author {
+    overflow: hidden;
+    min-width: 0;
+    color: var(--vercel-text);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .timeline-time {
+    flex: 0 0 auto;
+    color: var(--vercel-text-tertiary);
+    white-space: nowrap;
+  }
+
+  .timeline-menu-trigger {
+    width: 2rem;
+    height: 2rem;
+    color: var(--vercel-text-tertiary);
+  }
+
+  .timeline-menu-dropdown {
+    z-index: var(--z-dropdown);
+    min-width: 9.5rem;
+  }
+
+  .timeline-menu-dropdown :global(.menu-item) {
+    min-height: 2.25rem;
+    gap: 0.625rem;
+  }
+
+  .timeline-menu-dropdown :global(svg) {
+    flex: 0 0 auto;
+  }
+
   .timeline-guild {
     overflow: hidden;
     max-width: 8rem;
@@ -244,7 +326,7 @@
 
   .post-action:hover:not(:disabled) {
     color: var(--vercel-text);
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--vercel-hover);
   }
 
   .post-action:focus-visible {
@@ -258,7 +340,7 @@
   }
 
   .post-action.active {
-    color: #f47286;
+    color: var(--vercel-danger);
   }
 
   .post-action svg {
@@ -268,5 +350,16 @@
 
   .action-count {
     font-variant-numeric: tabular-nums;
+  }
+
+  @media (max-width: 30rem) {
+    .timeline-identity {
+      flex-wrap: wrap;
+      row-gap: 0.1rem;
+    }
+
+    .timeline-time {
+      width: 100%;
+    }
   }
 </style>

@@ -174,11 +174,11 @@
   }
 
   .stream-card:hover {
-    background: rgba(255, 255, 255, 0.035);
+    background: var(--vercel-hover);
   }
 
   .stream-card.active {
-    background: rgba(255, 255, 255, 0.055);
+    background: var(--vercel-hover-strong);
     box-shadow: inset 2px 0 var(--vercel-text);
   }
 

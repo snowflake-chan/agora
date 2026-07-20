@@ -1,0 +1,10 @@
+---
+import Layout from "../layouts/Layout.astro";
+import AppBar from "../components/AppBar.astro";
+import AboutView from "../components/AboutView.svelte";
+---
+
+<Layout title="About Agora" titleKey="about.pageTitle">
+  <AppBar />
+  <AboutView client:load />
+</Layout>

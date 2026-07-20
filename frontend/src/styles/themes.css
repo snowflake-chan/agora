@@ -19,6 +19,8 @@ html[data-theme="tiktok"] {
   --vercel-hover: rgba(255, 255, 255, 0.06);
   --vercel-hover-strong: rgba(255, 255, 255, 0.1);
   --vercel-accent: #fe2c55;
+  --vercel-accent-foreground: #ffffff;
+  --vercel-accent-hover: #e9274d;
   --vercel-ring: rgba(37, 244, 238, 0.58);
   --vercel-radius: 6px;
   --vercel-radius-lg: 8px;
@@ -55,14 +57,14 @@ html[data-theme="tiktok"] .pill-highlight {
 }
 
 html[data-theme="tiktok"] .btn-primary {
-  color: #ffffff;
-  background: #fe2c55;
-  border-color: #fe2c55;
+  color: var(--vercel-accent-foreground);
+  background: var(--vercel-accent);
+  border-color: var(--vercel-accent);
 }
 
-html[data-theme="tiktok"] .btn-primary:hover {
-  background: #e9274d;
-  border-color: #e9274d;
+html[data-theme="tiktok"] .btn-primary:not(:disabled):hover {
+  background: var(--vercel-accent-hover);
+  border-color: var(--vercel-accent-hover);
 }
 
 html[data-theme="tiktok"] ::selection {
@@ -82,6 +84,8 @@ html[data-theme="claude"] {
   --vercel-hover: rgba(61, 57, 41, 0.05);
   --vercel-hover-strong: rgba(61, 57, 41, 0.09);
   --vercel-accent: #c96442;
+  --vercel-accent-foreground: #ffffff;
+  --vercel-accent-hover: #b0562f;
   --vercel-danger: #d64545;
   --vercel-danger-hover: #b83636;
   --vercel-success: #788c5d;
@@ -155,14 +159,14 @@ html[data-theme="claude"] .toast {
 }
 
 html[data-theme="claude"] .btn-primary {
-  color: #ffffff;
-  background: #c96442;
-  border-color: #c96442;
+  color: var(--vercel-accent-foreground);
+  background: var(--vercel-accent);
+  border-color: var(--vercel-accent);
 }
 
-html[data-theme="claude"] .btn-primary:hover {
-  background: #b0562f;
-  border-color: #b0562f;
+html[data-theme="claude"] .btn-primary:not(:disabled):hover {
+  background: var(--vercel-accent-hover);
+  border-color: var(--vercel-accent-hover);
 }
 
 html[data-theme="claude"] .input {
@@ -209,6 +213,7 @@ html[data-theme="default"][data-color-mode="light"] {
   --vercel-hover: rgba(17, 17, 19, 0.045);
   --vercel-hover-strong: rgba(17, 17, 19, 0.08);
   --vercel-accent: #171719;
+  --vercel-accent-foreground: #ffffff;
   --vercel-ring: rgba(17, 17, 19, 0.2);
   color-scheme: light;
 }
@@ -319,6 +324,8 @@ html[data-theme="claude"][data-color-mode="dark"] {
   --vercel-hover: rgba(255, 255, 255, 0.045);
   --vercel-hover-strong: rgba(255, 255, 255, 0.08);
   --vercel-accent: #d97757;
+  --vercel-accent-foreground: #141413;
+  --vercel-accent-hover: #e08d6f;
   --vercel-danger: #ef4444;
   --vercel-danger-hover: #f26b6b;
   --vercel-success: #8ca06f;
@@ -373,14 +380,14 @@ html[data-theme="claude"][data-color-mode="dark"] .toast {
 }
 
 html[data-theme="claude"][data-color-mode="dark"] .btn-primary {
-  color: #141413;
-  background: #d97757;
-  border-color: #d97757;
+  color: var(--vercel-accent-foreground);
+  background: var(--vercel-accent);
+  border-color: var(--vercel-accent);
 }
 
-html[data-theme="claude"][data-color-mode="dark"] .btn-primary:hover {
-  background: #e08d6f;
-  border-color: #e08d6f;
+html[data-theme="claude"][data-color-mode="dark"] .btn-primary:not(:disabled):hover {
+  background: var(--vercel-accent-hover);
+  border-color: var(--vercel-accent-hover);
 }
 
 html[data-theme="claude"][data-color-mode="dark"] .input {
@@ -466,6 +473,7 @@ html[data-theme="apple"][data-color-mode="light"] {
   --vercel-hover: rgba(29, 29, 31, 0.045);
   --vercel-hover-strong: rgba(29, 29, 31, 0.08);
   --vercel-accent: #007aff;
+  --vercel-accent-foreground: #ffffff;
   --vercel-danger: #ff3b30;
   --vercel-danger-hover: #e6352b;
   --vercel-success: #34c759;
@@ -489,6 +497,7 @@ html[data-theme="apple"][data-color-mode="dark"] {
   --vercel-hover: rgba(255, 255, 255, 0.055);
   --vercel-hover-strong: rgba(255, 255, 255, 0.1);
   --vercel-accent: #2e8dff;
+  --vercel-accent-foreground: #000000;
   --vercel-danger: #ff453a;
   --vercel-danger-hover: #ff6961;
   --vercel-success: #30d158;
@@ -544,13 +553,13 @@ html[data-theme="apple"] .pill-item.is-active {
 }
 
 html[data-theme="apple"] .btn-primary {
-  color: #ffffff;
+  color: var(--vercel-accent-foreground);
   background: var(--vercel-accent);
   border-color: var(--vercel-accent);
 }
 
 html[data-theme="apple"][data-color-mode="dark"] .btn-primary {
-  color: #000000;
+  color: var(--vercel-accent-foreground);
 }
 
 html[data-theme="apple"] .btn,
@@ -647,6 +656,7 @@ html[data-theme="google"][data-color-mode="light"] {
   --vercel-hover: rgba(66, 133, 244, 0.055);
   --vercel-hover-strong: rgba(66, 133, 244, 0.1);
   --vercel-accent: #4285f4;
+  --vercel-accent-foreground: #ffffff;
   --vercel-danger: #ea4335;
   --vercel-danger-hover: #d73a2e;
   --vercel-success: #34a853;
@@ -670,6 +680,7 @@ html[data-theme="google"][data-color-mode="dark"] {
   --vercel-hover: rgba(252, 44, 80, 0.065);
   --vercel-hover-strong: rgba(252, 44, 80, 0.12);
   --vercel-accent: #fc2c50;
+  --vercel-accent-foreground: #ffffff;
   --vercel-danger: #fc2c50;
   --vercel-danger-hover: #ff5873;
   --vercel-success: #2dccd3;
@@ -722,7 +733,7 @@ html[data-theme="google"] .pill-item.is-active {
 }
 
 html[data-theme="google"] .btn-primary {
-  color: #ffffff;
+  color: var(--vercel-accent-foreground);
   background: var(--vercel-accent);
   border-color: var(--vercel-accent);
 }

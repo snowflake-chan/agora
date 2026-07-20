@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import {
     Ban,
+    Check,
     ChevronDown,
     ChevronUp,
     Eye,
@@ -181,7 +182,9 @@
     banUserId = userId;
     banUsername = username;
     banReportId = report?.id ?? "";
-    banType = report ? "mute_post" : "ban_user";
+    banType = report
+      ? report.target_type === "patch" ? "mute_patch" : "mute_post"
+      : "ban_user";
     banDays = 0;
     banHours = 24;
     banReason = report?.reason ?? "";
@@ -416,7 +419,21 @@
                   })}
                   · {formatDate(report.created_at)}
                 </div>
-                <h2>{report.content_title || $translator("admin.untitled")}</h2>
+                <h2>
+                  {#if report.target_id && report.target_type !== "deleted"}
+                    <a
+                      class="report-target-link"
+                      href={report.target_type === "patch"
+                        ? `/patches/${report.target_id}`
+                        : `/posts/${report.target_id}`}
+                    >
+                      {report.content_title || $translator("admin.untitled")}
+                      <Eye size={14} aria-hidden="true" />
+                    </a>
+                  {:else}
+                    {report.content_title || $translator("admin.untitled")}
+                  {/if}
+                </h2>
                 <p class="report-reason">{report.reason}</p>
                 {#if report.content_body}
                   <p class="content-excerpt">{report.content_body}</p>
@@ -427,17 +444,23 @@
                   <button class="btn btn-secondary btn-sm" onclick={() => handleReport(report.id, "dismissed")}>
                     {$translator("admin.dismiss")}
                   </button>
-                  <button
-                    class="btn btn-danger btn-sm"
-                    onclick={() => requestConfirmation(
-                      $translator("admin.deleteReportedTitle"),
-                      $translator("admin.deleteReportedDescription"),
-                      () => handleReport(report.id, "delete_post"),
-                    )}
-                  >
-                    <Trash2 size={15} />
-                    {$translator("admin.deleteContent")}
+                  <button class="btn btn-secondary btn-sm" onclick={() => handleReport(report.id, "resolved")}>
+                    <Check size={15} aria-hidden="true" />
+                    {$translator("admin.resolved")}
                   </button>
+                  {#if isSuperAdmin && report.target_type !== "deleted"}
+                    <button
+                      class="btn btn-danger btn-sm"
+                      onclick={() => requestConfirmation(
+                        $translator("admin.deleteReportedTitle"),
+                        $translator("admin.deleteReportedDescription"),
+                        () => handleReport(report.id, report.target_type === "patch" ? "delete_patch" : "delete_post"),
+                      )}
+                    >
+                      <Trash2 size={15} aria-hidden="true" />
+                      {$translator("admin.deleteContent")}
+                    </button>
+                  {/if}
                   {#if isSuperAdmin && report.content_author_id}
                     <button class="btn btn-secondary btn-sm" onclick={() => openBan(report.content_author_id, report.content_author, report)}>
                       <Ban size={15} />
@@ -844,6 +867,20 @@
     margin: 0.45rem 0 0;
     color: var(--vercel-text);
     font-size: 0.875rem;
+  }
+
+  .report-target-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    max-width: 100%;
+    color: var(--vercel-text);
+  }
+
+  .report-target-link:hover {
+    color: var(--vercel-accent);
+    text-decoration: underline;
+    text-underline-offset: 0.18em;
   }
 
   .content-excerpt {

@@ -10,10 +10,8 @@
 </script>
 
 <article
-  class="post-card relative px-4 py-4 border-b transition-colors"
+  class="post-card relative px-4 py-4 border-b"
   style="border-color: var(--vercel-border);"
-  onmouseenter={(e) => e.currentTarget.style.background = '#141417'}
-  onmouseleave={(e) => e.currentTarget.style.background = ''}
 >
   <h2 class="text-base font-semibold">
     <a class="card-link" href={`/posts/${post.id}`} style="color: var(--vercel-text);">
@@ -49,6 +47,14 @@
     content: "";
     position: absolute;
     inset: 0;
+  }
+
+  .post-card {
+    transition: background-color 150ms ease, border-color 150ms ease;
+  }
+
+  .post-card:hover {
+    background: var(--vercel-hover);
   }
 
   .post-card:has(.card-link:focus-visible) {
