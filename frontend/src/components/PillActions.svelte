@@ -14,7 +14,7 @@
   // 'posts' | 'patches' = in-page view selection
   // 'post'  | 'patch'  = a composer dialog is open (its trigger is selected)
   // null                = nothing selected (e.g. user menu)
-  let activeKey = $state<"posts" | "patches" | "post" | "patch" | null>(null);
+  let activeKey = $state<"posts" | "patches" | "post" | "patch" | "user" | null>(null);
   let showPostForm = $state(false);
   let showPatchForm = $state(false);
   let menuOpen = $state(false);
@@ -25,13 +25,15 @@
   onMount(() => initAuth());
 
   onMount(() => {
-    let initial: "posts" | "patches" = "posts";
+    let initial: "posts" | "patches" | "user" = "posts";
     try {
       const saved = localStorage.getItem("agora:initView");
       if (saved === "patches") { initial = "patches"; localStorage.removeItem("agora:initView"); }
     } catch (e) {}
+    if (window.location.pathname.startsWith("/patches")) initial = "patches";
+    if (window.location.pathname === "/my") initial = "user";
     activeKey = initial;
-    mainView.set(initial);
+    if (initial !== "user") mainView.set(initial);
     requestAnimationFrame(updateHighlight);
   });
 
@@ -86,6 +88,10 @@
   }
 
   function selectAndOpen(key: "post" | "patch") {
+    if (!$currentUser) {
+      window.location.href = "/login";
+      return;
+    }
     activeKey = key;
     if (key === "post") showPostForm = true;
     else showPatchForm = true;
@@ -118,7 +124,7 @@
 
 <svelte:window onclick={handleClickOutside} />
 
-<div class="pill-track" bind:this={trackEl}>
+<div class="pill-track" bind:this={trackEl} aria-label="主要导航">
   <!-- sliding selection indicator -->
   <div class="pill-highlight is-hidden" bind:this={highlightEl}></div>
 
@@ -129,7 +135,8 @@
     class:is-active={activeKey === "posts"}
     data-key="posts"
     onclick={() => switchView("posts")}
-    title="帖子"
+    aria-label="动态"
+    title="动态"
   >
     <svg
       class="size-4.5"
@@ -143,7 +150,8 @@
         d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
       /></svg
     >
-    <span class="pill-tooltip">帖子</span>
+    <span class="pill-tooltip">动态</span>
+    <span class="pill-label">动态</span>
   </button>
 
   <button
@@ -153,6 +161,7 @@
     data-key="patches"
     onclick={() => switchView("patches")}
     title="变更"
+    aria-label="变更"
   >
     <svg
       class="size-4.5"
@@ -167,23 +176,23 @@
       /></svg
     >
     <span class="pill-tooltip">变更</span>
+    <span class="pill-label">变更</span>
   </button>
 
-  <div
-    class="w-px h-5 mx-1 rounded-full"
-    style="background: rgba(255,255,255,0.1);"
-  ></div>
+  <div class="pill-divider" aria-hidden="true"></div>
 
   <!-- composer triggers -->
   <button
-    class="pill-item pill-slot"
+    class="pill-item pill-slot pill-create"
     class:is-active={activeKey === "post"}
     data-key="post"
     onclick={() => selectAndOpen("post")}
     title="发帖"
+    aria-label="发布帖子"
   >
     <PlusIcon class="size-4.5" />
     <span class="pill-tooltip">发帖</span>
+    <span class="pill-label">发布</span>
   </button>
 
   {#if $currentUser}
@@ -193,9 +202,11 @@
       data-key="patch"
       onclick={() => selectAndOpen("patch")}
       title="发起变更"
+      aria-label="发起变更"
     >
       <GitBranchIcon class="size-4.5" />
       <span class="pill-tooltip">发起变更</span>
+      <span class="pill-label">提案</span>
     </button>
   {/if}
 
@@ -207,6 +218,8 @@
         data-key="user"
         onclick={toggleMenu}
         title="我的"
+        aria-label="账户菜单"
+        aria-expanded={menuOpen}
       >
         <div
           class="flex size-4.5 items-center justify-center rounded-full text-[8px] font-bold"
@@ -215,6 +228,7 @@
           {($currentUser.nickname ?? $currentUser.username)[0].toUpperCase()}
         </div>
         <span class="pill-tooltip">我的</span>
+        <span class="pill-label">我的</span>
       </button>
 
       {#if menuOpen}
@@ -245,9 +259,11 @@
         class="pill-item pill-slot"
         data-key="login"
         title="登录"
+        aria-label="登录"
       >
         <UserIcon class="size-4.5" />
         <span class="pill-tooltip">登录</span>
+        <span class="pill-label">登录</span>
       </a>
     {/if}
   </div>
@@ -256,6 +272,24 @@
 {#if showPostForm}
   <PostForm on:close={() => closeComposer("post")} />
 {/if}
+
+<style>
+  .pill-label { display:none; font-size:.625rem; font-weight:600; line-height:1; letter-spacing:.01em; }
+  .pill-divider { width:1px; height:1.25rem; margin:0 .25rem; background:rgba(255,255,255,.1); }
+  .pill-create { color:var(--vercel-bg); background:var(--vercel-text); }
+  .pill-create:hover { color:var(--vercel-bg); background:#fff; transform:translateY(-1px); }
+  .pill-create.is-active { color:var(--vercel-bg); }
+  .pill-create :global(svg) { stroke-width:2.25; }
+  @media (max-width:40rem) {
+    .pill-tooltip,.pill-divider { display:none !important; }
+    .pill-label { display:block; }
+    :global(.pill-track) { width:100%; justify-content:space-around; gap:.1rem; }
+    :global(.pill-item) { width:auto; min-width:3.1rem; height:3rem; padding:.35rem .55rem; flex-direction:column; gap:.2rem; border-radius:.7rem; }
+    .pill-create { min-width:3.4rem; transform:translateY(-.18rem); border-radius:.85rem; box-shadow:0 .35rem 1rem rgba(0,0,0,.28); }
+    .pill-create:hover { transform:translateY(-.25rem); }
+    :global(.user-menu) { display:flex; }
+  }
+</style>
 {#if showPatchForm}
   <PatchForm on:close={() => closeComposer("patch")} />
 {/if}
