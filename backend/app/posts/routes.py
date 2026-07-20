@@ -1,5 +1,4 @@
 import asyncio
-from datetime import timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -299,15 +298,15 @@ async def get_feed(
         ))
 
     for p in patches:
-        voting_ends_at = p.voting_ends_at
-        if voting_ends_at is None and p.status == "voting" and p.created_at:
-            voting_ends_at = p.created_at + timedelta(days=3)
         items.append(FeedItem(
             id=p.id, type="patch", title=p.title, content=p.content,
             author_id=p.author_id, author_username=p.author.username,
             created_at=p.created_at,
             pr_number=p.pr_number, status=p.status,
-            voting_ends_at=voting_ends_at,
+            voting_started_at=p.voting_started_at,
+            voting_ends_at=p.voting_ends_at,
+            voting_period_hours=p.voting_period_hours,
+            voting_window_kind=p.voting_window_kind,
             reply_count=patch_comment_counts.get(p.id, 0),
             for_count=vote_counts.get(str(p.id), {}).get("for", 0),
             against_count=vote_counts.get(str(p.id), {}).get("against", 0),

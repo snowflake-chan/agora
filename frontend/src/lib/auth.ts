@@ -1,4 +1,5 @@
 import { API_BASE } from "./config";
+import type { VotingWindowKind } from "./governance";
 
 export interface User {
   id: string;
@@ -42,6 +43,10 @@ export interface UserContentItem {
   like_count: number;
   pr_number: number | null;
   status: string | null;
+  voting_started_at: string | null;
+  voting_ends_at: string | null;
+  voting_period_hours: number | null;
+  voting_window_kind: VotingWindowKind | null;
   can_delete: boolean;
 }
 

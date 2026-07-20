@@ -3,6 +3,12 @@ import { describe, it } from "node:test";
 
 import { localizeNotification, messages } from "./i18n.ts";
 import {
+  formatVotingPeriod,
+  getVotingCountdown,
+  isActiveCreatorWindow,
+  resolveVotingPeriodHours,
+} from "./governance.ts";
+import {
   normalizeColorMode,
   normalizeHomeLayout,
   normalizeMotion,
@@ -83,5 +89,39 @@ describe("preference normalization", () => {
     assert.equal(normalizeColorMode("invalid"), "dark");
     assert.equal(normalizeHomeLayout("pages"), "pages");
     assert.equal(normalizeHomeLayout("invalid"), "split");
+  });
+});
+
+describe("governance window presentation", () => {
+  const startedAt = "2026-07-20T00:00:00.000Z";
+  const startedAtMs = Date.parse(startedAt);
+  const endsAt = "2026-07-21T00:00:00.000Z";
+
+  it("uses the server period and falls back to the persisted timestamps", () => {
+    assert.equal(resolveVotingPeriodHours(72, startedAt, endsAt), 72);
+    assert.equal(resolveVotingPeriodHours(null, startedAt, endsAt), 24);
+    assert.equal(resolveVotingPeriodHours(null, null, endsAt), null);
+    assert.equal(isActiveCreatorWindow("active_creator", 24, startedAt, endsAt), true);
+    assert.equal(isActiveCreatorWindow("standard", 24, startedAt, endsAt), false);
+  });
+
+  it("rounds remaining voting time upward and closes exactly at the deadline", () => {
+    assert.deepEqual(getVotingCountdown(endsAt, startedAtMs + 1), {
+      state: "days",
+      days: 1,
+      hours: 0,
+    });
+    assert.deepEqual(getVotingCountdown(endsAt, Date.parse(endsAt) - 30_000), {
+      state: "minutes",
+      minutes: 1,
+    });
+    assert.deepEqual(getVotingCountdown(endsAt, Date.parse(endsAt)), {
+      state: "closed",
+    });
+  });
+
+  it("formats persisted periods in the selected locale", () => {
+    assert.match(formatVotingPeriod(24, "en") ?? "", /1\s*day/i);
+    assert.match(formatVotingPeriod(72, "en") ?? "", /3\s*days/i);
   });
 });

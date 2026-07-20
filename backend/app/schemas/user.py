@@ -69,5 +69,9 @@ class UserContentItem(BaseModel):
     like_count: int = 0
     pr_number: int | None = None
     status: str | None = None
+    voting_started_at: datetime | None = None
+    voting_ends_at: datetime | None = None
+    voting_period_hours: int | None = None
+    voting_window_kind: str | None = None
     can_delete: bool = False
 

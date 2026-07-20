@@ -38,7 +38,9 @@ from app.users.deps import current_user, optional_current_user
 
 router = APIRouter()
 
-VOTING_PERIOD_DAYS = 3
+STANDARD_VOTING_PERIOD_HOURS = 72
+ACTIVE_CREATOR_VOTING_PERIOD_HOURS = 24
+ACTIVE_CREATOR_LOOKBACK_DAYS = 90
 
 
 # ── Helpers ──
@@ -59,6 +61,29 @@ async def _get_vote_counts(
     for choice, cnt in rows:
         counts[choice] = cnt
     return counts
+
+
+async def _has_recent_merged_patch(
+    session: AsyncSession,
+    *,
+    author_id: UUID,
+    current_patch_id: UUID,
+    evaluated_at: datetime,
+) -> bool:
+    """Return whether the author earned the active-creator voting window."""
+    cutoff = evaluated_at - timedelta(days=ACTIVE_CREATOR_LOOKBACK_DAYS)
+    prior_merged_patch = await session.scalar(
+        select(PatchModel.id)
+        .where(
+            PatchModel.author_id == author_id,
+            PatchModel.id != current_patch_id,
+            PatchModel.status == "merged",
+            PatchModel.updated_at >= cutoff,
+            PatchModel.updated_at < evaluated_at,
+        )
+        .limit(1)
+    )
+    return prior_merged_patch is not None
 
 
 async def _tally(session: AsyncSession, patch: PatchModel) -> bool:
@@ -272,7 +297,10 @@ def _patch_to_read(
         status=patch.status,
         author_id=patch.author_id,
         author_username=patch.author.username,
+        voting_started_at=patch.voting_started_at,
         voting_ends_at=patch.voting_ends_at,
+        voting_period_hours=patch.voting_period_hours,
+        voting_window_kind=patch.voting_window_kind,
         for_count=c["for"],
         against_count=c["against"],
         abstain_count=c["abstain"],
@@ -462,7 +490,7 @@ async def submit_patch(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(current_user),
 ):
-    """Submit for voting with a 3-day voting period (draft → voting)."""
+    """Submit for voting and snapshot the server-selected voting window."""
     await check_not_banned(user.id, session, "mute_patch")
     stmt = (
         select(PatchModel)
@@ -517,9 +545,26 @@ async def submit_patch(
             )
             raise HTTPException(status_code=status_code, detail=readiness_error)
 
-    patch.status = "voting"
     now = datetime.now(timezone.utc)
-    patch.voting_ends_at = now + timedelta(days=VOTING_PERIOD_DAYS)
+    active_creator = await _has_recent_merged_patch(
+        session,
+        author_id=user.id,
+        current_patch_id=patch.id,
+        evaluated_at=now,
+    )
+    voting_period_hours = (
+        ACTIVE_CREATOR_VOTING_PERIOD_HOURS
+        if active_creator
+        else STANDARD_VOTING_PERIOD_HOURS
+    )
+
+    patch.status = "voting"
+    patch.voting_started_at = now
+    patch.voting_period_hours = voting_period_hours
+    patch.voting_window_kind = (
+        "active_creator" if active_creator else "standard"
+    )
+    patch.voting_ends_at = now + timedelta(hours=voting_period_hours)
     await session.commit()
 
     response_patch = await session.scalar(

@@ -1,10 +1,12 @@
 <script lang="ts">
   import { Clock3Icon, HeartIcon, MessageCircleIcon } from "@lucide/svelte";
   import { onMount } from "svelte";
+  import { getVotingCountdown, type VotingCountdown } from "../lib/governance";
   import type { FeedItem } from "../lib/posts";
   import { translator } from "../lib/i18n";
   import { stripMarkdown } from "../lib/utils";
   import AuthorMeta from "./AuthorMeta.svelte";
+  import VotingWindowMeta from "./patches/VotingWindowMeta.svelte";
 
   let {
     item,
@@ -37,7 +39,8 @@
   );
   let rankingReason = $derived(formatRankingReason(item.ranking_reason));
   let now = $state(Date.now());
-  let countdown = $derived(formatCountdown(item.voting_ends_at, now));
+  let countdownState = $derived(getVotingCountdown(item.voting_ends_at, now));
+  let countdown = $derived(formatCountdown(countdownState));
   let countdownUrgent = $derived(
     Boolean(item.voting_ends_at) &&
       new Date(item.voting_ends_at as string).getTime() - now < 2 * 60 * 60 * 1000,
@@ -51,23 +54,19 @@
     return () => window.clearInterval(timer);
   });
 
-  function formatCountdown(deadline: string | null, currentTime: number): string | null {
-    if (item.type !== "patch" || item.status !== "voting" || !deadline) return null;
-    const remaining = new Date(deadline).getTime() - currentTime;
-    if (remaining <= 0) return $translator("patch.closed");
-    const totalMinutes = Math.floor(remaining / 60_000);
-    const hours = Math.floor(totalMinutes / 60);
-    const days = Math.floor(hours / 24);
-    if (days > 0) {
+  function formatCountdown(value: VotingCountdown | null): string | null {
+    if (item.type !== "patch" || item.status !== "voting" || !value) return null;
+    if (value.state === "closed") return $translator("patch.closed");
+    if (value.state === "days") {
       return $translator("patch.remainingDaysHours", {
-        days,
-        hours: hours % 24,
+        days: value.days,
+        hours: value.hours,
       });
     }
-    if (hours > 0) return $translator("patch.remainingHours", { hours });
-    return $translator("patch.remainingMinutes", {
-      minutes: Math.max(1, totalMinutes),
-    });
+    if (value.state === "hours") {
+      return $translator("patch.remainingHours", { hours: value.hours });
+    }
+    return $translator("patch.remainingMinutes", { minutes: value.minutes });
   }
 
   function formatRankingReason(reason: string | null): string | null {
@@ -113,6 +112,13 @@
       {#if item.pr_number}
         <span class="text-xs" style="color: var(--vercel-text-tertiary);">PR #{item.pr_number}</span>
       {/if}
+      <VotingWindowMeta
+        status={item.status}
+        votingWindowKind={item.voting_window_kind}
+        votingPeriodHours={item.voting_period_hours}
+        votingStartedAt={item.voting_started_at}
+        votingEndsAt={item.voting_ends_at}
+      />
     {:else if item.tags && item.tags.length > 0}
       <span class="stream-tag">{item.tags[0]}</span>
     {/if}
@@ -184,6 +190,7 @@
   .stream-card-topline {
     display: flex;
     min-height: 1.25rem;
+    flex-wrap: wrap;
     align-items: center;
     gap: 0.5rem;
   }
@@ -229,13 +236,6 @@
   .vote-countdown.urgent {
     color: var(--vercel-danger);
     background: color-mix(in srgb, var(--vercel-danger) 10%, transparent);
-  }
-
-  .vote-countdown svg {
-    width: 0.75rem;
-    height: 0.75rem;
-    fill: none;
-    stroke: currentColor;
   }
 
   .card-link::after {

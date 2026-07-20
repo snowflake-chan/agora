@@ -17,6 +17,7 @@
   import { currentUser } from "../../stores/auth";
   import { toaster } from "../../stores/toaster";
   import ConfirmDialog from "../ConfirmDialog.svelte";
+  import VotingWindowMeta from "../patches/VotingWindowMeta.svelte";
 
   let { userId }: { userId: string } = $props();
 
@@ -192,6 +193,15 @@
               <a href={itemHref(item)}>↳ {item.reply_count}</a>
               {#if item.pr_number}<span>PR #{item.pr_number}</span>{/if}
               {#if item.status}<span>{$translator(`status.${item.status}`)}</span>{/if}
+              {#if item.type === "patch"}
+                <VotingWindowMeta
+                  status={item.status}
+                  votingWindowKind={item.voting_window_kind}
+                  votingPeriodHours={item.voting_period_hours}
+                  votingStartedAt={item.voting_started_at}
+                  votingEndsAt={item.voting_ends_at}
+                />
+              {/if}
             </div>
             {#if item.can_delete}
               <button class="delete-item" onclick={() => requestDelete(item)}>{$translator("common.delete")}</button>
@@ -298,7 +308,10 @@
     -webkit-box-orient: vertical; -webkit-line-clamp: 3;
   }
   .item-footer { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: .5rem; }
-  .item-counts { display: flex; gap: 1rem; color: var(--vercel-text-tertiary); font-size: .7rem; }
+  .item-counts {
+    display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem;
+    color: var(--vercel-text-tertiary); font-size: .7rem;
+  }
   .delete-item { color: var(--vercel-text-tertiary); font-size: .7rem; }
   .delete-item:hover { color: var(--vercel-danger); }
   .profile-skeleton { display: grid; gap: .75rem; padding: 2rem 0; }

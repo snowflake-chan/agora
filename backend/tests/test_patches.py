@@ -9,6 +9,7 @@ import os
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
 import asyncpg
@@ -34,7 +35,12 @@ def _pr_number() -> int:
     return int(uuid4().hex[:7], 16) + 1
 
 
-def _set_patch_status(patch_id: str, status: str) -> None:
+def _set_patch_status(
+    patch_id: str,
+    status: str,
+    *,
+    updated_at: datetime | None = None,
+) -> None:
     """Set up a completed governance state directly in the integration database."""
     database_url = os.environ["DATABASE_URL"].replace(
         "postgresql+asyncpg://", "postgresql://", 1
@@ -43,15 +49,109 @@ def _set_patch_status(patch_id: str, status: str) -> None:
     async def update_status() -> None:
         connection = await asyncpg.connect(database_url)
         try:
-            await connection.execute(
-                "UPDATE patch SET status = $1 WHERE id = $2",
-                status,
-                UUID(patch_id),
-            )
+            if updated_at is None:
+                await connection.execute(
+                    "UPDATE patch SET status = $1 WHERE id = $2",
+                    status,
+                    UUID(patch_id),
+                )
+            else:
+                await connection.execute(
+                    "UPDATE patch SET status = $1, updated_at = $2 WHERE id = $3",
+                    status,
+                    updated_at,
+                    UUID(patch_id),
+                )
         finally:
             await connection.close()
 
     asyncio.run(update_status())
+
+
+def _set_user_role(user_id: str, role: str) -> None:
+    database_url = os.environ["DATABASE_URL"].replace(
+        "postgresql+asyncpg://", "postgresql://", 1
+    )
+
+    async def update_role() -> None:
+        connection = await asyncpg.connect(database_url)
+        try:
+            await connection.execute(
+                'UPDATE "user" SET role = $1 WHERE id = $2',
+                role,
+                UUID(user_id),
+            )
+        finally:
+            await connection.close()
+
+    asyncio.run(update_role())
+
+
+def _assert_voting_window(data: dict, *, hours: int, kind: str) -> None:
+    started_at = datetime.fromisoformat(data["voting_started_at"])
+    ends_at = datetime.fromisoformat(data["voting_ends_at"])
+    assert data["voting_period_hours"] == hours
+    assert data["voting_window_kind"] == kind
+    assert ends_at - started_at == timedelta(hours=hours)
+
+
+def _assert_invalid_voting_snapshot_rejected(patch_id: str) -> None:
+    database_url = os.environ["DATABASE_URL"].replace(
+        "postgresql+asyncpg://", "postgresql://", 1
+    )
+
+    async def write_invalid_snapshot() -> None:
+        connection = await asyncpg.connect(database_url)
+        try:
+            with pytest.raises(asyncpg.CheckViolationError):
+                await connection.execute(
+                    "UPDATE patch SET voting_period_hours = 24 WHERE id = $1",
+                    UUID(patch_id),
+                )
+            with pytest.raises(asyncpg.CheckViolationError):
+                await connection.execute(
+                    "UPDATE patch SET status = 'voting' WHERE id = $1",
+                    UUID(patch_id),
+                )
+            with pytest.raises(asyncpg.CheckViolationError):
+                await connection.execute(
+                    """
+                    UPDATE patch
+                    SET voting_started_at = NOW(),
+                        voting_ends_at = NOW() + INTERVAL '72 hours',
+                        voting_period_hours = 72,
+                        voting_window_kind = 'standard'
+                    WHERE id = $1
+                    """,
+                    UUID(patch_id),
+                )
+        finally:
+            await connection.close()
+
+    asyncio.run(write_invalid_snapshot())
+
+
+def _assert_inconsistent_voting_deadline_rejected(patch_id: str) -> None:
+    database_url = os.environ["DATABASE_URL"].replace(
+        "postgresql+asyncpg://", "postgresql://", 1
+    )
+
+    async def write_inconsistent_deadline() -> None:
+        connection = await asyncpg.connect(database_url)
+        try:
+            with pytest.raises(asyncpg.CheckViolationError):
+                await connection.execute(
+                    """
+                    UPDATE patch
+                    SET voting_ends_at = voting_ends_at + INTERVAL '1 hour'
+                    WHERE id = $1
+                    """,
+                    UUID(patch_id),
+                )
+        finally:
+            await connection.close()
+
+    asyncio.run(write_inconsistent_deadline())
 
 
 def _expire_patch(patch_id: str) -> None:
@@ -66,7 +166,12 @@ def _expire_patch(patch_id: str) -> None:
             await connection.execute(
                 """
                 UPDATE patch
-                SET voting_ends_at = NOW() - INTERVAL '1 minute'
+                SET voting_started_at = (
+                        NOW()
+                        - voting_period_hours * INTERVAL '1 hour'
+                        - INTERVAL '1 minute'
+                    ),
+                    voting_ends_at = NOW() - INTERVAL '1 minute'
                 WHERE id = $1
                 """,
                 UUID(patch_id),
@@ -137,6 +242,12 @@ class TestPatches:
         assert data["title"] == "My patch"
         assert data["status"] == "draft"
         assert data["pr_number"] == pr_number
+        assert data["voting_started_at"] is None
+        assert data["voting_ends_at"] is None
+        assert data["voting_period_hours"] is None
+        assert data["voting_window_kind"] is None
+
+        _assert_invalid_voting_snapshot_rejected(data["id"])
 
     def test_create_patch_requires_auth(self):
         r = self.client.post(
@@ -377,7 +488,7 @@ class TestPatches:
     # ── Voting flow ──
 
     def test_submit_sets_voting_ends_at(self):
-        """Submit sets voting_ends_at to ~3 days in the future."""
+        """A creator without recent merged work receives the standard window."""
         user = _register(self.client)
         headers = _login(self.client, user)
         create = self.client.post(
@@ -390,7 +501,124 @@ class TestPatches:
         assert r.status_code == 200
         data = r.json()
         assert data["status"] == "voting"
-        assert data["voting_ends_at"] is not None
+        _assert_voting_window(data, hours=72, kind="standard")
+
+        feed = self.client.get(f"{BASE}/api/v1/posts/-/feed")
+        assert feed.status_code == 200
+        feed_patch = next(item for item in feed.json() if item["id"] == pid)
+        assert feed_patch["voting_started_at"] == data["voting_started_at"]
+        assert feed_patch["voting_ends_at"] == data["voting_ends_at"]
+        assert feed_patch["voting_period_hours"] == 72
+        assert feed_patch["voting_window_kind"] == "standard"
+        _assert_inconsistent_voting_deadline_rejected(pid)
+
+        profile = self.client.get(
+            f"{BASE}/api/v1/users/{user['id']}/content"
+        )
+        assert profile.status_code == 200
+        profile_patch = next(item for item in profile.json() if item["id"] == pid)
+        assert profile_patch["voting_started_at"] == data["voting_started_at"]
+        assert profile_patch["voting_ends_at"] == data["voting_ends_at"]
+        assert profile_patch["voting_period_hours"] == 72
+        assert profile_patch["voting_window_kind"] == "standard"
+
+    def test_recent_merged_patch_earns_active_creator_window(self):
+        user = _register(self.client, "active-creator")
+        headers = _login(self.client, user)
+        history = self.client.post(
+            f"{BASE}/api/v1/patches",
+            json={
+                "title": "Recent merged work",
+                "content": "History",
+                "pr_number": _pr_number(),
+            },
+            headers=headers,
+        )
+        assert history.status_code == 201
+        _set_patch_status(
+            history.json()["id"],
+            "merged",
+            updated_at=datetime.now(timezone.utc) - timedelta(days=1),
+        )
+
+        candidate = self.client.post(
+            f"{BASE}/api/v1/patches",
+            json={
+                "title": "Fast window",
+                "content": "Candidate",
+                "pr_number": _pr_number(),
+            },
+            headers=headers,
+        )
+        assert candidate.status_code == 201, candidate.text
+        submitted = self.client.post(
+            f"{BASE}/api/v1/patches/{candidate.json()['id']}/submit",
+            headers=headers,
+        )
+
+        assert submitted.status_code == 200
+        _assert_voting_window(
+            submitted.json(), hours=24, kind="active_creator"
+        )
+
+    def test_merged_patch_older_than_90_days_keeps_standard_window(self):
+        user = _register(self.client, "inactive-creator")
+        headers = _login(self.client, user)
+        history = self.client.post(
+            f"{BASE}/api/v1/patches",
+            json={
+                "title": "Old merged work",
+                "content": "History",
+                "pr_number": _pr_number(),
+            },
+            headers=headers,
+        )
+        assert history.status_code == 201
+        _set_patch_status(
+            history.json()["id"],
+            "merged",
+            updated_at=datetime.now(timezone.utc) - timedelta(days=91),
+        )
+
+        candidate = self.client.post(
+            f"{BASE}/api/v1/patches",
+            json={
+                "title": "Standard window",
+                "content": "Candidate",
+                "pr_number": _pr_number(),
+            },
+            headers=headers,
+        )
+        assert candidate.status_code == 201, candidate.text
+        submitted = self.client.post(
+            f"{BASE}/api/v1/patches/{candidate.json()['id']}/submit",
+            headers=headers,
+        )
+
+        assert submitted.status_code == 200
+        _assert_voting_window(submitted.json(), hours=72, kind="standard")
+
+    def test_admin_role_does_not_bypass_active_creator_history(self):
+        user = _register(self.client, "admin-window")
+        headers = _login(self.client, user)
+        _set_user_role(user["id"], "super_admin")
+        candidate = self.client.post(
+            f"{BASE}/api/v1/patches",
+            json={
+                "title": "Role is not history",
+                "content": "Candidate",
+                "pr_number": _pr_number(),
+            },
+            headers=headers,
+        )
+        assert candidate.status_code == 201, candidate.text
+        submitted = self.client.post(
+            f"{BASE}/api/v1/patches/{candidate.json()['id']}/submit",
+            headers=headers,
+        )
+
+        assert submitted.status_code == 200
+        _assert_voting_window(submitted.json(), hours=72, kind="standard")
 
     def test_concurrent_submit_transitions_a_draft_once(self):
         user = _register(self.client, "submit-racer")
