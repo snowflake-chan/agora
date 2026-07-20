@@ -12,6 +12,8 @@ jobs:
     env:
       DATABASE_URL: postgresql+asyncpg://agora:agora@localhost:5432/agora
       JWT_SECRET: test-secret
+      SUPER_ADMIN_EMAIL: admin-test@example.com
+      AUTH_REGISTER_ATTEMPTS: 10000
 
     services:
       postgres:
