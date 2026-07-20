@@ -19,6 +19,14 @@ class GuildCreate(BaseModel):
             raise ValueError("GUILD_NAME_REQUIRED")
         return normalized
 
+    @field_validator("logo", "description", mode="before")
+    @classmethod
+    def normalize_optional_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        return normalized or None
+
 
 class GuildUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=80)
@@ -35,6 +43,14 @@ class GuildUpdate(BaseModel):
         if not normalized:
             raise ValueError("GUILD_NAME_REQUIRED")
         return normalized
+
+    @field_validator("logo", "description", mode="before")
+    @classmethod
+    def normalize_optional_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        return normalized or None
 
 
 class GuildRead(BaseModel):
@@ -78,6 +94,14 @@ class GuildDiscussionCreate(BaseModel):
         if not normalized:
             raise ValueError("GUILD_DISCUSSION_REQUIRED")
         return normalized
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def normalize_title(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        return normalized or None
 
 
 class GuildDiscussionRead(BaseModel):

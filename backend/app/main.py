@@ -1,10 +1,12 @@
-from contextlib import asynccontextmanager
+import asyncio
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.patches.reconcile import reconcile as reconcile_patches
+from app.patches.reconcile import run_scheduler
 from app.users import auth_router, users_router
 from app.posts import posts_router
 from app.patches import patches_router
@@ -15,9 +17,15 @@ from app.notifications import router as notifications_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Reconcile patches on startup."""
+    """Reconcile once, then keep vote deadlines independent of traffic."""
     await reconcile_patches()
-    yield
+    scheduler = asyncio.create_task(run_scheduler())
+    try:
+        yield
+    finally:
+        scheduler.cancel()
+        with suppress(asyncio.CancelledError):
+            await scheduler
 
 
 app = FastAPI(lifespan=lifespan)

@@ -1,7 +1,9 @@
 from uuid import UUID
 
-from sqlalchemy import func, select, or_
+from sqlalchemy import and_, func, select, or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import lazyload
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -17,7 +19,7 @@ from app.schemas.guild import (
     GuildMemberRead, GuildDiscussionCreate, GuildDiscussionRead,
     UserGuildBadge,
 )
-from app.users.deps import current_user
+from app.users.deps import current_user, optional_current_user
 from app.utils import calc_guild_level
 
 router = APIRouter()
@@ -69,6 +71,9 @@ async def create_guild(
     session: AsyncSession = Depends(get_session),
 ):
     await check_not_banned(user.id, session)
+    # Serialise the per-user president check so concurrent requests cannot
+    # create two studios for the same account.
+    await session.scalar(select(User.id).where(User.id == user.id).with_for_update())
     existing = (await session.execute(
         select(Guild).where(Guild.president_id == user.id)
     )).scalar_one_or_none()
@@ -87,11 +92,16 @@ async def create_guild(
         president_id=user.id,
     )
     session.add(g)
-    await session.flush()
-
-    m = GuildMember(guild_id=g.id, user_id=user.id, role="president")
-    session.add(m)
-    await session.commit()
+    try:
+        # The unique guild name constraint can fail during flush, before
+        # commit. Keep the entire write sequence inside the conflict handler.
+        await session.flush()
+        m = GuildMember(guild_id=g.id, user_id=user.id, role="president")
+        session.add(m)
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        raise HTTPException(409, detail="GUILD_NAME_TAKEN") from exc
     await session.refresh(g)
     return await _guild_to_read(g, session)
 
@@ -114,12 +124,21 @@ async def update_guild(
     user: User = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ):
+    await check_not_banned(user.id, session)
     g = (await session.execute(select(Guild).where(Guild.id == guild_id))).scalar_one_or_none()
     if not g:
         raise HTTPException(404, detail="GUILD_NOT_FOUND")
     if g.president_id != user.id:
         raise HTTPException(403, detail="GUILD_PRESIDENT_REQUIRED")
     if body.name is not None:
+        duplicate_name = await session.scalar(
+            select(Guild.id).where(
+                Guild.name == body.name,
+                Guild.id != guild_id,
+            )
+        )
+        if duplicate_name:
+            raise HTTPException(409, detail="GUILD_NAME_TAKEN")
         g.name = body.name
     if "logo" in body.model_fields_set:
         g.logo = body.logo
@@ -127,7 +146,11 @@ async def update_guild(
         g.description = body.description
     if body.level is not None and user.role == "super_admin":
         g.level = body.level
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        raise HTTPException(409, detail="GUILD_NAME_TAKEN") from exc
     await session.refresh(g)
     return await _guild_to_read(g, session)
 
@@ -138,6 +161,7 @@ async def delete_guild(
     user: User = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ):
+    await check_not_banned(user.id, session)
     g = (await session.execute(select(Guild).where(Guild.id == guild_id))).scalar_one_or_none()
     if not g:
         raise HTTPException(404)
@@ -157,12 +181,21 @@ async def join_guild(
     user: User = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    g = (await session.execute(select(Guild).where(Guild.id == guild_id))).scalar_one_or_none()
-    if not g:
-        raise HTTPException(404, detail="GUILD_NOT_FOUND")
     await check_not_banned(user.id, session)
+    # Lock both sides of the membership invariant before reading it. This
+    # turns concurrent join/retry requests into a stable 409 instead of a
+    # uniqueness-constraint 500.
+    await session.scalar(select(User.id).where(User.id == user.id).with_for_update())
+    guild_exists = await session.scalar(
+        select(Guild.id).where(Guild.id == guild_id).with_for_update()
+    )
+    if guild_exists is None:
+        raise HTTPException(404, detail="GUILD_NOT_FOUND")
     existing = (await session.execute(
-        select(GuildMember).where(GuildMember.guild_id == guild_id, GuildMember.user_id == user.id)
+        select(GuildMember)
+        .options(lazyload(GuildMember.guild), lazyload(GuildMember.user))
+        .where(GuildMember.guild_id == guild_id, GuildMember.user_id == user.id)
+        .with_for_update()
     )).scalar_one_or_none()
     if existing and existing.status != "rejected":
         code = "GUILD_REQUEST_PENDING" if existing.status == "pending" else "GUILD_ALREADY_MEMBER"
@@ -172,7 +205,11 @@ async def join_guild(
         await session.flush()
     m = GuildMember(guild_id=guild_id, user_id=user.id, role="member", status="pending")
     session.add(m)
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        raise HTTPException(409, detail="GUILD_REQUEST_PENDING") from exc
     return {"ok": True, "status": "pending"}
 
 
@@ -209,6 +246,109 @@ async def _require_guild_admin(guild_id: UUID, user: User, session: AsyncSession
     return m
 
 
+async def _require_guild_admin_for_update(
+    guild_id: UUID,
+    user: User,
+    session: AsyncSession,
+) -> GuildMember:
+    """Lock the guild and actor before authorizing a management mutation."""
+    guild_exists = await session.scalar(
+        select(Guild.id).where(Guild.id == guild_id).with_for_update()
+    )
+    if guild_exists is None:
+        raise HTTPException(404, detail="GUILD_NOT_FOUND")
+    actor = (
+        await session.execute(
+            select(GuildMember)
+            .options(lazyload(GuildMember.guild), lazyload(GuildMember.user))
+            .where(
+                GuildMember.guild_id == guild_id,
+                GuildMember.user_id == user.id,
+                _approved_membership(),
+                GuildMember.role.in_(["president", "vice_president"]),
+            )
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if actor is None:
+        raise HTTPException(403, detail="GUILD_ADMIN_REQUIRED")
+    return actor
+
+
+async def _set_member_role(
+    guild_id: UUID,
+    user_id: UUID,
+    role: str,
+    president: User,
+    session: AsyncSession,
+) -> GuildMember:
+    """Change a member role while serialising changes for one guild.
+
+    The guild row is the lock for the role-cap invariant.  Keeping this in one
+    helper prevents the legacy PATCH endpoint from bypassing the checks used by
+    the dedicated promote endpoint.
+    """
+    guild_row = (
+        await session.execute(
+            select(Guild.id, Guild.president_id, Guild.level)
+            .where(Guild.id == guild_id)
+            .with_for_update()
+        )
+    ).one_or_none()
+    if not guild_row or guild_row.president_id != president.id:
+        raise HTTPException(403, detail="GUILD_PRESIDENT_REQUIRED")
+
+    target = (
+        await session.execute(
+            select(GuildMember)
+            .options(lazyload(GuildMember.guild), lazyload(GuildMember.user))
+            .where(
+                GuildMember.guild_id == guild_id,
+                GuildMember.user_id == user_id,
+            )
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if not target or target.status not in (None, "", "approved"):
+        raise HTTPException(404, detail="GUILD_MEMBERSHIP_NOT_FOUND")
+    if target.user_id == guild_row.president_id:
+        raise HTTPException(409, detail="GUILD_PRESIDENT_ROLE_LOCKED")
+
+    if role == "vice_president" and target.role != "vice_president":
+        member_count = (
+            await session.execute(
+                select(func.count(GuildMember.id)).where(
+                    GuildMember.guild_id == guild_id,
+                    _approved_membership(),
+                )
+            )
+        ).scalar() or 0
+        vp_count = (
+            await session.execute(
+                select(func.count(GuildMember.id)).where(
+                    GuildMember.guild_id == guild_id,
+                    GuildMember.role == "vice_president",
+                    _approved_membership(),
+                )
+            )
+        ).scalar() or 0
+        guild_level = guild_row.level or calc_guild_level(member_count)
+        max_vp = _MAX_VP.get(guild_level, 1)
+        if vp_count >= max_vp:
+            raise HTTPException(409, detail="GUILD_VP_LIMIT_REACHED")
+
+    target.role = role
+    await session.commit()
+    # The lock query deliberately disables joined relationships (PostgreSQL
+    # cannot lock the nullable side of those joins). Re-fetch after commit so
+    # response construction can safely use the eagerly-loaded user relation.
+    return (
+        await session.execute(
+            select(GuildMember).where(GuildMember.id == target.id)
+        )
+    ).scalar_one()
+
+
 @router.get("/{guild_id}/requests")
 async def list_requests(
     guild_id: UUID,
@@ -230,12 +370,17 @@ async def approve_request(
     user: User = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    await _require_guild_admin(guild_id, user, session)
+    await check_not_banned(user.id, session)
+    await _require_guild_admin_for_update(guild_id, user, session)
     m = (await session.execute(
-        select(GuildMember).where(GuildMember.id == member_id, GuildMember.guild_id == guild_id)
+        select(GuildMember)
+        .options(lazyload(GuildMember.guild), lazyload(GuildMember.user))
+        .where(GuildMember.id == member_id, GuildMember.guild_id == guild_id)
+        .with_for_update()
     )).scalar_one_or_none()
     if not m or m.status != "pending":
         raise HTTPException(404)
+    m.role = "member"
     m.status = "approved"
     await session.commit()
     return {"ok": True}
@@ -248,9 +393,13 @@ async def reject_request(
     user: User = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    await _require_guild_admin(guild_id, user, session)
+    await check_not_banned(user.id, session)
+    await _require_guild_admin_for_update(guild_id, user, session)
     m = (await session.execute(
-        select(GuildMember).where(GuildMember.id == member_id, GuildMember.guild_id == guild_id)
+        select(GuildMember)
+        .options(lazyload(GuildMember.guild), lazyload(GuildMember.user))
+        .where(GuildMember.id == member_id, GuildMember.guild_id == guild_id)
+        .with_for_update()
     )).scalar_one_or_none()
     if not m or m.status != "pending":
         raise HTTPException(404)
@@ -272,35 +421,10 @@ async def promote_member(
     me: User = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    g = (await session.execute(select(Guild).where(Guild.id == guild_id))).scalar_one_or_none()
-    if not g or g.president_id != me.id:
-        raise HTTPException(403, detail="GUILD_PRESIDENT_REQUIRED")
+    await check_not_banned(me.id, session)
     if role not in ("vice_president", "member"):
         raise HTTPException(400)
-
-    target = (await session.execute(
-        select(GuildMember).where(GuildMember.guild_id == guild_id, GuildMember.user_id == user_id)
-    )).scalar_one_or_none()
-    if not target or target.status != "approved":
-        raise HTTPException(404)
-    if target.user_id == g.president_id:
-        raise HTTPException(409, detail="GUILD_PRESIDENT_ROLE_LOCKED")
-
-    if role == "vice_president":
-        mc = (await session.execute(
-            select(func.count(GuildMember.id)).where(GuildMember.guild_id == guild_id, GuildMember.status == "approved")
-        )).scalar() or 0
-        vp_count = (await session.execute(
-            select(func.count(GuildMember.id)).where(
-                GuildMember.guild_id == guild_id, GuildMember.role == "vice_president", GuildMember.status == "approved"
-            )
-        )).scalar() or 0
-        max_vp = _MAX_VP.get(calc_guild_level(mc), 1)
-        if vp_count >= max_vp:
-            raise HTTPException(400, detail=f"MAX_VP_{max_vp}")
-
-    target.role = role
-    await session.commit()
+    await _set_member_role(guild_id, user_id, role, me, session)
     return {"ok": True}
 
 
@@ -311,9 +435,13 @@ async def guild_remove_member(
     me: User = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    actor = await _require_guild_admin(guild_id, me, session)
+    await check_not_banned(me.id, session)
+    actor = await _require_guild_admin_for_update(guild_id, me, session)
     target = (await session.execute(
-        select(GuildMember).where(GuildMember.guild_id == guild_id, GuildMember.user_id == user_id)
+        select(GuildMember)
+        .options(lazyload(GuildMember.guild), lazyload(GuildMember.user))
+        .where(GuildMember.guild_id == guild_id, GuildMember.user_id == user_id)
+        .with_for_update()
     )).scalar_one_or_none()
     if not target:
         raise HTTPException(404)
@@ -388,19 +516,8 @@ async def update_member_role(
 ):
     if role not in ("vice_president", "member"):
         raise HTTPException(400, detail="INVALID_GUILD_ROLE")
-    g = (await session.execute(select(Guild).where(Guild.id == guild_id))).scalar_one_or_none()
-    if not g or g.president_id != me.id:
-        raise HTTPException(403, detail="GUILD_PRESIDENT_REQUIRED")
-    m = (await session.execute(
-        select(GuildMember).where(GuildMember.guild_id == guild_id, GuildMember.user_id == user_id)
-    )).scalar_one_or_none()
-    if not m:
-        raise HTTPException(404, detail="GUILD_MEMBERSHIP_NOT_FOUND")
-    if m.user_id == g.president_id:
-        raise HTTPException(409, detail="GUILD_PRESIDENT_ROLE_LOCKED")
-    m.role = role
-    await session.commit()
-    await session.refresh(m)
+    await check_not_banned(me.id, session)
+    m = await _set_member_role(guild_id, user_id, role, me, session)
     return GuildMemberRead(
         id=m.id, user_id=m.user_id,
         username=m.user.username if m.user else "",
@@ -417,8 +534,13 @@ async def list_guild_patches(
     guild_id: UUID,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
+    user: User | None = Depends(optional_current_user),
     session: AsyncSession = Depends(get_session),
 ):
+    guild_exists = await session.scalar(select(Guild.id).where(Guild.id == guild_id))
+    if guild_exists is None:
+        raise HTTPException(404, detail="GUILD_NOT_FOUND")
+
     # Get member user IDs
     member_ids = (await session.execute(
         select(GuildMember.user_id).where(
@@ -433,17 +555,28 @@ async def list_guild_patches(
     from app.schemas.patch import PatchRead
 
     offset = (page - 1) * page_size
+    visible_statuses = ("voting", "passed", "merged", "rejected", "failed")
+    visibility = PatchModel.status.in_(visible_statuses)
+    if user is not None:
+        # A draft remains available to its author while it is still associated
+        # with an approved member of this guild; drafts are never public.
+        visibility = or_(
+            visibility,
+            and_(PatchModel.status == "draft", PatchModel.author_id == user.id),
+        )
+
     stmt = (
         select(PatchModel)
-        .where(PatchModel.author_id.in_(member_ids))
+        .where(PatchModel.author_id.in_(member_ids), visibility)
         .order_by(PatchModel.created_at.desc())
         .offset(offset)
         .limit(page_size)
     )
     patches = (await session.execute(stmt)).scalars().all()
 
-    patch_ids = [str(p.id) for p in patches]
+    patch_ids = [p.id for p in patches]
     counts_map: dict = {}
+    comment_counts: dict = {}
     if patch_ids:
         rows = (await session.execute(
             select(VoteModel.patch_id, VoteModel.choice, func.count(VoteModel.id))
@@ -455,6 +588,16 @@ async def list_guild_patches(
             if key not in counts_map:
                 counts_map[key] = {"for": 0, "against": 0, "abstain": 0}
             counts_map[key][choice] = cnt
+        comment_counts = dict(
+            (
+                await session.execute(
+                    select(ContentModel.patch_id, func.count(ContentModel.id)).where(
+                        ContentModel.patch_id.in_(patch_ids),
+                        ContentModel.type == "comment",
+                    ).group_by(ContentModel.patch_id)
+                )
+            ).all()
+        )
 
     return [
         PatchRead(
@@ -466,6 +609,7 @@ async def list_guild_patches(
             for_count=counts_map.get(str(p.id), {}).get("for", 0),
             against_count=counts_map.get(str(p.id), {}).get("against", 0),
             abstain_count=counts_map.get(str(p.id), {}).get("abstain", 0),
+            comment_count=comment_counts.get(p.id, 0),
             created_at=p.created_at, updated_at=p.updated_at,
         )
         for p in patches
@@ -486,12 +630,13 @@ async def list_discussions(
     user: User = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    member = (await session.execute(
-        select(GuildMember).where(
-            GuildMember.guild_id == guild_id, GuildMember.user_id == user.id
-        )
-    )).scalar_one_or_none()
-    _guild_forbidden(member)
+    if user.role not in ("moderator", "super_admin"):
+        member = (await session.execute(
+            select(GuildMember).where(
+                GuildMember.guild_id == guild_id, GuildMember.user_id == user.id
+            )
+        )).scalar_one_or_none()
+        _guild_forbidden(member)
 
     rows = (
         await session.execute(
@@ -596,6 +741,6 @@ async def my_guild(
     return UserGuildBadge(
         guild_id=m.guild_id,
         guild_name=m.guild.name,
-        guild_level=calc_guild_level(mc),
+        guild_level=m.guild.level or calc_guild_level(mc),
         role=m.role,
     )

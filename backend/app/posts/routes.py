@@ -3,7 +3,7 @@ from datetime import timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
@@ -15,7 +15,7 @@ from app.db.models.patch import Patch as PatchModel
 from app.db.models.post_like import PostLike
 from app.db.models.user import User
 from app.db.models.vote import Vote as VoteModel
-from app.deps import check_not_banned
+from app.deps import check_not_banned, require_content_visible
 from app.notifications.service import create_notification, notify_followers
 from app.notifications.redis import get_redis
 from app.posts.feed import FeedMode, rank_feed_items
@@ -223,9 +223,16 @@ async def get_feed(
         )
     ).scalars().all()
 
+    patch_visibility = PatchModel.status != "draft"
+    if user is not None:
+        patch_visibility = or_(
+            patch_visibility,
+            PatchModel.author_id == user.id,
+        )
     patches = (
         await session.execute(
             select(PatchModel)
+            .where(patch_visibility)
             .order_by(PatchModel.created_at.desc())
             .limit(500)
         )
@@ -423,6 +430,7 @@ async def like_post(
     )
     if not content:
         raise HTTPException(status_code=404, detail="CONTENT_NOT_FOUND")
+    await require_content_visible(content, user, session)
 
     await session.execute(
         insert(PostLike)
@@ -456,6 +464,7 @@ async def unlike_post(
     )
     if not content:
         raise HTTPException(status_code=404, detail="CONTENT_NOT_FOUND")
+    await require_content_visible(content, user, session)
 
     await session.execute(
         delete(PostLike).where(

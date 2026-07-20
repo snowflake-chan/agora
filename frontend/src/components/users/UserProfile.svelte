@@ -13,7 +13,7 @@
   } from "../../lib/auth";
   import { deleteContent } from "../../lib/posts";
   import { deletePatch } from "../../lib/patches";
-  import { stripMarkdown, timeAgo } from "../../lib/utils";
+  import { avatarInitial, displayName, stripMarkdown, timeAgo } from "../../lib/utils";
   import { currentUser } from "../../stores/auth";
   import { toaster } from "../../stores/toaster";
   import ConfirmDialog from "../ConfirmDialog.svelte";
@@ -108,10 +108,10 @@
 {:else if user}
   <header class="profile-header">
     <div class="profile-identity">
-      <div class="profile-avatar">{(user.nickname ?? user.username)[0].toUpperCase()}</div>
+      <div class="profile-avatar">{avatarInitial(user.nickname, user.username)}</div>
       <div class="min-w-0">
         <p class="profile-kicker">{$translator("profile.kicker")}</p>
-        <h1>{user.nickname ?? user.username}</h1>
+        <h1>{displayName(user.nickname, user.username)}</h1>
         <p class="profile-handle">@{user.username}</p>
       </div>
     </div>

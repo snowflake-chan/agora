@@ -3,8 +3,10 @@ import pytest
 
 from app.config import settings
 from app.patches.github import (
+    GitHubMergeUncertainError,
     GitHubPullRequestError,
     get_pull_request,
+    merge_pr,
     pull_request_readiness_error,
 )
 
@@ -54,6 +56,77 @@ async def test_get_pull_request_reports_missing_pr(monkeypatch):
 
     with pytest.raises(GitHubPullRequestError, match="PULL_REQUEST_NOT_FOUND"):
         await get_pull_request(999)
+
+
+@pytest.mark.asyncio
+async def test_merge_pr_recovers_when_github_already_merged(monkeypatch):
+    monkeypatch.setattr(settings, "GITHUB_REPO", "example/agora")
+    monkeypatch.setattr(settings, "GITHUB_TOKEN", "test-token")
+    async_client = httpx.AsyncClient
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "PUT":
+            return httpx.Response(405, json={"message": "Pull Request is not mergeable"})
+        return httpx.Response(
+            200,
+            json={"number": 17, "state": "closed", "merged": True},
+        )
+
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        lambda **kwargs: async_client(
+            transport=httpx.MockTransport(handler), **kwargs
+        ),
+    )
+
+    assert await merge_pr(17) is False
+
+
+@pytest.mark.asyncio
+async def test_merge_pr_recovers_after_timeout_when_github_merged(monkeypatch):
+    monkeypatch.setattr(settings, "GITHUB_REPO", "example/agora")
+    monkeypatch.setattr(settings, "GITHUB_TOKEN", "test-token")
+    async_client = httpx.AsyncClient
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "PUT":
+            raise httpx.ReadTimeout("merge response timed out", request=request)
+        return httpx.Response(
+            200,
+            json={"number": 17, "state": "closed", "merged": True},
+        )
+
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        lambda **kwargs: async_client(
+            transport=httpx.MockTransport(handler), **kwargs
+        ),
+    )
+
+    assert await merge_pr(17) is False
+
+
+@pytest.mark.asyncio
+async def test_merge_pr_marks_unreachable_github_as_uncertain(monkeypatch):
+    monkeypatch.setattr(settings, "GITHUB_REPO", "example/agora")
+    monkeypatch.setattr(settings, "GITHUB_TOKEN", "test-token")
+    async_client = httpx.AsyncClient
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("network unavailable", request=request)
+
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        lambda **kwargs: async_client(
+            transport=httpx.MockTransport(handler), **kwargs
+        ),
+    )
+
+    with pytest.raises(GitHubMergeUncertainError):
+        await merge_pr(17)
 
 
 def test_pull_request_readiness_requires_mergeability_and_passing_checks():

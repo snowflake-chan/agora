@@ -7,6 +7,10 @@ class GitHubPullRequestError(RuntimeError):
     """Raised when a pull request cannot be read from GitHub."""
 
 
+class GitHubMergeUncertainError(RuntimeError):
+    """Raised when GitHub did not confirm whether a merge completed."""
+
+
 def _headers() -> dict[str, str]:
     headers = {"Accept": "application/vnd.github+json"}
     if settings.GITHUB_TOKEN:
@@ -99,7 +103,7 @@ def pull_request_readiness_error(
 
 
 async def merge_pr(pr_number: int) -> bool:
-    """Merge a GitHub PR using the bot token. Returns True on success."""
+    """Merge a GitHub PR, treating an already-merged PR as success."""
     token = settings.GITHUB_TOKEN
     repo = settings.GITHUB_REPO
     if not token:
@@ -110,10 +114,43 @@ async def merge_pr(pr_number: int) -> bool:
     url = f"https://api.github.com/repos/{repo}/pulls/{pr_number}/merge"
     headers = _headers()
 
-    async with httpx.AsyncClient() as client:
-        resp = await client.put(url, headers=headers, json={})
+    state_url = f"https://api.github.com/repos/{repo}/pulls/{pr_number}"
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        try:
+            resp = await client.put(url, headers=headers, json={})
+        except httpx.HTTPError as exc:
+            # A timeout can happen after GitHub accepted the merge. Check the
+            # authoritative PR state before deciding whether a retry is safe.
+            try:
+                state_response = await client.get(state_url, headers=headers)
+            except httpx.HTTPError:
+                raise GitHubMergeUncertainError(
+                    "GitHub merge outcome could not be confirmed"
+                ) from exc
+            if state_response.status_code == 200:
+                pull_request = state_response.json()
+                if pull_request.get("merged") or pull_request.get("merged_at"):
+                    return False
+            raise GitHubMergeUncertainError(
+                "GitHub merge request failed before an outcome was confirmed"
+            ) from exc
 
-    if resp.status_code in (200, 201):
-        return True
+        if resp.status_code in (200, 201):
+            return True
+
+        # A worker may have merged the PR just before a crash left the local
+        # proposal in `passed`. Reconciliation must recover that truthful state
+        # instead of rewriting it to `failed` when GitHub rejects a second PUT.
+        try:
+            state_response = await client.get(state_url, headers=headers)
+        except httpx.HTTPError as exc:
+            raise GitHubMergeUncertainError(
+                "GitHub merge outcome could not be confirmed"
+            ) from exc
+
+    if state_response.status_code == 200:
+        pull_request = state_response.json()
+        if pull_request.get("merged") or pull_request.get("merged_at"):
+            return False
 
     raise RuntimeError(f"GitHub merge failed ({resp.status_code}): {resp.text}")

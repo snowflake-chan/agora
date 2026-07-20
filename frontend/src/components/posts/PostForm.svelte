@@ -67,7 +67,7 @@
         <input
           data-autofocus
           bind:value={title}
-          class="w-full px-4 py-2.5 text-lg font-semibold rounded-lg placeholder:text-[#555] focus:outline-none"
+          class="w-full px-4 py-2.5 text-lg font-semibold rounded-lg focus:outline-none"
           style="background: var(--vercel-surface-muted); border: 1px solid var(--vercel-border); color: var(--vercel-text);"
           placeholder={$translator("common.title")}
         />
@@ -96,7 +96,7 @@
         </div>
         <textarea
           bind:value={content}
-          class="flex-1 w-full resize-none px-6 py-4 font-mono text-sm leading-relaxed placeholder:text-[#555] focus:outline-none"
+          class="flex-1 w-full resize-none px-6 py-4 font-mono text-sm leading-relaxed focus:outline-none"
           style="background: transparent; color: var(--vercel-text);"
           placeholder={$translator("post.contentPlaceholder")}
         ></textarea>

@@ -4,8 +4,10 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import lazyload
 
 from app.config import settings
 from app.db import get_session
@@ -24,13 +26,14 @@ from app.schemas.patch import (
 )
 from app.schemas.post import CommentCreate, CommentRead
 from app.patches.github import (
+    GitHubMergeUncertainError,
     GitHubPullRequestError,
     get_commit_checks,
     get_pull_request,
     merge_pr,
     pull_request_readiness_error,
 )
-from app.deps import check_not_banned
+from app.deps import check_not_banned, require_patch_visible
 from app.users.deps import current_user, optional_current_user
 
 router = APIRouter()
@@ -59,26 +62,62 @@ async def _get_vote_counts(
 
 
 async def _tally(session: AsyncSession, patch: PatchModel) -> bool:
-    """Tally votes. If passed, background merge+deploy. Returns True if status changed."""
-    counts = await _get_vote_counts(session, str(patch.id))
+    """Atomically tally an expired vote and schedule at most one merge."""
+    locked_patch = (
+        await session.execute(
+            select(
+                PatchModel.id,
+                PatchModel.status,
+                PatchModel.voting_ends_at,
+                PatchModel.title,
+                PatchModel.pr_number,
+            )
+            .where(PatchModel.id == patch.id)
+            .with_for_update()
+        )
+    ).one_or_none()
+    if locked_patch is None:
+        return False
+
+    # A concurrent request may have completed the tally while this session was
+    # waiting for the row lock. Keep its already-loaded ORM instance truthful.
+    patch.status = locked_patch.status
+    patch.voting_ends_at = locked_patch.voting_ends_at
+    if (
+        locked_patch.status != "voting"
+        or locked_patch.voting_ends_at is None
+        or locked_patch.voting_ends_at
+        > datetime.now(locked_patch.voting_ends_at.tzinfo)
+    ):
+        return False
+
+    counts = await _get_vote_counts(session, locked_patch.id)
     total = counts["for"] + counts["against"] + counts["abstain"]
 
     if total > 0 and counts["for"] > total / 2:
         patch.status = "passed"
-        await session.commit()
-        asyncio.create_task(_do_merge_and_deploy(str(patch.id), patch.pr_number))
     else:
         patch.status = "rejected"
-        await session.commit()
+
+    patch_id = str(locked_patch.id)
+    patch_title = locked_patch.title
+    patch_status = patch.status
+    pr_number = locked_patch.pr_number
+    await session.commit()
+
+    if patch_status == "passed":
+        asyncio.create_task(
+            _do_merge_and_deploy(patch_id, pr_number, patch_title)
+        )
 
     await publish_feed_event(
         "updated",
         item_type="patch",
-        item_id=str(patch.id),
+        item_id=patch_id,
     )
     # Notify voters + author (fire-and-forget)
     asyncio.create_task(
-        _notify_patch_voters(str(patch.id), patch.title, patch.status)
+        _notify_patch_voters(patch_id, patch_title, patch_status)
     )
 
     return True
@@ -116,52 +155,48 @@ async def _notify_patch_voters(patch_id: str, patch_title: str, result: str) -> 
 
 
 async def _do_merge_and_deploy(patch_id: str, pr_number: int, patch_title: str | None = None) -> None:
-    """Merge PR via GitHub and trigger deploy (background task, own session)."""
+    """Serialize merge recovery, persist its outcome, then deploy once."""
     from app.db import async_session as _async_session
 
     try:
-        await merge_pr(pr_number)
-    except Exception as exc:
-        print(f"[merge] ERROR merging PR #{pr_number}: {exc}")
-        try:
-            async with _async_session() as session:
-                stmt = select(PatchModel).where(PatchModel.id == patch_id)
-                result = await session.execute(stmt)
-                patch = result.scalar_one()
-                patch_title = patch.title
+        async with _async_session() as session:
+            stmt = (
+                select(PatchModel)
+                .options(lazyload(PatchModel.author))
+                .where(PatchModel.id == patch_id)
+                .with_for_update()
+            )
+            result = await session.execute(stmt)
+            patch = result.scalar_one_or_none()
+            if patch is None or patch.status != "passed":
+                return
+
+            patch_title = patch.title
+            pr_number = patch.pr_number
+            try:
+                await merge_pr(pr_number)
+                patch.status = "merged"
+            except GitHubMergeUncertainError as exc:
+                print(f"[merge] Outcome unknown for PR #{pr_number}: {exc}")
+                return
+            except Exception as exc:
+                print(f"[merge] ERROR merging PR #{pr_number}: {exc}")
                 patch.status = "failed"
-                await session.commit()
-                await publish_feed_event(
-                    "updated",
-                    item_type="patch",
-                    item_id=patch_id,
-                )
-        except Exception as status_exc:
-            print(f"[merge] ERROR recording failure for PR #{pr_number}: {status_exc}")
-            patch_title = patch_title or "Unknown"
-        asyncio.create_task(
-            _notify_patch_voters(patch_id, patch_title, "failed")
-        )
+            await session.commit()
+            outcome = patch.status
+    except Exception as status_exc:
+        print(f"[merge] ERROR recording outcome for PR #{pr_number}: {status_exc}")
         return
 
-    try:
-        async with _async_session() as session:
-            stmt = select(PatchModel).where(PatchModel.id == patch_id)
-            result = await session.execute(stmt)
-            patch = result.scalar_one()
-            patch_title = patch.title
-            patch.status = "merged"
-            await session.commit()
-            await publish_feed_event(
-                "updated",
-                item_type="patch",
-                item_id=patch_id,
-            )
-        asyncio.create_task(
-            _notify_patch_voters(patch_id, patch_title, "merged")
-        )
-    except Exception as status_exc:
-        print(f"[merge] ERROR recording merge for PR #{pr_number}: {status_exc}")
+    await publish_feed_event(
+        "updated",
+        item_type="patch",
+        item_id=patch_id,
+    )
+    asyncio.create_task(
+        _notify_patch_voters(patch_id, patch_title or "Unknown", outcome)
+    )
+    if outcome != "merged":
         return
 
     # The PR is already merged at this point. A deployment launch failure must
@@ -178,8 +213,7 @@ async def _auto_tally(session: AsyncSession, patch: PatchModel) -> bool:
         return False
     if patch.voting_ends_at > datetime.now(patch.voting_ends_at.tzinfo):
         return False
-    await _tally(session, patch)
-    return True
+    return await _tally(session, patch)
 
 
 async def _auto_tally_patch(patch_id: str) -> None:
@@ -256,12 +290,20 @@ async def list_patches(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     status: str | None = None,
+    user: User | None = Depends(optional_current_user),
     session: AsyncSession = Depends(get_session),
 ):
     """List patches, newest first."""
     offset = (page - 1) * page_size
 
-    where = []
+    where = [PatchModel.status != "draft"]
+    if user is not None:
+        where = [
+            or_(
+                PatchModel.status != "draft",
+                PatchModel.author_id == user.id,
+            )
+        ]
     if status:
         where.append(PatchModel.status == status)
 
@@ -276,8 +318,13 @@ async def list_patches(
     patches = result.scalars().all()
 
     # Auto-tally any stale voting patches (fire-and-forget so list never blocks)
+    now = datetime.now(timezone.utc)
     for p in patches:
-        if p.status == "voting" and p.voting_ends_at:
+        if (
+            p.status == "voting"
+            and p.voting_ends_at is not None
+            and p.voting_ends_at <= now
+        ):
             asyncio.create_task(_auto_tally_patch(str(p.id)))
 
     # Get vote counts
@@ -345,7 +392,11 @@ async def create_patch(
         author_id=user.id,
     )
     session.add(patch)
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=409, detail="PATCH_PR_ALREADY_ACTIVE") from exc
     await session.refresh(patch)
 
     # Re-fetch with author relationship
@@ -353,33 +404,20 @@ async def create_patch(
     result = await session.execute(stmt)
     patch = result.scalar_one()
 
-    await publish_feed_event(
-        "created",
-        item_type="patch",
-        item_id=str(patch.id),
-    )
-    await notify_followers(
-        author_id=user.id,
-        type="following_patch",
-        title=f"{user.nickname or user.username} proposed a new change",
-        message=patch.title,
-        link=f"/patches/{patch.id}",
-    )
-
     return _patch_to_read(patch)
 
 
 @router.get("/{patch_id}", response_model=PatchRead)
 async def get_patch(
     patch_id: UUID,
+    user: User | None = Depends(optional_current_user),
     session: AsyncSession = Depends(get_session),
 ):
     """Get a single patch. Auto-tallies if voting period has ended."""
     stmt = select(PatchModel).where(PatchModel.id == patch_id)
     result = await session.execute(stmt)
     patch = result.scalar_one_or_none()
-    if not patch:
-        raise HTTPException(status_code=404, detail="PATCH_NOT_FOUND")
+    patch = require_patch_visible(patch, user)
 
     await _auto_tally(session, patch)
 
@@ -399,7 +437,12 @@ async def delete_patch(
     user: User = Depends(current_user),
 ):
     """Delete own draft patch."""
-    stmt = select(PatchModel).where(PatchModel.id == patch_id)
+    stmt = (
+        select(PatchModel)
+        .options(lazyload(PatchModel.author))
+        .where(PatchModel.id == patch_id)
+        .with_for_update()
+    )
     result = await session.execute(stmt)
     patch = result.scalar_one_or_none()
     if not patch:
@@ -411,11 +454,6 @@ async def delete_patch(
 
     await session.delete(patch)
     await session.commit()
-    await publish_feed_event(
-        "removed",
-        item_type="patch",
-        item_id=str(patch_id),
-    )
 
 
 @router.post("/{patch_id}/submit", response_model=PatchRead)
@@ -426,7 +464,12 @@ async def submit_patch(
 ):
     """Submit for voting with a 3-day voting period (draft → voting)."""
     await check_not_banned(user.id, session, "mute_patch")
-    stmt = select(PatchModel).where(PatchModel.id == patch_id)
+    stmt = (
+        select(PatchModel)
+        .options(lazyload(PatchModel.author))
+        .where(PatchModel.id == patch_id)
+        .with_for_update()
+    )
     result = await session.execute(stmt)
     patch = result.scalar_one_or_none()
     if not patch:
@@ -479,13 +522,24 @@ async def submit_patch(
     patch.voting_ends_at = now + timedelta(days=VOTING_PERIOD_DAYS)
     await session.commit()
 
+    response_patch = await session.scalar(
+        select(PatchModel).where(PatchModel.id == patch.id)
+    )
+
     await publish_feed_event(
-        "updated",
+        "created",
         item_type="patch",
         item_id=str(patch.id),
     )
+    await notify_followers(
+        author_id=user.id,
+        type="following_patch",
+        title=f"{user.nickname or user.username} proposed a new change",
+        message=patch.title,
+        link=f"/patches/{patch.id}",
+    )
     counts = await _get_vote_counts(session, patch_id)
-    return _patch_to_read(patch, counts)
+    return _patch_to_read(response_patch, counts)
 
 
 # ── Votes ──
@@ -503,11 +557,17 @@ async def vote_patch(
     if data.choice not in ("for", "against", "abstain"):
         raise HTTPException(status_code=422, detail="INVALID_VOTE_CHOICE")
 
-    stmt = select(PatchModel).where(PatchModel.id == patch_id)
+    # Serialize votes with the expiry tally so a request that acquired the lock
+    # before the deadline is counted, while a later request sees the final state.
+    stmt = (
+        select(PatchModel)
+        .options(lazyload(PatchModel.author))
+        .where(PatchModel.id == patch_id)
+        .with_for_update()
+    )
     result = await session.execute(stmt)
     patch = result.scalar_one_or_none()
-    if not patch:
-        raise HTTPException(status_code=404, detail="PATCH_NOT_FOUND")
+    patch = require_patch_visible(patch, user)
     if patch.status != "voting":
         raise HTTPException(status_code=422, detail="PATCH_NOT_VOTING")
 
@@ -563,14 +623,14 @@ async def vote_patch(
 @router.get("/{patch_id}/votes", response_model=list[VoteRead])
 async def list_votes(
     patch_id: UUID,
+    user: User | None = Depends(optional_current_user),
     session: AsyncSession = Depends(get_session),
 ):
     """List all votes for a patch."""
     # Verify patch exists
     patch_stmt = select(PatchModel).where(PatchModel.id == patch_id)
     patch_result = await session.execute(patch_stmt)
-    if not patch_result.scalar_one_or_none():
-        raise HTTPException(status_code=404, detail="PATCH_NOT_FOUND")
+    require_patch_visible(patch_result.scalar_one_or_none(), user)
 
     stmt = (
         select(VoteModel)
@@ -603,16 +663,15 @@ async def list_patch_comments(
     user: User | None = Depends(optional_current_user),
 ):
     patch = await session.scalar(
-        select(PatchModel.id).where(PatchModel.id == patch_id)
+        select(PatchModel).where(PatchModel.id == patch_id)
     )
-    if not patch:
-        raise HTTPException(status_code=404, detail="PATCH_NOT_FOUND")
+    patch = require_patch_visible(patch, user)
 
     comments = (
         await session.execute(
             select(ContentModel)
             .where(
-                ContentModel.patch_id == patch,
+                ContentModel.patch_id == patch.id,
                 ContentModel.type == "comment",
             )
             .order_by(ContentModel.created_at.asc())
@@ -672,7 +731,7 @@ async def list_patch_comments(
             id=comment.id,
             content=comment.content,
             author_id=comment.author_id,
-            parent_id=patch,
+            parent_id=patch.id,
             replying_id=comment.replying_id,
             author_username=comment.author.username,
             replying_to_username=usernames.get(comment.replying_id),
@@ -693,12 +752,11 @@ async def create_patch_comment(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(current_user),
 ):
-    await check_not_banned(user.id, session, "mute_post")
+    await check_not_banned(user.id, session, "mute_patch")
     patch = await session.scalar(
         select(PatchModel).where(PatchModel.id == patch_id)
     )
-    if not patch:
-        raise HTTPException(status_code=404, detail="PATCH_NOT_FOUND")
+    patch = require_patch_visible(patch, user)
     if not data.content.strip():
         raise HTTPException(status_code=422, detail="CONTENT_REQUIRED")
 
@@ -724,7 +782,8 @@ async def create_patch_comment(
     await session.commit()
     await session.refresh(comment)
 
-    if patch.author_id != user.id:
+    is_public = patch.status != "draft"
+    if is_public and patch.author_id != user.id:
         await create_notification(
             recipient_id=patch.author_id,
             type="reply",
@@ -733,7 +792,7 @@ async def create_patch_comment(
             link=f"/patches/{patch.id}#{comment.id}",
         )
 
-    if data.replying_id:
+    if is_public and data.replying_id:
         reply_author_id = await session.scalar(
             select(ContentModel.author_id).where(
                 ContentModel.id == data.replying_id
@@ -748,11 +807,12 @@ async def create_patch_comment(
                 link=f"/patches/{patch.id}#{comment.id}",
             )
 
-    await publish_feed_event(
-        "updated",
-        item_type="patch",
-        item_id=str(patch.id),
-    )
+    if is_public:
+        await publish_feed_event(
+            "updated",
+            item_type="patch",
+            item_id=str(patch.id),
+        )
     return CommentRead(
         id=comment.id,
         content=comment.content,

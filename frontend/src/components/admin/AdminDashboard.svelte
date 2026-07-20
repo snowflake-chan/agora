@@ -57,6 +57,7 @@
   let isAdmin = $state(false);
   let isSuperAdmin = $state(false);
   let reports = $state<ReportItem[]>([]);
+  let handlingReportId = $state<string | null>(null);
   let posts = $state<AdminPost[]>([]);
   let patches = $state<AdminPatch[]>([]);
   let users = $state<AdminUser[]>([]);
@@ -68,6 +69,8 @@
   let guildMembers = $state<GuildMember[]>([]);
   let guildDiscussions = $state<AdminGuildDiscussion[]>([]);
   let guildLoading = $state(false);
+  let guildSaving = $state(false);
+  let guildLoadToken = 0;
   let guildDraft = $state({ name: "", logo: "", description: "", level: 1 });
 
   let banModal = $state(false);
@@ -165,16 +168,26 @@
   }
 
   async function handleReport(reportId: string, action: string) {
+    if (handlingReportId) return;
+    const target = reports.find((report) => report.id === reportId);
+    handlingReportId = reportId;
     try {
       await resolveReport(reportId, action);
       reports = reports.map((report) =>
-        report.id === reportId
+        report.id === reportId || (
+          target?.target_id != null
+          && report.target_type === target.target_type
+          && report.target_id === target.target_id
+          && report.status === "pending"
+        )
           ? { ...report, status: action === "dismissed" ? "dismissed" : "resolved" }
           : report
       );
       showNotice($translator("admin.reportHandled"));
     } catch (error) {
       showNotice(translateError(error, $translator, "common.operationFailed"), "error");
+    } finally {
+      handlingReportId = null;
     }
   }
 
@@ -289,6 +302,9 @@
       return;
     }
     expandedGuild = guild.id;
+    guildMembers = [];
+    guildDiscussions = [];
+    const loadToken = ++guildLoadToken;
     guildDraft = {
       name: guild.name,
       logo: guild.logo ?? "",
@@ -297,43 +313,55 @@
     };
     guildLoading = true;
     try {
-      [guildMembers, guildDiscussions] = await Promise.all([
+      const [nextMembers, nextDiscussions] = await Promise.all([
         listMembers(guild.id),
         listAdminGuildDiscussions(guild.id),
       ]);
+      if (loadToken === guildLoadToken && expandedGuild === guild.id) {
+        guildMembers = nextMembers;
+        guildDiscussions = nextDiscussions;
+      }
     } catch (error) {
-      showNotice(translateError(error, $translator, "common.operationFailed"), "error");
+      if (loadToken === guildLoadToken) {
+        showNotice(translateError(error, $translator, "common.operationFailed"), "error");
+      }
     } finally {
-      guildLoading = false;
+      if (loadToken === guildLoadToken) guildLoading = false;
     }
   }
 
   async function saveGuild(guild: Guild) {
+    if (guildSaving) return;
     if (!guildDraft.name.trim()) {
       showNotice($translator("guild.nameRequired"), "error");
       return;
     }
+    const guildId = guild.id;
+    const draft = {
+      name: guildDraft.name.trim(),
+      logo: guildDraft.logo.trim(),
+      description: guildDraft.description.trim(),
+      level: guildDraft.level,
+    };
+    guildSaving = true;
     try {
-      await adminUpdateGuild(guild.id, {
-        name: guildDraft.name.trim(),
-        logo: guildDraft.logo.trim(),
-        description: guildDraft.description.trim(),
-        level: guildDraft.level,
-      });
+      await adminUpdateGuild(guildId, draft);
       guilds = guilds.map((item) =>
-        item.id === guild.id
+        item.id === guildId
           ? {
               ...item,
-              name: guildDraft.name.trim(),
-              logo: guildDraft.logo.trim() || null,
-              description: guildDraft.description.trim() || null,
-              level: guildDraft.level,
+              name: draft.name,
+              logo: draft.logo || null,
+              description: draft.description || null,
+              level: draft.level,
             }
           : item
       );
       showNotice($translator("admin.guildUpdated"));
     } catch (error) {
       showNotice(translateError(error, $translator, "common.operationFailed"), "error");
+    } finally {
+      guildSaving = false;
     }
   }
 
@@ -415,7 +443,7 @@
                 <div class="row-meta">
                   {$translator("admin.reportMeta", {
                     reporter: report.reporter_username || $translator("common.anonymous"),
-                    author: report.content_author,
+                    author: report.content_author || $translator("admin.authorDeleted"),
                   })}
                   · {formatDate(report.created_at)}
                 </div>
@@ -423,15 +451,17 @@
                   {#if report.target_id && report.target_type !== "deleted"}
                     <a
                       class="report-target-link"
-                      href={report.target_type === "patch"
+                      href={report.target_href || (report.target_type === "patch"
                         ? `/patches/${report.target_id}`
-                        : `/posts/${report.target_id}`}
+                        : `/posts/${report.target_id}`)}
                     >
                       {report.content_title || $translator("admin.untitled")}
                       <Eye size={14} aria-hidden="true" />
                     </a>
                   {:else}
-                    {report.content_title || $translator("admin.untitled")}
+                    {report.target_deleted
+                      ? $translator("admin.deleted")
+                      : report.content_title || $translator("admin.untitled")}
                   {/if}
                 </h2>
                 <p class="report-reason">{report.reason}</p>
@@ -441,16 +471,17 @@
               </div>
               <div class="row-actions">
                 {#if report.status === "pending"}
-                  <button class="btn btn-secondary btn-sm" onclick={() => handleReport(report.id, "dismissed")}>
+                  <button class="btn btn-secondary btn-sm" onclick={() => handleReport(report.id, "dismissed")} disabled={handlingReportId !== null}>
                     {$translator("admin.dismiss")}
                   </button>
-                  <button class="btn btn-secondary btn-sm" onclick={() => handleReport(report.id, "resolved")}>
+                  <button class="btn btn-secondary btn-sm" onclick={() => handleReport(report.id, "resolved")} disabled={handlingReportId !== null}>
                     <Check size={15} aria-hidden="true" />
                     {$translator("admin.resolved")}
                   </button>
                   {#if isSuperAdmin && report.target_type !== "deleted"}
                     <button
                       class="btn btn-danger btn-sm"
+                      disabled={handlingReportId !== null}
                       onclick={() => requestConfirmation(
                         $translator("admin.deleteReportedTitle"),
                         $translator("admin.deleteReportedDescription"),
@@ -462,7 +493,7 @@
                     </button>
                   {/if}
                   {#if isSuperAdmin && report.content_author_id}
-                    <button class="btn btn-secondary btn-sm" onclick={() => openBan(report.content_author_id, report.content_author, report)}>
+                    <button class="btn btn-secondary btn-sm" onclick={() => openBan(report.content_author_id, report.content_author, report)} disabled={handlingReportId !== null}>
                       <Ban size={15} />
                       {$translator("admin.restrict")}
                     </button>
@@ -604,7 +635,7 @@
                     <input class="input" bind:value={guildDraft.name} maxlength="80" />
                   </label>
                   <label>
-                    <span>Logo</span>
+                    <span>{$translator("guild.logo")}</span>
                     <input class="input" bind:value={guildDraft.logo} maxlength="500" />
                   </label>
                   <label>
@@ -616,7 +647,7 @@
                     <textarea class="input" rows="3" bind:value={guildDraft.description} maxlength="2000"></textarea>
                   </label>
                 </div>
-                <button class="btn btn-primary btn-sm" onclick={() => saveGuild(guild)}>
+                <button class="btn btn-primary btn-sm" onclick={() => saveGuild(guild)} disabled={guildSaving}>
                   {$translator("common.save")}
                 </button>
 

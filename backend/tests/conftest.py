@@ -11,6 +11,8 @@ from uvicorn.config import Config
 
 os.environ["SUPER_ADMIN_EMAIL"] = "admin-test@example.com"
 os.environ["AUTH_REGISTER_ATTEMPTS"] = "10000"
+os.environ["APP_ENV"] = "test"
+os.environ["GOVERNANCE_POLL_SECONDS"] = "1"
 
 
 def run_server():

@@ -18,6 +18,8 @@
   let feedState = $state<"loading" | "ready" | "empty" | "error">("loading");
   let feedMode = $state<FeedMode>("recommended");
   let authReady = $state(false);
+  let desktopSplit = $state(false);
+  let splitActive = $derived($homeLayout === "split" && desktopSplit);
 
   const feedModes: FeedMode[] = ["recommended", "trending", "following", "latest"];
   const modeKeys: Record<FeedMode, { label: string; title: string; description: string }> = {
@@ -26,6 +28,15 @@
     following: { label: "feed.following", title: "feed.followingTitle", description: "feed.followingDescription" },
     latest: { label: "feed.latest", title: "feed.latestTitle", description: "feed.latestDescription" },
   };
+
+  onMount(() => {
+    const splitQuery = window.matchMedia("(min-width: 64rem)");
+    const syncSplit = () => (desktopSplit = splitQuery.matches);
+    syncSplit();
+    splitQuery.addEventListener("change", syncSplit);
+
+    return () => splitQuery.removeEventListener("change", syncSplit);
+  });
 
   onMount(async () => {
     initPreferences();
@@ -111,10 +122,10 @@
               {#key feedMode}
                 <FeedList
                   mode={feedMode}
-                  onSelect={$homeLayout === "split" ? selectItem : null}
-                  selectedId={$homeLayout === "split" ? selected?.id ?? null : null}
-                  onFirstItem={$homeLayout === "split" ? (item) => selected ??= item : null}
-                  onItemsUpdated={$homeLayout === "split" ? syncSelection : null}
+                  onSelect={splitActive ? selectItem : null}
+                  selectedId={splitActive ? selected?.id ?? null : null}
+                  onFirstItem={splitActive ? (item) => selected ??= item : null}
+                  onItemsUpdated={splitActive ? syncSelection : null}
                   onStateChange={(state) => feedState = state}
                 />
               {/key}
@@ -124,7 +135,7 @@
           </section>
           {#if $homeLayout === "split"}
             <section class="detail-panel" aria-label={$translator("home.select")}>
-            {#if selected}
+            {#if splitActive && selected}
               {#key `${selected.id}:${selected.reply_count}:${selected.like_count}:${selected.for_count}:${selected.against_count}:${selected.status}`}
                 {#if selected.type === "post"}
                   <PostDetail postId={selected.id} embedded />
@@ -132,7 +143,7 @@
                   <PatchDetail patchId={selected.id} embedded />
                 {/if}
               {/key}
-            {:else if feedState === "loading"}
+            {:else if !splitActive || feedState === "loading"}
               <div class="detail-loading" aria-label={$translator("home.loading")} aria-live="polite">
                 <span></span><span></span><span></span><span></span>
                 <p>{$translator("home.loading")}</p>
@@ -190,8 +201,8 @@
     .feed-toolbar { overflow: hidden; }
     .feed-tabs { display: grid; width: 100%; grid-template-columns: repeat(4, minmax(0, 1fr)); }
     .feed-tabs button { min-width: 0; padding-inline: .15rem; justify-content: center; gap: .25rem; font-size: .6875rem; }
-    .workspace-shell { height:auto; min-height:0; }
-    .workspace-grid { display:block; }
+    .workspace-shell { height:auto; min-height:0; overflow:visible; }
+    .workspace-grid { display:block; overflow:visible; }
     .stream-panel { overflow: visible; border-right: 0; }
     .detail-panel { display: none; }
   }

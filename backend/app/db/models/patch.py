@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import ForeignKey, String, Text
+from sqlalchemy import ForeignKey, Index, String, Text, text
 from sqlalchemy.dialects.postgresql import TIMESTAMP
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -10,6 +10,14 @@ from app.db.base import Base
 
 class Patch(Base):
     __tablename__ = "patch"
+    __table_args__ = (
+        Index(
+            "uq_patch_active_pr_number",
+            "pr_number",
+            unique=True,
+            postgresql_where=text("status IN ('draft', 'voting', 'passed')"),
+        ),
+    )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     title: Mapped[str] = mapped_column(String(200), nullable=False)

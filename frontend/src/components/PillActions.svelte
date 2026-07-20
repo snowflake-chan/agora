@@ -1,6 +1,8 @@
 <script lang="ts">
   import {
+    Code2Icon,
     GitBranchIcon,
+    MessageCircleIcon,
     PlusIcon,
     ShieldIcon,
     UserIcon,
@@ -13,6 +15,7 @@
     type LoginRequestDetail,
   } from "../lib/login";
   import { safeReturnTo } from "../lib/returnTo";
+  import { avatarInitial } from "../lib/utils";
   import { currentUser, initAuth } from "../stores/auth";
   import { mainView } from "../stores/nav";
   import LoginDialog from "./auth/LoginDialog.svelte";
@@ -42,6 +45,9 @@
   let restrictionKey = $state<"post" | "patch" | null>(null);
   let trackEl = $state<HTMLDivElement | null>(null);
   let highlightEl = $state<HTMLDivElement | null>(null);
+  let highlightFrame: number | null = null;
+  let layoutObserver: ResizeObserver | null = null;
+  let mutationObserver: MutationObserver | null = null;
 
   onMount(async () => {
     await initAuth();
@@ -60,7 +66,36 @@
     } catch {}
     activeKey = initial;
     mainView.set(initial === "patches" ? "patches" : "posts");
-    requestAnimationFrame(updateHighlight);
+    scheduleHighlight();
+  });
+
+  onMount(() => {
+    const handleLayoutChange = () => scheduleHighlight();
+    window.addEventListener("resize", handleLayoutChange);
+
+    if (trackEl && "ResizeObserver" in window) {
+      layoutObserver = new ResizeObserver(handleLayoutChange);
+      layoutObserver.observe(trackEl);
+    }
+    if (trackEl && "MutationObserver" in window) {
+      mutationObserver = new MutationObserver(handleLayoutChange);
+      mutationObserver.observe(trackEl, {
+        childList: true,
+        subtree: true,
+      });
+    }
+
+    return () => {
+      window.removeEventListener("resize", handleLayoutChange);
+      layoutObserver?.disconnect();
+      mutationObserver?.disconnect();
+      layoutObserver = null;
+      mutationObserver = null;
+      if (highlightFrame !== null) {
+        cancelAnimationFrame(highlightFrame);
+        highlightFrame = null;
+      }
+    };
   });
 
   onMount(() => {
@@ -119,9 +154,20 @@
     highlightEl.classList.remove("is-hidden");
   }
 
+  function scheduleHighlight() {
+    if (typeof window === "undefined" || highlightFrame !== null) return;
+    highlightFrame = window.requestAnimationFrame(() => {
+      highlightFrame = null;
+      void updateHighlight();
+    });
+  }
+
   $effect(() => {
     void activeKey;
-    updateHighlight();
+    void authReady;
+    void $currentUser?.id;
+    void $currentUser?.role;
+    scheduleHighlight();
   });
 
   function routeKey(): ActiveKey {
@@ -219,6 +265,8 @@
     const destination = loginReturnTo;
     afterLogin = null;
     if (continuation) {
+      activeKey = routeKey();
+      scheduleHighlight();
       continuation();
       return;
     }
@@ -242,9 +290,7 @@
     aria-label={$translator("nav.home")}
     title={$translator("nav.home")}
   >
-    <svg class="size-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-    </svg>
+    <MessageCircleIcon class="size-4.5" aria-hidden="true" />
     <span class="pill-tooltip">{$translator("nav.home")}</span>
     <span class="pill-label">{$translator("nav.home")}</span>
   </button>
@@ -258,9 +304,7 @@
     aria-label={$translator("nav.changes")}
     title={$translator("nav.changes")}
   >
-    <svg class="size-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-    </svg>
+    <Code2Icon class="size-4.5" aria-hidden="true" />
     <span class="pill-tooltip">{$translator("nav.changes")}</span>
     <span class="pill-label">{$translator("nav.changes")}</span>
   </button>
@@ -327,39 +371,37 @@
     </a>
   {/if}
 
-  <div class="relative">
-    {#if $currentUser}
-      <a
-        href={`/users/${$currentUser.id}`}
-        class="pill-item pill-slot"
-        class:is-active={activeKey === "user"}
-        data-key="user"
-        aria-label={$translator("nav.profile")}
-        title={$translator("nav.profile")}
-      >
-        <span class="profile-avatar-chip">
-          {($currentUser.nickname ?? $currentUser.username)[0].toUpperCase()}
-        </span>
-        <span class="pill-tooltip">{$translator("nav.profile")}</span>
-        <span class="pill-label">{$translator("nav.profile")}</span>
-      </a>
-    {:else if authReady}
-      <button
-        type="button"
-        class="pill-item pill-slot"
-        data-key="login"
-        aria-label={$translator("nav.login")}
-        title={$translator("nav.login")}
-        onclick={() => openLogin()}
-      >
-        <UserIcon class="size-4.5" />
-        <span class="pill-tooltip">{$translator("nav.login")}</span>
-        <span class="pill-label">{$translator("nav.login")}</span>
-      </button>
-    {:else}
-      <span class="pill-item auth-pending" aria-hidden="true"></span>
-    {/if}
-  </div>
+  {#if $currentUser}
+    <a
+      href={`/users/${$currentUser.id}`}
+      class="pill-item pill-slot"
+      class:is-active={activeKey === "user"}
+      data-key="user"
+      aria-label={$translator("nav.profile")}
+      title={$translator("nav.profile")}
+    >
+      <span class="profile-avatar-chip">
+        {avatarInitial($currentUser.nickname, $currentUser.username)}
+      </span>
+      <span class="pill-tooltip">{$translator("nav.profile")}</span>
+      <span class="pill-label">{$translator("nav.profile")}</span>
+    </a>
+  {:else if authReady}
+    <button
+      type="button"
+      class="pill-item pill-slot"
+      data-key="login"
+      aria-label={$translator("nav.login")}
+      title={$translator("nav.login")}
+      onclick={() => openLogin()}
+    >
+      <UserIcon class="size-4.5" />
+      <span class="pill-tooltip">{$translator("nav.login")}</span>
+      <span class="pill-label">{$translator("nav.login")}</span>
+    </button>
+  {:else}
+    <span class="pill-item auth-pending" aria-hidden="true"></span>
+  {/if}
 </div>
 
 {#if showPostForm}
@@ -474,60 +516,20 @@
   }
 
   @media (max-width: 40rem) {
-    .pill-tooltip,
-    .pill-divider {
+    /* Labels are intentionally not part of the compact navigation layout. */
+    .pill-label,
+    .pill-tooltip {
       display: none;
-    }
-
-    .pill-label {
-      display: block;
-    }
-
-    :global(.pill-track) {
-      width: 100%;
-      justify-content: space-around;
-      gap: 0.1rem;
-    }
-
-    :global(.pill-item) {
-      width: auto;
-      min-width: 2.65rem;
-      height: 3rem;
-      padding: 0.35rem 0.25rem;
-      flex-direction: column;
-      gap: 0.2rem;
-      border-radius: 0.7rem;
     }
 
     .pill-create {
-      min-width: 2.85rem;
       border-radius: 0.85rem;
       box-shadow: 0 0.35rem 1rem rgba(0, 0, 0, 0.28);
-      transform: translateY(-0.18rem);
+      transform: none;
     }
 
     .pill-create:hover {
-      transform: translateY(-0.25rem);
-    }
-  }
-
-  @media (max-width: 22.5rem) {
-    .pill-label {
-      display: none;
-    }
-
-    :global(.pill-track) {
-      justify-content: space-between;
-      gap: 0;
-    }
-
-    :global(.pill-track .pill-item) {
-      width: 2.5rem;
-      min-width: 2.5rem;
-      height: 2.75rem;
-      justify-content: center;
-      gap: 0;
-      padding-inline: 0.2rem;
+      transform: none;
     }
   }
 </style>

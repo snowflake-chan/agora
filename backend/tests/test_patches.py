@@ -7,6 +7,8 @@ Start: cd backend && uvicorn app.main:app --reload --port 8000
 import asyncio
 import os
 import sys
+import time
+from concurrent.futures import ThreadPoolExecutor
 from uuid import UUID, uuid4
 
 import asyncpg
@@ -50,6 +52,47 @@ def _set_patch_status(patch_id: str, status: str) -> None:
             await connection.close()
 
     asyncio.run(update_status())
+
+
+def _expire_patch(patch_id: str) -> None:
+    """Move a voting deadline into the past without changing its state."""
+    database_url = os.environ["DATABASE_URL"].replace(
+        "postgresql+asyncpg://", "postgresql://", 1
+    )
+
+    async def expire() -> None:
+        connection = await asyncpg.connect(database_url)
+        try:
+            await connection.execute(
+                """
+                UPDATE patch
+                SET voting_ends_at = NOW() - INTERVAL '1 minute'
+                WHERE id = $1
+                """,
+                UUID(patch_id),
+            )
+        finally:
+            await connection.close()
+
+    asyncio.run(expire())
+
+
+def _patch_status(patch_id: str) -> str | None:
+    database_url = os.environ["DATABASE_URL"].replace(
+        "postgresql+asyncpg://", "postgresql://", 1
+    )
+
+    async def read_status() -> str | None:
+        connection = await asyncpg.connect(database_url)
+        try:
+            return await connection.fetchval(
+                "SELECT status FROM patch WHERE id = $1",
+                UUID(patch_id),
+            )
+        finally:
+            await connection.close()
+
+    return asyncio.run(read_status())
 
 
 def _register(client: httpx.Client, prefix: str = "u") -> dict:
@@ -121,6 +164,40 @@ class TestPatches:
         assert second.status_code == 409
         assert second.json()["detail"] == "PATCH_PR_ALREADY_ACTIVE"
 
+    def test_concurrent_active_pr_creation_is_serialized(self):
+        first_client = httpx.Client()
+        second_client = httpx.Client()
+        try:
+            first = _register(first_client, "pr-racer-a")
+            second = _register(second_client, "pr-racer-b")
+            first_headers = _login(first_client, first)
+            second_headers = _login(second_client, second)
+            payload = {
+                "title": "Concurrent proposal",
+                "content": "Only one should remain active.",
+                "pr_number": _pr_number(),
+            }
+
+            def create(args: tuple[httpx.Client, dict[str, str]]) -> httpx.Response:
+                client, headers = args
+                return client.post(
+                    f"{BASE}/api/v1/patches",
+                    json=payload,
+                    headers=headers,
+                )
+
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                results = list(
+                    pool.map(create, ((first_client, first_headers), (second_client, second_headers)))
+                )
+
+            assert sorted(result.status_code for result in results) == [201, 409]
+            conflict = next(result for result in results if result.status_code == 409)
+            assert conflict.json()["detail"] == "PATCH_PR_ALREADY_ACTIVE"
+        finally:
+            first_client.close()
+            second_client.close()
+
     def test_rejected_pr_can_be_proposed_again(self):
         user = _register(self.client)
         headers = _login(self.client, user)
@@ -169,10 +246,105 @@ class TestPatches:
             headers=headers,
         )
         pid = create.json()["id"]
-        r = self.client.get(f"{BASE}/api/v1/patches/{pid}")
+        r = self.client.get(f"{BASE}/api/v1/patches/{pid}", headers=headers)
         assert r.status_code == 200
         assert r.json()["id"] == pid
         assert r.json()["status"] == "draft"
+
+    def test_drafts_are_visible_only_to_their_author(self):
+        author = _register(self.client, "draft-author")
+        author_headers = _login(self.client, author)
+        create = self.client.post(
+            f"{BASE}/api/v1/patches",
+            json={
+                "title": "Private draft",
+                "content": "Not ready for public review",
+                "pr_number": _pr_number(),
+            },
+            headers=author_headers,
+        )
+        assert create.status_code == 201
+        patch_id = create.json()["id"]
+
+        draft_comment = self.client.post(
+            f"{BASE}/api/v1/patches/{patch_id}/comments",
+            headers=author_headers,
+            json={"content": "Private draft discussion"},
+        )
+        assert draft_comment.status_code == 201
+        comment_id = draft_comment.json()["id"]
+
+        with httpx.Client() as anonymous:
+            listing = anonymous.get(f"{BASE}/api/v1/patches")
+            detail = anonymous.get(f"{BASE}/api/v1/patches/{patch_id}")
+            feed = anonymous.get(f"{BASE}/api/v1/posts/-/feed")
+            profile = anonymous.get(
+                f"{BASE}/api/v1/users/{author['id']}/content"
+            )
+            comments = anonymous.get(
+                f"{BASE}/api/v1/patches/{patch_id}/comments"
+            )
+            votes = anonymous.get(f"{BASE}/api/v1/patches/{patch_id}/votes")
+        assert patch_id not in {item["id"] for item in listing.json()}
+        assert detail.status_code == 404
+        assert patch_id not in {item["id"] for item in feed.json()}
+        assert patch_id not in {item["id"] for item in profile.json()}
+        assert comments.status_code == 404
+        assert votes.status_code == 404
+
+        with httpx.Client() as other_client:
+            other = _register(other_client, "draft-reader")
+            other_headers = _login(other_client, other)
+            other_listing = other_client.get(
+                f"{BASE}/api/v1/patches",
+                headers=other_headers,
+            )
+            other_detail = other_client.get(
+                f"{BASE}/api/v1/patches/{patch_id}",
+                headers=other_headers,
+            )
+            other_comment = other_client.post(
+                f"{BASE}/api/v1/patches/{patch_id}/comments",
+                headers=other_headers,
+                json={"content": "Must stay private"},
+            )
+            other_vote = other_client.post(
+                f"{BASE}/api/v1/patches/{patch_id}/vote",
+                headers=other_headers,
+                json={"choice": "for"},
+            )
+            other_like = other_client.put(
+                f"{BASE}/api/v1/posts/{comment_id}/like",
+                headers=other_headers,
+            )
+            other_unlike = other_client.delete(
+                f"{BASE}/api/v1/posts/{comment_id}/like",
+                headers=other_headers,
+            )
+            other_patch_report = other_client.post(
+                f"{BASE}/api/v1/admin/reports",
+                headers=other_headers,
+                json={"patch_id": patch_id, "reason": "Private target"},
+            )
+            other_comment_report = other_client.post(
+                f"{BASE}/api/v1/admin/reports",
+                headers=other_headers,
+                json={"content_id": comment_id, "reason": "Private target"},
+            )
+        assert patch_id not in {item["id"] for item in other_listing.json()}
+        assert other_detail.status_code == 404
+        assert other_comment.status_code == 404
+        assert other_vote.status_code == 404
+        assert other_like.status_code == 404
+        assert other_unlike.status_code == 404
+        assert other_patch_report.status_code == 404
+        assert other_comment_report.status_code == 404
+
+        author_detail = self.client.get(
+            f"{BASE}/api/v1/patches/{patch_id}",
+            headers=author_headers,
+        )
+        assert author_detail.status_code == 200
 
     def test_delete_draft(self):
         user = _register(self.client)
@@ -220,6 +392,34 @@ class TestPatches:
         assert data["status"] == "voting"
         assert data["voting_ends_at"] is not None
 
+    def test_concurrent_submit_transitions_a_draft_once(self):
+        user = _register(self.client, "submit-racer")
+        headers = _login(self.client, user)
+        create = self.client.post(
+            f"{BASE}/api/v1/patches",
+            json={
+                "title": "One transition",
+                "content": "Only one submit may win.",
+                "pr_number": _pr_number(),
+            },
+            headers=headers,
+        )
+        assert create.status_code == 201
+        patch_id = create.json()["id"]
+
+        def submit_once(_: int) -> httpx.Response:
+            with httpx.Client(timeout=10) as concurrent_client:
+                return concurrent_client.post(
+                    f"{BASE}/api/v1/patches/{patch_id}/submit",
+                    headers=headers,
+                )
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(submit_once, range(2)))
+
+        assert sorted(result.status_code for result in results) == [200, 422]
+        assert _patch_status(patch_id) == "voting"
+
     def test_cast_and_change_vote(self):
         user = _register(self.client)
         headers = _login(self.client, user)
@@ -247,6 +447,67 @@ class TestPatches:
         r = self.client.get(f"{BASE}/api/v1/patches/{pid}")
         assert r.json()["for_count"] == 0
         assert r.json()["against_count"] == 1
+
+    def test_expired_patch_detail_tallies_without_losing_author(self):
+        user = _register(self.client)
+        headers = _login(self.client, user)
+        create = self.client.post(
+            f"{BASE}/api/v1/patches",
+            json={
+                "title": "Expired detail",
+                "content": "Content",
+                "pr_number": _pr_number(),
+            },
+            headers=headers,
+        )
+        pid = create.json()["id"]
+        submit = self.client.post(
+            f"{BASE}/api/v1/patches/{pid}/submit",
+            headers=headers,
+        )
+        assert submit.status_code == 200
+        _expire_patch(pid)
+
+        def load_detail(_: int) -> httpx.Response:
+            with httpx.Client(timeout=10) as concurrent_client:
+                return concurrent_client.get(f"{BASE}/api/v1/patches/{pid}")
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            details = list(pool.map(load_detail, range(2)))
+
+        assert all(detail.status_code == 200 for detail in details)
+        assert {detail.json()["status"] for detail in details} == {"rejected"}
+        assert {
+            detail.json()["author_username"] for detail in details
+        } == {user["username"]}
+
+    def test_expired_patch_is_tallied_without_page_traffic(self):
+        user = _register(self.client)
+        headers = _login(self.client, user)
+        create = self.client.post(
+            f"{BASE}/api/v1/patches",
+            json={
+                "title": "Scheduled tally",
+                "content": "No page request should be required.",
+                "pr_number": _pr_number(),
+            },
+            headers=headers,
+        )
+        patch_id = create.json()["id"]
+        submit = self.client.post(
+            f"{BASE}/api/v1/patches/{patch_id}/submit",
+            headers=headers,
+        )
+        assert submit.status_code == 200
+        _expire_patch(patch_id)
+
+        deadline = time.monotonic() + 6
+        status = _patch_status(patch_id)
+        while status == "voting" and time.monotonic() < deadline:
+            time.sleep(0.25)
+            status = _patch_status(patch_id)
+
+        assert status == "rejected"
 
     def test_vote_counts_and_list(self):
         u1 = _register(self.client)

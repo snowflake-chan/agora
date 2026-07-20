@@ -233,6 +233,11 @@ a:hover {
   color: var(--vercel-text-tertiary);
 }
 
+.dialog-panel input::placeholder,
+.dialog-panel textarea::placeholder {
+  color: var(--vercel-text-tertiary);
+}
+
 textarea.input {
   resize: vertical;
   min-height: 80px;

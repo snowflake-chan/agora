@@ -26,21 +26,21 @@
   <h1 class="text-xl font-bold mb-6" style="color: var(--vercel-text);">{$translator("guild.create")}</h1>
 
   {#if error}
-    <div class="mb-4 p-3 rounded text-sm" style="background: rgba(239,68,68,0.1); color: var(--vercel-danger);">{error}</div>
+    <div class="mb-4 p-3 rounded text-sm" style="background: var(--vercel-danger-bg); color: var(--vercel-danger);">{error}</div>
   {/if}
 
   <div class="space-y-4">
     <div>
-      <label class="block text-xs mb-1" style="color: var(--vercel-text-secondary);">{$translator("guild.name")} *</label>
-      <input class="input" type="text" bind:value={name} placeholder={$translator("guild.namePlaceholder")} maxlength="80" />
+      <label for="guild-name" class="block text-xs mb-1" style="color: var(--vercel-text-secondary);">{$translator("guild.name")} *</label>
+      <input id="guild-name" class="input" type="text" bind:value={name} placeholder={$translator("guild.namePlaceholder")} maxlength="80" />
     </div>
     <div>
-      <label class="block text-xs mb-1" style="color: var(--vercel-text-secondary);">Logo (emoji)</label>
-      <input class="input" type="text" bind:value={logo} placeholder={$translator("guild.logoPlaceholder")} maxlength="10" />
+      <label for="guild-logo" class="block text-xs mb-1" style="color: var(--vercel-text-secondary);">{$translator("guild.logo")}</label>
+      <input id="guild-logo" class="input" type="text" bind:value={logo} placeholder={$translator("guild.logoPlaceholder")} maxlength="500" />
     </div>
     <div>
-      <label class="block text-xs mb-1" style="color: var(--vercel-text-secondary);">{$translator("guild.description")}</label>
-      <textarea class="input" rows="3" bind:value={description} placeholder={$translator("guild.descriptionPlaceholder")} maxlength="2000"></textarea>
+      <label for="guild-description" class="block text-xs mb-1" style="color: var(--vercel-text-secondary);">{$translator("guild.description")}</label>
+      <textarea id="guild-description" class="input" rows="3" bind:value={description} placeholder={$translator("guild.descriptionPlaceholder")} maxlength="2000"></textarea>
     </div>
   </div>
 

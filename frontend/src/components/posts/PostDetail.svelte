@@ -42,6 +42,10 @@
     }
   });
 
+  function postReturnTo(fragment?: string) {
+    return `/posts/${postId}${fragment ? `#${fragment}` : ""}`;
+  }
+
   function cancelReply() {
     replyingTo = null;
     replyText = "";
@@ -58,7 +62,7 @@
 
   function focusCommentReply(comment: Comment) {
     if (!$currentUser) {
-      requestLogin(window.location.pathname, () => handleReplyClick(comment));
+      requestLogin(postReturnTo(comment.id), () => handleReplyClick(comment));
       return;
     }
     handleReplyClick(comment);
@@ -66,7 +70,7 @@
 
   function focusReply() {
     if (!$currentUser) {
-      requestLogin(window.location.pathname, focusReply);
+      requestLogin(postReturnTo(), focusReply);
       return;
     }
     document.querySelector<HTMLTextAreaElement>("#reply-textarea")?.focus();
@@ -74,7 +78,7 @@
 
   async function handleContentLike(id: string, liked: boolean) {
     if (!$currentUser) {
-      requestLogin(window.location.pathname, () => void handleContentLike(id, liked));
+      requestLogin(postReturnTo(id), () => void handleContentLike(id, liked));
       return;
     }
     likingId = id;
@@ -99,7 +103,7 @@
     const data = {
       title: post.title,
       text: post.content.slice(0, 120),
-      url: `${window.location.origin}${window.location.pathname}${contentId ? `#${contentId}` : ""}`,
+      url: `${window.location.origin}${postReturnTo(contentId)}`,
     };
     try {
       if (navigator.share) {
@@ -171,7 +175,7 @@
 
   function requestReport(contentId: string) {
     if (!$currentUser) {
-      requestLogin(window.location.pathname, () => openReport(contentId));
+      requestLogin(postReturnTo(contentId), () => openReport(contentId));
       return;
     }
     openReport(contentId);
@@ -372,6 +376,7 @@
     rows="4"
     bind:value={reportReason}
     maxlength="500"
+    aria-label={$translator("moderation.reportReasonPlaceholder")}
     placeholder={$translator("moderation.reportReasonPlaceholder")}
   ></textarea>
   <div class="report-actions">

@@ -104,6 +104,10 @@
     }
   });
 
+  function patchReturnTo(fragment?: string) {
+    return `/patches/${patchId}${fragment ? `#${fragment}` : ""}`;
+  }
+
   async function handleDelete() {
     try {
       await deletePatch(patchId);
@@ -163,7 +167,7 @@
 
   function beginReply(comment: Comment) {
     if (!$currentUser) {
-      requestLogin(window.location.pathname, () => beginReply(comment));
+      requestLogin(patchReturnTo(comment.id), () => beginReply(comment));
       return;
     }
     replyingTo = comment;
@@ -192,7 +196,7 @@
 
   async function toggleCommentLike(comment: Comment) {
     if (!$currentUser) {
-      requestLogin(window.location.pathname, () => void toggleCommentLike(comment));
+      requestLogin(patchReturnTo(comment.id), () => void toggleCommentLike(comment));
       return;
     }
     likingId = comment.id;
@@ -211,7 +215,7 @@
   }
 
   async function shareComment(comment: Comment) {
-    const url = `${window.location.origin}${window.location.pathname}#${comment.id}`;
+    const url = `${window.location.origin}${patchReturnTo(comment.id)}`;
     try {
       if (navigator.share) await navigator.share({ title: patch?.title, url });
       else {
@@ -229,7 +233,7 @@
   ) {
     if (!$currentUser) {
       requestLogin(
-        window.location.pathname,
+        patchReturnTo(targetType === "content" ? targetId : undefined),
         () => openReport(targetId, targetType),
       );
       return;
@@ -366,6 +370,7 @@
             class="vote-choice"
             class:is-for={currentUserVote?.choice === "for"}
             class:is-other={Boolean(currentUserVote && currentUserVote.choice !== "for")}
+            aria-pressed={currentUserVote?.choice === "for"}
             onclick={() => promptVote("for")}
           >
             <ThumbsUpIcon size={16} strokeWidth={1.8} />
@@ -378,6 +383,7 @@
             class="vote-choice"
             class:is-against={currentUserVote?.choice === "against"}
             class:is-other={Boolean(currentUserVote && currentUserVote.choice !== "against")}
+            aria-pressed={currentUserVote?.choice === "against"}
             onclick={() => promptVote("against")}
           >
             <ThumbsDownIcon size={16} strokeWidth={1.8} />
@@ -390,6 +396,7 @@
             class="vote-choice"
             class:is-abstain={currentUserVote?.choice === "abstain"}
             class:is-other={Boolean(currentUserVote && currentUserVote.choice !== "abstain")}
+            aria-pressed={currentUserVote?.choice === "abstain"}
             onclick={() => promptVote("abstain")}
           >
             <CircleMinusIcon size={16} strokeWidth={1.8} />
@@ -399,6 +406,7 @@
             {/if}
           </button>
         </div>
+        <p class="vote-change-hint">{$translator("patch.voteChangeHint")}</p>
       {:else}
         <a href="/login" class="text-sm transition-colors" style="color: var(--vercel-text-secondary);">{$translator("patch.loginToVote")}</a>
       {/if}
@@ -548,6 +556,7 @@
     rows="4"
     bind:value={reportReason}
     maxlength="500"
+    aria-label={$translator("moderation.reportReasonPlaceholder")}
     placeholder={$translator("moderation.reportReasonPlaceholder")}
   ></textarea>
   <div class="report-actions">
@@ -731,11 +740,19 @@
   }
 
   .vote-choice.is-other {
-    opacity: 0.38;
+    opacity: 0.7;
   }
 
   .vote-choice.is-other:hover {
-    opacity: 0.78;
+    opacity: 1;
+  }
+
+  .vote-change-hint {
+    margin: 0.65rem 0 0;
+    color: var(--vercel-text-tertiary);
+    font-size: 0.75rem;
+    line-height: 1.45;
+    text-align: center;
   }
 
   .vote-check {
