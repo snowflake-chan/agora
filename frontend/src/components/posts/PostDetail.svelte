@@ -1,6 +1,7 @@
 <script lang="ts">
+  import { ArrowLeft } from "@lucide/svelte";
   import { onMount } from "svelte";
-  import { translator } from "../../lib/i18n";
+  import { translateError, translator } from "../../lib/i18n";
   import { requestLogin } from "../../lib/login";
   import { createReport } from "../../lib/admin";
   import { getPost, listComments, createComment, deleteContent, likePost, unlikePost, type Post, type Comment } from "../../lib/posts";
@@ -192,10 +193,10 @@
         $translator("moderation.reportSuccessTitle"),
         $translator("moderation.reportSuccessDescription"),
       );
-    } catch {
+    } catch (error) {
       toaster.error(
         $translator("moderation.reportFailed"),
-        $translator("common.tryAgain"),
+        translateError(error, $translator, "common.tryAgain"),
       );
     } finally {
       reporting = false;
@@ -267,10 +268,8 @@
   <div class="empty-state">{$translator("post.notFound")}</div>
 {:else}
   <!-- Back button -->
-  {#if !embedded}<button class="back-btn" onclick={() => window.history.back()}>
-    <svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-    </svg>
+  {#if !embedded}<button class="btn btn-ghost btn-sm back-btn" onclick={() => window.history.back()}>
+    <ArrowLeft size={16} strokeWidth={1.8} aria-hidden="true" />
     <span>{$translator("common.back")}</span>
   </button>{/if}
 
@@ -312,7 +311,9 @@
           onLike={() => handleContentLike(item.key, item.liked)}
           onDiscuss={i === 0 ? focusReply : () => focusCommentReply(comments[i - 1])}
           onShare={() => handleShare(i === 0 ? undefined : item.key)}
-          onReport={() => requestReport(item.key)}
+          onReport={$currentUser?.id === item.userId
+            ? null
+            : () => requestReport(item.key)}
         />
       {/each}
     </div>
@@ -324,7 +325,7 @@
       {#if replyingTo}
         <div class="mb-2 flex items-center gap-2 text-xs" style="color: var(--vercel-text-tertiary);">
           <span>{$translator("common.replyingTo", { name: replyingTo.author_username ?? $translator("common.anonymous") })}</span>
-          <button class="transition-colors" style="color: var(--vercel-text-tertiary);" onmouseenter={(e) => e.currentTarget.style.color = 'var(--vercel-text)'} onmouseleave={(e) => e.currentTarget.style.color = 'var(--vercel-text-tertiary)'} onclick={cancelReply}>{$translator("common.cancel")}</button>
+          <button class="reply-cancel" onclick={cancelReply}>{$translator("common.cancel")}</button>
         </div>
       {/if}
       <div class="flex-1">
@@ -348,7 +349,7 @@
     </div>
   {:else}
     <div class="mt-4 ml-7 pt-4 border-t text-center" style="border-color: var(--vercel-border);">
-      <a href="/login" class="text-sm transition-colors" style="color: var(--vercel-text-secondary);" onmouseenter={(e) => e.currentTarget.style.color = 'var(--vercel-text)'} onmouseleave={(e) => e.currentTarget.style.color = 'var(--vercel-text-secondary)'}>{$translator("post.loginToReply")}</a>
+    <a href="/login" class="login-reply-link text-sm">{$translator("post.loginToReply")}</a>
     </div>
   {/if}
 {/if}
@@ -401,23 +402,17 @@
   }
 
   .back-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.375rem;
-    padding: 0.375rem 0.75rem;
     margin-bottom: 1rem;
-    font-size: 0.8125rem;
-    font-weight: 500;
-    color: var(--vercel-text-secondary);
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.06);
-    border-radius: 6px;
-    cursor: pointer;
-    transition: all 0.2s;
   }
-  .back-btn:hover {
+
+  .reply-cancel,
+  .login-reply-link {
+    color: var(--vercel-text-tertiary);
+    transition: color 150ms ease;
+  }
+
+  .reply-cancel:hover,
+  .login-reply-link:hover {
     color: var(--vercel-text);
-    background: rgba(255,255,255,0.08);
-    border-color: rgba(255,255,255,0.12);
   }
 </style>

@@ -13,6 +13,7 @@ class Report(Base):
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     content_id: Mapped[UUID | None] = mapped_column(ForeignKey("content.id", ondelete="SET NULL"), index=True, nullable=True)
+    patch_id: Mapped[UUID | None] = mapped_column(ForeignKey("patch.id", ondelete="SET NULL"), index=True, nullable=True)
     reporter_id: Mapped[UUID | None] = mapped_column(ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="pending")  # pending / resolved / dismissed
@@ -20,6 +21,7 @@ class Report(Base):
 
     reporter: Mapped["User | None"] = relationship("User", lazy="joined")  # type: ignore[name-defined]
     content: Mapped["Content | None"] = relationship("Content", lazy="joined")  # type: ignore[name-defined]
+    patch: Mapped["Patch | None"] = relationship("Patch", lazy="joined")  # type: ignore[name-defined]
 
 
 class BanRecord(Base):

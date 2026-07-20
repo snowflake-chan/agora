@@ -68,7 +68,7 @@
           data-autofocus
           bind:value={title}
           class="w-full px-4 py-2.5 text-lg font-semibold rounded-lg placeholder:text-[#555] focus:outline-none"
-          style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); color: var(--vercel-text);"
+          style="background: var(--vercel-surface-muted); border: 1px solid var(--vercel-border); color: var(--vercel-text);"
           placeholder={$translator("common.title")}
         />
       </div>
@@ -91,7 +91,7 @@
     <div class="composer-workspace">
       <!-- Left: editor -->
       <div class="composer-pane editor-pane" class:mobile-hidden={mobilePane !== "edit"}>
-        <div class="px-4 py-2 text-xs font-medium border-b" style="color: var(--vercel-text-tertiary); border-color: rgba(255,255,255,0.06);">
+        <div class="px-4 py-2 text-xs font-medium border-b" style="color: var(--vercel-text-tertiary); border-color: var(--vercel-border);">
           {$translator("common.edit")}
         </div>
         <textarea
@@ -104,7 +104,7 @@
 
       <!-- Right: preview -->
       <div class="composer-pane" class:mobile-hidden={mobilePane !== "preview"}>
-        <div class="px-4 py-2 text-xs font-medium border-b" style="color: var(--vercel-text-tertiary); border-color: rgba(255,255,255,0.06);">
+        <div class="px-4 py-2 text-xs font-medium border-b" style="color: var(--vercel-text-tertiary); border-color: var(--vercel-border);">
           {$translator("common.preview")}
         </div>
         <div class="flex-1 overflow-y-auto px-6 py-4">
@@ -120,20 +120,20 @@
 </div>
 
 <style>
-  .composer-dialog { display:flex; flex-direction:column; width:100%; height:min(54rem,calc(100dvh - 2rem)); max-width:87.5rem; overflow:hidden; border:1px solid rgba(255,255,255,.07); border-radius:.75rem; background:rgba(22,22,26,.96); box-shadow:0 8px 48px rgba(0,0,0,.5); backdrop-filter:blur(24px); }
-  .composer-header { display:flex; align-items:center; gap:1rem; padding:.75rem 1.5rem; border-bottom:1px solid rgba(255,255,255,.06); }
+  .composer-dialog { display:flex; flex-direction:column; width:100%; height:min(54rem,calc(100dvh - 2rem)); max-width:87.5rem; overflow:hidden; border:1px solid var(--vercel-border); border-radius:var(--vercel-radius-lg); background:color-mix(in srgb,var(--vercel-card) 96%,transparent); box-shadow:0 8px 48px var(--vercel-shadow); backdrop-filter:blur(24px); }
+  .composer-header { display:flex; align-items:center; gap:1rem; padding:.75rem 1.5rem; border-bottom:1px solid var(--vercel-border); }
   .composer-workspace { display:flex; flex:1; min-height:0; overflow:hidden; }
   .composer-pane { display:flex; flex:1; min-width:0; flex-direction:column; }
-  .editor-pane { border-right:1px solid rgba(255,255,255,.06); }
+  .editor-pane { border-right:1px solid var(--vercel-border); }
   .composer-tabs { display:none; }
   @media (max-width: 48rem) {
     .composer-backdrop { padding:.5rem; }
     .composer-dialog { height:calc(100dvh - 1rem); border-radius:.875rem; }
     .composer-header { flex-wrap:wrap; gap:.5rem; padding:.75rem; }
     .composer-header > div { flex-basis:100%; order:-1; }
-    .composer-tabs { display:grid; grid-template-columns:1fr 1fr; gap:.25rem; margin:.5rem .75rem 0; padding:.2rem; border-radius:.6rem; background:rgba(255,255,255,.05); }
+    .composer-tabs { display:grid; grid-template-columns:1fr 1fr; gap:.25rem; margin:.5rem .75rem 0; padding:.2rem; border-radius:.6rem; background:var(--vercel-surface-muted); }
     .composer-tabs button { padding:.45rem; border-radius:.45rem; color:var(--vercel-text-tertiary); font-size:.75rem; font-weight:600; }
-    .composer-tabs button.active { color:var(--vercel-text); background:rgba(255,255,255,.09); }
+    .composer-tabs button.active { color:var(--vercel-text); background:var(--vercel-hover-strong); }
     .editor-pane { border-right:0; }
     .composer-pane.mobile-hidden { display:none; }
   }

@@ -162,10 +162,10 @@
   .view-title { color: var(--vercel-text); font-size: clamp(1.5rem, 2vw, 2rem); font-weight: 650; letter-spacing: 0; }
   .stream-heading { display: flex; align-items: end; justify-content: space-between; gap: 2rem; margin-bottom: 1.25rem; }
   .feed-toolbar { display: flex; min-height: 3rem; padding: .45rem .55rem; align-items: center; justify-content: flex-start; border-bottom: 1px solid var(--vercel-border); background: color-mix(in srgb, var(--vercel-surface) 72%, transparent); }
-  .feed-tabs { display: inline-flex; align-items: center; gap: .2rem; padding: .2rem; border-radius: .4rem; background: rgba(255,255,255,.025); }
-  .feed-tabs button { display: inline-flex; min-height: 2rem; padding: .35rem .7rem; align-items: center; gap: .4rem; border: 0; border-radius: .35rem; background: transparent; color: var(--vercel-text-tertiary); cursor: pointer; font: inherit; font-size: .75rem; font-weight: 600; white-space: nowrap; transition: color .18s ease, background .18s ease; }
-  .feed-tabs button:hover { color: var(--vercel-text); background: rgba(255,255,255,.05); }
-  .feed-tabs button.active { color: var(--vercel-text); background: rgba(255,255,255,.1); box-shadow: inset 0 0 0 1px rgba(255,255,255,.06); }
+  .feed-tabs { display: inline-flex; align-items: center; gap: .2rem; padding: .2rem; border-radius: .4rem; background: var(--vercel-surface-muted); }
+  .feed-tabs button { display: inline-flex; min-height: 2rem; padding: .35rem .7rem; align-items: center; gap: .4rem; border: 0; border-radius: .35rem; background: transparent; color: var(--vercel-text-tertiary); cursor: pointer; font: inherit; font-size: .75rem; font-weight: 600; white-space: nowrap; transition: color .18s ease, background-color .18s ease, box-shadow .18s ease; }
+  .feed-tabs button:hover { color: var(--vercel-text); background: var(--vercel-hover); }
+  .feed-tabs button.active { color: var(--vercel-text); background: var(--vercel-hover-strong); box-shadow: inset 0 0 0 1px var(--vercel-border); }
   .view-kicker { margin-bottom: .25rem; color: var(--vercel-text-tertiary); font-size: .6875rem; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; }
   .view-description { max-width: 24rem; color: var(--vercel-text-tertiary); font-size: .8125rem; line-height: 1.5; text-align: right; }
   .workspace-shell { display:flex; height:min(52rem,calc(100dvh - 11rem)); min-height:38rem; overflow:hidden; flex-direction:column; border:1px solid var(--vercel-border); border-radius:var(--vercel-radius-lg); background:color-mix(in srgb,var(--vercel-card) 86%,transparent); box-shadow:0 1.25rem 4rem color-mix(in srgb,var(--vercel-bg) 48%,transparent); }
@@ -173,12 +173,12 @@
   .workspace-shell.page-layout { width:100%; max-width:52rem; height:auto; min-height:0; margin-right:auto; overflow:visible; }
   .workspace-shell.page-layout .workspace-grid { grid-template-columns:minmax(0,1fr); overflow:visible; }
   .workspace-shell.page-layout .stream-panel { overflow:visible; border-right:0; }
-  .stream-panel { min-width: 0; overflow-y: auto; border-right: 1px solid var(--vercel-border); background: rgba(12, 12, 14, .72); }
+  .stream-panel { min-width: 0; overflow-y: auto; border-right: 1px solid var(--vercel-border); background: color-mix(in srgb, var(--vercel-bg) 72%, transparent); }
   .detail-panel { min-width: 0; overflow-y: auto; padding: clamp(1.25rem, 2.5vw, 2.5rem); }
   .detail-empty { display: grid; min-height: 60vh; place-content: center; justify-items: center; gap: 1rem; color: var(--vercel-text-tertiary); font-size: .875rem; text-align: center; }
   .detail-empty-mark { display: grid; width: 3rem; height: 3rem; place-items: center; border: 1px solid var(--vercel-border); border-radius: .875rem; color: var(--vercel-text-secondary); font-size: 1.125rem; font-weight: 650; }
   .detail-loading { display: grid; max-width: 32rem; min-height: 60vh; margin: auto; align-content: center; gap: .75rem; color: var(--vercel-text-tertiary); font-size: .75rem; }
-  .detail-loading span { display: block; height: .75rem; border-radius: .3rem; background: rgba(255,255,255,.06); animation: pulse 1.4s ease-in-out infinite; }
+  .detail-loading span { display: block; height: .75rem; border-radius: .3rem; background: var(--vercel-surface-muted); animation: pulse 1.4s ease-in-out infinite; }
   .detail-loading span:nth-child(1) { width: 42%; height: 1.4rem; }
   .detail-loading span:nth-child(2) { width: 100%; }
   .detail-loading span:nth-child(3) { width: 92%; }

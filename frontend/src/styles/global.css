@@ -23,13 +23,22 @@
   --vercel-radius-lg: 12px;
   --vercel-radius-sm: 6px;
   --vercel-accent: #ffffff;
+  --vercel-accent-foreground: #0c0c0e;
+  --vercel-accent-hover: color-mix(in srgb, var(--vercel-accent) 90%, var(--vercel-bg));
   --vercel-danger: #ef4444;
   --vercel-danger-hover: #dc2626;
+  --vercel-danger-bg: color-mix(in srgb, var(--vercel-danger) 10%, transparent);
   --vercel-success: #22c55e;
   --vercel-success-bg: rgba(34, 197, 94, 0.1);
   --vercel-warning: #f59e0b;
   --vercel-warning-bg: rgba(245, 158, 11, 0.1);
   --vercel-info: #3b82f6;
+  --vercel-info-bg: color-mix(in srgb, var(--vercel-info) 10%, transparent);
+  --vercel-neutral-bg: color-mix(in srgb, var(--vercel-text) 6%, transparent);
+  --vercel-surface-raised: color-mix(in srgb, var(--vercel-card) 95%, var(--vercel-text));
+  --vercel-surface-muted: color-mix(in srgb, var(--vercel-text) 6%, transparent);
+  --vercel-backdrop: rgba(0, 0, 0, 0.6);
+  --vercel-shadow: rgba(0, 0, 0, 0.5);
   --vercel-ring: rgba(255, 255, 255, 0.2);
 }
 
@@ -84,7 +93,14 @@ a:hover {
   border-radius: var(--vercel-radius-sm);
   border: 1px solid transparent;
   cursor: pointer;
-  transition: all 0.15s ease;
+  min-height: 2.5rem;
+  box-sizing: border-box;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
   line-height: 1.5;
   white-space: nowrap;
   text-decoration: none;
@@ -93,13 +109,13 @@ a:hover {
 
 .btn-primary {
   background: var(--vercel-accent);
-  color: var(--vercel-bg);
+  color: var(--vercel-accent-foreground);
   border-color: var(--vercel-accent);
 }
 
-.btn-primary:hover {
-  background: #e5e5e5;
-  border-color: #e5e5e5;
+.btn-primary:not(:disabled):hover {
+  background: var(--vercel-accent-hover);
+  border-color: var(--vercel-accent-hover);
 }
 
 .btn-secondary {
@@ -108,7 +124,7 @@ a:hover {
   border-color: var(--vercel-border);
 }
 
-.btn-secondary:hover {
+.btn-secondary:not(:disabled):hover {
   border-color: var(--vercel-border-hover);
   background: var(--vercel-hover);
 }
@@ -119,7 +135,7 @@ a:hover {
   border-color: transparent;
 }
 
-.btn-ghost:hover {
+.btn-ghost:not(:disabled):hover {
   color: var(--vercel-text);
   background: var(--vercel-hover);
 }
@@ -130,13 +146,32 @@ a:hover {
   border-color: var(--vercel-danger);
 }
 
-.btn-danger:hover {
+.btn-danger:not(:disabled):hover {
   background: var(--vercel-danger-hover);
+  border-color: var(--vercel-danger-hover);
+}
+
+.btn-danger-ghost {
+  background: transparent;
+  color: var(--vercel-danger);
+  border-color: transparent;
+}
+
+.btn-danger-ghost:not(:disabled):hover {
+  background: var(--vercel-danger-bg);
+  border-color: color-mix(in srgb, var(--vercel-danger) 20%, transparent);
 }
 
 .btn-sm {
   padding: 0.375rem 0.75rem;
   font-size: 0.8125rem;
+  min-height: 2rem;
+}
+
+.btn-xs {
+  padding: 0.25rem 0.625rem;
+  font-size: 0.75rem;
+  min-height: 1.75rem;
 }
 
 .btn-icon {
@@ -151,15 +186,26 @@ a:hover {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.15s ease;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
 }
 
-.btn-icon:hover {
+.btn-icon:not(:disabled):hover {
   color: var(--vercel-text);
   background: var(--vercel-hover);
 }
 
-.btn:disabled {
+.btn:not(:disabled):active,
+.btn-icon:not(:disabled):active {
+  transform: translateY(1px) scale(0.98);
+}
+
+.btn:disabled,
+.btn-icon:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
@@ -202,7 +248,7 @@ textarea.input {
 
 .card-hover:hover {
   border-color: var(--vercel-border-hover);
-  background: #1a1a1d;
+  background: var(--vercel-surface-raised);
 }
 
 /* ── Badges ── */
@@ -227,17 +273,17 @@ textarea.input {
 }
 
 .badge-info {
-  background: rgba(59, 130, 246, 0.1);
+  background: var(--vercel-info-bg);
   color: var(--vercel-info);
 }
 
 .badge-danger {
-  background: rgba(239, 68, 68, 0.1);
+  background: var(--vercel-danger-bg);
   color: var(--vercel-danger);
 }
 
 .badge-neutral {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--vercel-neutral-bg);
   color: var(--vercel-text-secondary);
 }
 
@@ -291,10 +337,10 @@ textarea.input {
 
 /* ── Menu dropdown ── */
 .menu-dropdown {
-  background: #1a1a1a;
+  background: var(--vercel-surface-raised);
   border: 1px solid var(--vercel-border);
   border-radius: var(--vercel-radius);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 4px 24px var(--vercel-shadow);
   min-width: 10rem;
   overflow: hidden;
   animation: menuIn 0.15s ease;
@@ -313,7 +359,7 @@ textarea.input {
   font-size: 0.8125rem;
   color: var(--vercel-text-secondary);
   cursor: pointer;
-  transition: all 0.1s ease;
+  transition: color 0.1s ease, background-color 0.1s ease;
   border: none;
   background: none;
   width: 100%;
@@ -332,7 +378,7 @@ textarea.input {
 
 .menu-item-danger:hover {
   color: var(--vercel-danger);
-  background: rgba(239, 68, 68, 0.08);
+  background: var(--vercel-danger-bg);
 }
 
 /* ── Toast ── */
@@ -349,13 +395,13 @@ textarea.input {
 
 .toast {
   pointer-events: auto;
-  background: #1a1a1a;
+  background: var(--vercel-surface-raised);
   border: 1px solid var(--vercel-border);
   border-radius: var(--vercel-radius);
   padding: 0.75rem 1rem;
   min-width: 18rem;
   max-width: 24rem;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 4px 24px var(--vercel-shadow);
   animation: toastIn 0.2s ease;
   display: flex;
   align-items: flex-start;
@@ -425,7 +471,7 @@ textarea.input {
   width: 2rem;
   height: 2rem;
   border-radius: 9999px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--vercel-surface-muted);
   color: var(--vercel-text-secondary);
   font-size: 0.75rem;
   font-weight: 600;
@@ -443,7 +489,7 @@ textarea.input {
 .progress-bar {
   height: 4px;
   border-radius: 2px;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--vercel-surface-muted);
   overflow: hidden;
 }
 
@@ -472,7 +518,7 @@ textarea.input {
   background: none;
   cursor: pointer;
   border-bottom: 2px solid transparent;
-  transition: all 0.15s ease;
+  transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
   font-family: inherit;
 }
 
@@ -518,7 +564,7 @@ textarea.input {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--vercel-backdrop);
   backdrop-filter: blur(4px);
   animation: fadeIn 0.15s ease;
 }
@@ -531,13 +577,13 @@ textarea.input {
 /* Legacy confirm dialog panel — renamed so it doesn't clash with the
    composer full-screen .dialog-panel used by PostForm / PatchForm. */
 .dialog-panel-confirm {
-  background: #1a1a1a;
+  background: var(--vercel-surface-raised);
   border: 1px solid var(--vercel-border);
   border-radius: var(--vercel-radius-lg);
   padding: 1.5rem;
   max-width: 24rem;
   width: 90%;
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 8px 40px var(--vercel-shadow);
   animation: dialogIn 0.15s ease;
 }
 

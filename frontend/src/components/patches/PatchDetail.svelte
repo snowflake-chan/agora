@@ -1,13 +1,16 @@
 <script lang="ts">
   import {
+    ArrowLeft,
     CheckIcon,
     CircleMinusIcon,
+    ExternalLink,
+    FlagIcon,
     ThumbsDownIcon,
     ThumbsUpIcon,
   } from "@lucide/svelte";
   import { onMount } from "svelte";
-  import { createReport } from "../../lib/admin";
-  import { translator } from "../../lib/i18n";
+  import { createReport, type ReportTargetType } from "../../lib/admin";
+  import { translateError, translator } from "../../lib/i18n";
   import { requestLogin } from "../../lib/login";
   import { renderMarkdown } from "../../lib/markdown";
   import { getPatch, deletePatch, submitPatch, votePatch, listVotes, listPatchComments, createPatchComment, type Patch, type Vote } from "../../lib/patches";
@@ -38,6 +41,7 @@
   let pendingCommentDelete = $state<Comment | null>(null);
   let reportOpen = $state(false);
   let reportTarget = $state("");
+  let reportTargetType = $state<ReportTargetType>("content");
   let reportReason = $state("");
   let reporting = $state(false);
 
@@ -219,16 +223,23 @@
     }
   }
 
-  function requestReport(comment: Comment) {
+  function requestReport(
+    targetId: string,
+    targetType: ReportTargetType = "content",
+  ) {
     if (!$currentUser) {
-      requestLogin(window.location.pathname, () => openReport(comment.id));
+      requestLogin(
+        window.location.pathname,
+        () => openReport(targetId, targetType),
+      );
       return;
     }
-    openReport(comment.id);
+    openReport(targetId, targetType);
   }
 
-  function openReport(contentId: string) {
-    reportTarget = contentId;
+  function openReport(targetId: string, targetType: ReportTargetType) {
+    reportTarget = targetId;
+    reportTargetType = targetType;
     reportReason = "";
     reportOpen = true;
   }
@@ -237,16 +248,16 @@
     if (!reportReason.trim() || reporting) return;
     reporting = true;
     try {
-      await createReport(reportTarget, reportReason.trim());
+      await createReport(reportTarget, reportReason.trim(), reportTargetType);
       reportOpen = false;
       toaster.success(
         $translator("moderation.reportSuccessTitle"),
         $translator("moderation.reportSuccessDescription"),
       );
-    } catch {
+    } catch (error) {
       toaster.error(
         $translator("moderation.reportFailed"),
-        $translator("common.tryAgain"),
+        translateError(error, $translator, "common.tryAgain"),
       );
     } finally {
       reporting = false;
@@ -272,16 +283,14 @@
   <div class="empty-state">{$translator("patch.notFound")}</div>
 {:else}
   <!-- Back button -->
-  {#if !embedded}<button class="back-btn" onclick={goBack}>
-    <svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-    </svg>
+  {#if !embedded}<button class="btn btn-ghost btn-sm back-btn" onclick={goBack}>
+    <ArrowLeft size={16} strokeWidth={1.8} aria-hidden="true" />
     <span>{$translator("common.back")}</span>
   </button>{/if}
 
   <!-- Header -->
   <div class="mb-6">
-    <div class="flex items-center gap-2">
+    <div class="patch-meta-row">
       <span class="badge badge-{statusInfo.type}">
         {statusInfo.label}
       </span>
@@ -291,17 +300,26 @@
       <a
         href="https://github.com/{GITHUB_REPO}/pull/{patch.pr_number}"
         target="_blank"
-        class="text-sm transition-colors"
-        style="color: var(--vercel-text-secondary);"
-        onmouseenter={(e) => e.currentTarget.style.color = 'var(--vercel-text)'}
-        onmouseleave={(e) => e.currentTarget.style.color = 'var(--vercel-text-secondary)'}
+        rel="noreferrer"
+        class="patch-pr-link text-sm"
       >
-        PR #{patch.pr_number} ↗
+        PR #{patch.pr_number}
+        <ExternalLink size={13} strokeWidth={1.8} aria-hidden="true" />
       </a>
     </div>
     <h1 class="mt-2 text-xl font-bold" style="color: var(--vercel-text);">{patch.title}</h1>
-    <div class="mt-1">
+    <div class="patch-author-row mt-1">
       <AuthorMeta username={patch.author_username ?? $translator("common.anonymous")} userId={patch.author_id} createdAt={patch.created_at} />
+      {#if $currentUser?.id !== patch.author_id}
+        <button
+          type="button"
+          class="btn btn-ghost btn-sm patch-report-action"
+          onclick={() => requestReport(patch.id, "patch")}
+        >
+          <FlagIcon size={14} strokeWidth={1.8} aria-hidden="true" />
+          {$translator("common.report")}
+        </button>
+      {/if}
     </div>
   </div>
 
@@ -329,10 +347,10 @@
 
       <!-- Vote bar -->
       {#if totalVotes > 0}
-        <div class="flex h-2 mb-4 rounded-full overflow-hidden" style="background: rgba(255,255,255,0.06);">
+        <div class="vote-bar flex h-2 mb-4 rounded-full overflow-hidden">
           <div style="width: {forPct}%; background: var(--vercel-success); transition: width 0.3s;"></div>
           <div style="width: {againstPct}%; background: var(--vercel-danger); transition: width 0.3s;"></div>
-          <div style="width: {abstainPct}%; background: rgba(255,255,255,0.1); transition: width 0.3s;"></div>
+          <div class="vote-bar-abstain" style="width: {abstainPct}%;"></div>
         </div>
       {/if}
 
@@ -450,7 +468,9 @@
             onLike={() => toggleCommentLike(comment)}
             onDiscuss={() => beginReply(comment)}
             onShare={() => shareComment(comment)}
-            onReport={() => requestReport(comment)}
+            onReport={$currentUser?.id === comment.author_id
+              ? null
+              : () => requestReport(comment.id)}
           />
         {/each}
       </div>
@@ -545,6 +565,36 @@
 </GlassModal>
 
 <style>
+  .patch-meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .patch-report-action {
+    margin-left: auto;
+  }
+
+  .patch-author-row {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .patch-pr-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    color: var(--vercel-text-secondary);
+    transition: color 150ms ease;
+  }
+
+  .patch-pr-link:hover {
+    color: var(--vercel-text);
+  }
+
   .section-kicker {
     margin-bottom: 0.2rem;
     color: var(--vercel-text-tertiary);
@@ -559,7 +609,19 @@
     padding: 1.125rem;
     border: 1px solid var(--vercel-border-hover);
     border-radius: var(--vercel-radius-lg);
-    background: linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.018));
+    background: color-mix(in srgb, var(--vercel-accent) 3%, var(--vercel-card));
+  }
+
+  .vote-bar {
+    background: var(--vercel-surface-muted);
+  }
+
+  .vote-bar > div {
+    transition: width 0.3s ease;
+  }
+
+  .vote-bar-abstain {
+    background: var(--vercel-neutral-bg);
   }
 
   .vote-heading,
@@ -604,7 +666,7 @@
     gap: 0.4rem;
     padding: 0.6rem 0.7rem;
     border-radius: 0.4rem;
-    background: rgba(255,255,255,0.035);
+    background: var(--vercel-surface-muted);
   }
 
   .vote-total strong {
@@ -732,7 +794,7 @@
     padding: 0.75rem;
     border: 1px solid var(--vercel-border);
     border-radius: var(--vercel-radius);
-    background: rgba(255,255,255,0.025);
+    background: var(--vercel-surface-muted);
   }
 
   .replying-label {
@@ -773,24 +835,6 @@
   }
 
   .back-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.375rem;
-    padding: 0.375rem 0.75rem;
     margin-bottom: 1rem;
-    font-size: 0.8125rem;
-    font-weight: 500;
-    color: var(--vercel-text-secondary);
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.06);
-    border-radius: 6px;
-    cursor: pointer;
-    transition: all 0.2s var(--apple-ease);
-  }
-
-  .back-btn:hover {
-    color: var(--vercel-text);
-    background: rgba(255,255,255,0.08);
-    border-color: rgba(255,255,255,0.12);
   }
 </style>

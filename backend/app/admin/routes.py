@@ -40,24 +40,61 @@ async def super_admin_required(user: User = Depends(current_user)):
 
 @router.post("/reports")
 async def create_report(
-    content_id: UUID,
+    content_id: UUID | None = None,
+    patch_id: UUID | None = None,
     reason: str = Query(..., min_length=1, max_length=500),
     user: User = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ):
     await check_not_banned(user.id, session)
-    c = (await session.execute(select(ContentModel).where(ContentModel.id == content_id))).scalar_one_or_none()
-    if not c:
-        raise HTTPException(404, detail="CONTENT_NOT_FOUND")
+    if content_id is None and patch_id is None:
+        raise HTTPException(422, detail="REPORT_TARGET_REQUIRED")
+    if content_id is not None and patch_id is not None:
+        raise HTTPException(422, detail="REPORT_TARGET_AMBIGUOUS")
+
+    normalized_reason = reason.strip()
+    if not normalized_reason:
+        raise HTTPException(422, detail="REPORT_REASON_REQUIRED")
+
+    if content_id is not None:
+        target_exists = await session.scalar(
+            select(ContentModel.id)
+            .where(ContentModel.id == content_id)
+            .with_for_update()
+        )
+        target_filter = Report.content_id == content_id
+        not_found_code = "CONTENT_NOT_FOUND"
+    else:
+        target_exists = await session.scalar(
+            select(PatchModel.id)
+            .where(PatchModel.id == patch_id)
+            .with_for_update()
+        )
+        target_filter = Report.patch_id == patch_id
+        not_found_code = "PATCH_NOT_FOUND"
+
+    if target_exists is None:
+        raise HTTPException(404, detail=not_found_code)
+
     dup = (await session.execute(
-        select(Report).where(Report.content_id == content_id, Report.reporter_id == user.id)
+        select(Report).where(target_filter, Report.reporter_id == user.id)
     )).scalar_one_or_none()
     if dup:
         raise HTTPException(409, detail="REPORT_ALREADY_EXISTS")
-    r = Report(content_id=content_id, reporter_id=user.id, reason=reason)
+    r = Report(
+        content_id=content_id,
+        patch_id=patch_id,
+        reporter_id=user.id,
+        reason=normalized_reason,
+    )
     session.add(r)
     await session.commit()
-    return {"ok": True}
+    return {
+        "ok": True,
+        "id": r.id,
+        "content_id": r.content_id,
+        "patch_id": r.patch_id,
+    }
 
 
 @router.get("/reports")
@@ -70,31 +107,72 @@ async def list_reports(
     if status:
         q = q.where(Report.status == status)
     rows = (await session.execute(q)).scalars().all()
-    # Count how many reports for each content
-    cids = [r.content_id for r in rows if r.content_id]
-    report_counts: dict = {}
-    if cids:
-        from sqlalchemy import and_
-        cnt_rows = (await session.execute(
+    content_ids = [r.content_id for r in rows if r.content_id]
+    patch_ids = [r.patch_id for r in rows if r.patch_id]
+    report_counts: dict[tuple[str, str], int] = {}
+    if content_ids:
+        count_rows = (await session.execute(
             select(Report.content_id, func.count(Report.id))
-            .where(Report.content_id.in_(cids))
+            .where(Report.content_id.in_(content_ids))
             .group_by(Report.content_id)
         )).all()
-        report_counts = {str(k): v for k, v in cnt_rows}
-
-    return [
-        dict(
-            id=r.id, content_id=r.content_id,
-            content_title=r.content.title if r.content else "(内容已删除)",
-            content_body=(r.content.content[:200] if r.content and r.content.content else ""),
-            content_author=r.content.author.username if r.content and r.content.author else "(已删除)",
-            content_author_id=str(r.content.author_id) if r.content else "",
-            reporter_username=r.reporter.username if r.reporter else "", reason=r.reason,
-            status=r.status, created_at=r.created_at.isoformat(),
-            report_count=report_counts.get(str(r.content_id) if r.content_id else "", 1),
+        report_counts.update(
+            {("content", str(target_id)): count for target_id, count in count_rows}
         )
-        for r in rows
-    ]
+    if patch_ids:
+        count_rows = (await session.execute(
+            select(Report.patch_id, func.count(Report.id))
+            .where(Report.patch_id.in_(patch_ids))
+            .group_by(Report.patch_id)
+        )).all()
+        report_counts.update(
+            {("patch", str(target_id)): count for target_id, count in count_rows}
+        )
+
+    response = []
+    for report in rows:
+        if report.content_id is not None:
+            target_type = "content"
+            target_id = report.content_id
+            target = report.content
+            title = target.title if target else "(内容已删除)"
+            body = target.content[:200] if target and target.content else ""
+            author = target.author if target else None
+        elif report.patch_id is not None:
+            target_type = "patch"
+            target_id = report.patch_id
+            target = report.patch
+            title = target.title if target else "(变更提案已删除)"
+            body = target.content[:200] if target and target.content else ""
+            author = target.author if target else None
+        else:
+            target_type = "deleted"
+            target_id = None
+            title = "(目标已删除)"
+            body = ""
+            author = None
+
+        response.append(dict(
+            id=report.id,
+            target_type=target_type,
+            target_id=target_id,
+            content_id=report.content_id,
+            patch_id=report.patch_id,
+            content_title=title,
+            content_body=body,
+            content_author=author.username if author else "(已删除)",
+            content_author_id=str(author.id) if author else "",
+            patch_title=report.patch.title if report.patch else None,
+            reporter_username=report.reporter.username if report.reporter else "",
+            reason=report.reason,
+            status=report.status,
+            created_at=report.created_at.isoformat(),
+            report_count=report_counts.get(
+                (target_type, str(target_id)) if target_id else ("deleted", ""),
+                1,
+            ),
+        ))
+    return response
 
 
 @router.post("/reports/{report_id}/resolve")
@@ -104,26 +182,56 @@ async def resolve_report(
     user: User = Depends(admin_required),
     session: AsyncSession = Depends(get_session),
 ):
-    if action not in ("resolved", "dismissed", "delete_post"):
+    if action not in ("resolved", "dismissed", "delete_post", "delete_patch"):
         raise HTTPException(400, detail="INVALID_REPORT_ACTION")
+    if action in ("delete_post", "delete_patch") and user.role != "super_admin":
+        raise HTTPException(403, detail="FORBIDDEN")
+
     r = (await session.execute(select(Report).where(Report.id == report_id))).scalar_one_or_none()
     if not r:
-        raise HTTPException(404)
+        raise HTTPException(404, detail="REPORT_NOT_FOUND")
+    if r.content_id is not None and r.patch_id is not None:
+        raise HTTPException(409, detail="REPORT_TARGET_INVALID")
+    if action == "delete_post" and r.patch_id is not None:
+        raise HTTPException(400, detail="INVALID_REPORT_ACTION")
+    if action == "delete_patch" and r.content_id is not None:
+        raise HTTPException(400, detail="INVALID_REPORT_ACTION")
 
-    content = (await session.execute(select(ContentModel).where(ContentModel.id == r.content_id))).scalar_one_or_none()
-
-    if action == "delete_post" and content:
-        await session.delete(content)
+    content_id = r.content_id
+    patch_id = r.patch_id
     r.status = "dismissed" if action == "dismissed" else "resolved"
 
-    # 批量处理：将该内容的所有其他待处理举报也标记为已处理
     others = []
-    if r.content_id:
+    if content_id is not None or patch_id is not None:
+        target_filter = (
+            Report.content_id == content_id
+            if content_id is not None
+            else Report.patch_id == patch_id
+        )
         others = (await session.execute(
-            select(Report).where(Report.content_id == r.content_id, Report.status == "pending", Report.id != r.id)
+            select(Report).where(
+                target_filter,
+                Report.status == "pending",
+                Report.id != r.id,
+            )
         )).scalars().all()
         for other in others:
             other.status = "resolved"
+
+    # Persist report state before a target delete can SET NULL the foreign keys.
+    await session.flush()
+    if action == "delete_post" and content_id is not None:
+        content = await session.scalar(
+            select(ContentModel).where(ContentModel.id == content_id)
+        )
+        if content:
+            await session.delete(content)
+    elif action == "delete_patch" and patch_id is not None:
+        patch = await session.scalar(
+            select(PatchModel).where(PatchModel.id == patch_id)
+        )
+        if patch:
+            await session.delete(patch)
 
     await session.commit()
     return {"ok": True, "also_resolved": len(others)}

@@ -117,14 +117,16 @@
     </div>
 
     {#if $currentUser?.id === user.id}
-      <a class="edit-profile-button" href="/my">
+      <a class="btn btn-secondary btn-sm edit-profile-button" href="/my">
         <PenLineIcon size={14} strokeWidth={1.8} />
         {$translator("profile.edit")}
       </a>
     {:else}
       <button
         class:following={user.is_following}
-        class="follow-button"
+        class:btn-primary={!user.is_following}
+        class:btn-secondary={user.is_following}
+        class="btn btn-sm follow-button"
         disabled={followingBusy}
         onclick={toggleFollow}
       >
@@ -221,7 +223,7 @@
   .profile-avatar {
     display: grid; width: 3.75rem; height: 3.75rem; place-items: center;
     border: 1px solid var(--vercel-border-hover); border-radius: 1rem;
-    background: rgba(255,255,255,.06); color: var(--vercel-text);
+    background: var(--vercel-surface-muted); color: var(--vercel-text);
     font-size: 1.25rem; font-weight: 650;
   }
   .profile-kicker {
@@ -240,27 +242,16 @@
   }
   .profile-stats strong { color: var(--vercel-text); font-variant-numeric: tabular-nums; }
   .follow-button {
-    align-self: center; min-width: 5.5rem; padding: .5rem .9rem;
-    border: 1px solid var(--vercel-text); border-radius: .45rem;
-    background: var(--vercel-text); color: var(--vercel-bg);
-    font-size: .8rem; font-weight: 600; transition: all 180ms ease;
+    align-self: center; min-width: 5.5rem;
   }
   .follow-button.following {
-    border-color: var(--vercel-border-hover); background: transparent;
+    background: transparent;
     color: var(--vercel-text-secondary);
+    border-color: var(--vercel-border-hover);
   }
-  .follow-button:hover:not(:disabled) { transform: translateY(-1px); }
   .edit-profile-button {
-    display: inline-flex; align-self: center; min-width: 5.5rem; padding: .5rem .9rem;
-    align-items: center; justify-content: center; gap: .4rem;
-    border: 1px solid var(--vercel-border-hover); border-radius: .45rem;
-    color: var(--vercel-text-secondary); background: transparent;
-    font-size: .8rem; font-weight: 600;
-    transition: color 180ms ease, border-color 180ms ease, background 180ms ease, transform 180ms ease;
-  }
-  .edit-profile-button:hover {
-    transform: translateY(-1px); border-color: var(--vercel-text-secondary);
-    color: var(--vercel-text); background: var(--vercel-hover);
+    align-self: center;
+    min-width: 5.5rem;
   }
   .content-filters {
     display: flex; gap: 1.25rem; overflow-x: auto;
@@ -294,7 +285,7 @@
   .context-root strong { overflow: hidden; color: var(--vercel-text-secondary); text-overflow: ellipsis; white-space: nowrap; }
   .context-reply {
     flex-direction: column; padding: .5rem .65rem; border-left: 2px solid var(--vercel-border-hover);
-    background: rgba(255,255,255,.02); line-height: 1.45;
+    background: var(--vercel-surface-muted); line-height: 1.45;
   }
   .context-reply span:last-child {
     display: -webkit-box; overflow: hidden; color: var(--vercel-text-secondary);
@@ -311,7 +302,7 @@
   .delete-item { color: var(--vercel-text-tertiary); font-size: .7rem; }
   .delete-item:hover { color: var(--vercel-danger); }
   .profile-skeleton { display: grid; gap: .75rem; padding: 2rem 0; }
-  .profile-skeleton div { height: 5rem; border-radius: .5rem; background: rgba(255,255,255,.035); animation: pulse 1.2s ease-in-out infinite alternate; }
+  .profile-skeleton div { height: 5rem; border-radius: .5rem; background: var(--vercel-surface-muted); animation: pulse 1.2s ease-in-out infinite alternate; }
   @keyframes pulse { to { opacity: .45; } }
   @media (max-width: 36rem) {
     .profile-header { grid-template-columns: 1fr; }

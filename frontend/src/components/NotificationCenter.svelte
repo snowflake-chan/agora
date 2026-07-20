@@ -154,7 +154,7 @@
     border-bottom: 1px solid var(--vercel-border); text-align: left;
     transition: background 150ms ease;
   }
-  .notification-list button:hover { background: rgba(255,255,255,.025); }
+  .notification-list button:hover { background: var(--vercel-hover); }
   .notification-dot {
     width: .35rem; height: .35rem; margin-top: .35rem; border-radius: 999px;
     background: transparent;

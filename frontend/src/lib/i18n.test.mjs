@@ -32,6 +32,20 @@ describe("translation catalog", () => {
     }
   });
 
+  it("ships complete localized copy for the About page", () => {
+    const aboutKeys = Object.keys(messages.en).filter(
+      (key) => key === "nav.about" || key.startsWith("about."),
+    );
+
+    assert.ok(aboutKeys.length > 20);
+    for (const locale of locales) {
+      for (const key of aboutKeys) {
+        assert.equal(typeof messages[locale][key], "string", `${locale}.${key}`);
+        assert.notEqual(messages[locale][key].trim(), "", `${locale}.${key}`);
+      }
+    }
+  });
+
   it("localizes system notifications without exposing stored source copy", () => {
     const translate = (key) => messages.ja[key] ?? messages.en[key] ?? key;
     const localized = localizeNotification(
