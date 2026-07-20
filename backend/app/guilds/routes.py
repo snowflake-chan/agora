@@ -17,20 +17,9 @@ from app.schemas.guild import (
     UserGuildBadge,
 )
 from app.users.deps import current_user
+from app.utils import calc_guild_level
 
 router = APIRouter()
-
-
-def _calc_level(member_count: int) -> int:
-    if member_count >= 50:
-        return 5
-    if member_count >= 31:
-        return 4
-    if member_count >= 16:
-        return 3
-    if member_count >= 6:
-        return 2
-    return 1
 
 
 async def _guild_to_read(g: Guild, session: AsyncSession) -> GuildRead:
@@ -47,7 +36,7 @@ async def _guild_to_read(g: Guild, session: AsyncSession) -> GuildRead:
         president_id=g.president_id,
         president_username=g.president.username if g.president else "",
         member_count=mc,
-        level=g.level or _calc_level(mc),
+        level=g.level or calc_guild_level(mc),
         created_at=g.created_at,
     )
 
@@ -288,7 +277,7 @@ async def promote_member(
                 GuildMember.guild_id == guild_id, GuildMember.role == "vice_president", GuildMember.status == "approved"
             )
         )).scalar() or 0
-        max_vp = _MAX_VP.get(_calc_level(mc), 1)
+        max_vp = _MAX_VP.get(calc_guild_level(mc), 1)
         if vp_count >= max_vp:
             raise HTTPException(400, detail=f"MAX_VP_{max_vp}")
 
@@ -549,6 +538,6 @@ async def my_guild(
     return UserGuildBadge(
         guild_id=m.guild_id,
         guild_name=m.guild.name,
-        guild_level=_calc_level(mc),
+        guild_level=calc_guild_level(mc),
         role=m.role,
     )

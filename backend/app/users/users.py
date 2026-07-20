@@ -14,6 +14,7 @@ from app.schemas.patch import PatchRead
 from app.db.models.guild import GuildMember as GuildMemberModel
 from app.db.models.moderation import BanRecord
 from app.schemas.guild import UserGuildBadge
+from app.utils import calc_guild_level
 from app.schemas.user import UserPublic, UserRead, UserUpdate
 from app.db.models.user import User, get_user_db
 from app.deps import check_not_banned
@@ -110,6 +111,10 @@ async def list_user_posts(
     session: AsyncSession = Depends(get_session),
 ):
     """List posts by a specific user."""
+    user = await session.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="USER_NOT_FOUND")
+
     offset = (page - 1) * page_size
 
     stmt = (
@@ -161,6 +166,10 @@ async def list_user_patches(
     session: AsyncSession = Depends(get_session),
 ):
     """List patches by a specific user."""
+    user = await session.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="USER_NOT_FOUND")
+
     from app.db.models.vote import Vote as VoteModel
 
     offset = (page - 1) * page_size
@@ -212,14 +221,6 @@ async def list_user_patches(
     ]
 
 
-def _calc_level(member_count: int) -> int:
-    if member_count >= 50: return 5
-    if member_count >= 31: return 4
-    if member_count >= 16: return 3
-    if member_count >= 6: return 2
-    return 1
-
-
 @router.get("/{user_id}/guild", response_model=UserGuildBadge | None)
 async def get_user_guild(
     user_id: UUID,
@@ -237,7 +238,7 @@ async def get_user_guild(
     return UserGuildBadge(
         guild_id=m.guild_id,
         guild_name=m.guild.name,
-        guild_level=_calc_level(mc),
+        guild_level=calc_guild_level(mc),
         role=m.role,
     )
 

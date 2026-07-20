@@ -80,8 +80,10 @@
             class="btn-icon"
             style="width: 1.5rem; height: 1.5rem;"
             onclick={(e) => { e.stopPropagation(); menuOpen = !menuOpen; }}
+            aria-label="更多操作"
+            aria-expanded={menuOpen}
           >
-            <span class="text-sm leading-none" style="color: var(--vercel-text-tertiary);">⋮</span>
+            <span class="text-sm leading-none" style="color: var(--vercel-text-tertiary);" aria-hidden="true">⋮</span>
           </button>
 
           {#if menuOpen}

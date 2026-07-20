@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import GlassModal from "../GlassModal.svelte";
   import ConfirmDialog from "../ConfirmDialog.svelte";
   import TimelineItem from "./TimelineItem.svelte";
@@ -19,7 +19,7 @@
   let submitting = $state(false);
   let showDeleteDialog = $state(false);
   let pendingDelete = $state<"post" | "comment" | null>(null);
-  let pendingDeleteIndex = $state(0);
+  let pendingDeleteId = $state<string | null>(null);
   let reportModal = $state(false);
   let reportTarget = $state("");
   let reportReason = $state("");
@@ -61,26 +61,25 @@
 
   function handleReplyClick(c: Comment) {
     replyingTo = c; replyText = "";
-    setTimeout(() => document.querySelector<HTMLTextAreaElement>("#reply-textarea")?.focus(), 0);
+    tick().then(() => document.querySelector<HTMLTextAreaElement>("#reply-textarea")?.focus());
   }
 
   function handleDelete() { pendingDelete = "post"; showDeleteDialog = true; }
 
-  function handleDeleteComment(i: number) { pendingDelete = "comment"; pendingDeleteIndex = i; showDeleteDialog = true; }
+  function handleDeleteComment(commentId: string) { pendingDelete = "comment"; pendingDeleteId = commentId; showDeleteDialog = true; }
 
   async function confirmDelete() {
     if (pendingDelete === "post") {
       try { await deleteContent(postId); window.location.href = "/"; }
       catch { toaster.error("删除失败"); }
-    } else if (pendingDelete === "comment") {
-      const comment = comments[pendingDeleteIndex - 1];
-      if (!comment) return;
+    } else if (pendingDelete === "comment" && pendingDeleteId) {
       try {
-        await deleteContent(comment.id);
-        comments = comments.filter((c) => c.id !== comment.id);
+        await deleteContent(pendingDeleteId);
+        comments = comments.filter((c) => c.id !== pendingDeleteId);
         if (post) post.reply_count--;
       } catch { toaster.error("删除失败"); }
     }
+    showDeleteDialog = false;
   }
 
   async function handleSubmitReply() {
@@ -134,7 +133,7 @@
           title={item.title} tags={item.tags}
           replyingToUsername={item.replyingToUsername}
           onReply={$currentUser && i > 0 ? () => handleReplyClick(comments[i - 1]) : null}
-          onDelete={i === 0 ? ($currentUser?.id === post?.author_id ? handleDelete : null) : ($currentUser?.id === comments[i - 1]?.author_id ? () => handleDeleteComment(i) : null)}
+          onDelete={i === 0 ? ($currentUser?.id === post?.author_id ? handleDelete : null) : ($currentUser?.id === comments[i - 1]?.author_id ? () => handleDeleteComment(comments[i - 1].id) : null)}
           onReport={$currentUser ? () => openReportModal(item.key) : null}
         />
       {/each}
@@ -146,10 +145,10 @@
       {#if replyingTo}
         <div class="mb-2 flex items-center gap-2 text-xs" style="color: var(--vercel-text-tertiary);">
           <span>回复 <span class="font-medium" style="color: var(--vercel-text);">@{replyingTo.author_username}</span></span>
-          <button class="transition-colors" style="color: var(--vercel-text-tertiary);" onmouseenter={(e) => e.currentTarget.style.color = 'var(--vercel-text)'} onmouseleave={(e) => e.currentTarget.style.color = 'var(--vercel-text-tertiary)'} onclick={cancelReply}>取消</button>
+          <button class="cancel-reply-btn" onclick={cancelReply}>取消</button>
         </div>
       {/if}
-      <textarea id="reply-textarea" bind:value={replyText} class="input" style="min-height: 80px; resize: vertical;" placeholder="写下你的回复..."></textarea>
+      <textarea id="reply-textarea" bind:value={replyText} class="input" style="min-height: 80px; resize: vertical;" placeholder="写下你的回复..." aria-label="回复内容"></textarea>
       <div class="mt-2 flex justify-end">
         <button class="btn btn-primary btn-sm" onclick={handleSubmitReply} disabled={submitting || !replyText.trim()}>{submitting ? "发送中..." : "回复"}</button>
       </div>
@@ -178,4 +177,6 @@
 <style>
   .back-btn { display: inline-flex; align-items: center; gap: 0.375rem; padding: 0.375rem 0.75rem; margin-bottom: 1rem; font-size: 0.8125rem; font-weight: 500; color: var(--vercel-text-secondary); background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); border-radius: 6px; cursor: pointer; transition: all 0.2s; }
   .back-btn:hover { color: var(--vercel-text); background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.12); }
+  .cancel-reply-btn { color: var(--vercel-text-tertiary); transition: color .18s ease; }
+  .cancel-reply-btn:hover { color: var(--vercel-text); }
 </style>

@@ -37,9 +37,8 @@
     } catch {}
   }
 
-  onMount(() => initAuth());
-
   onMount(async () => {
+    initAuth();
     await checkBanTypes();
     let initial: typeof activeKey = "posts";
     const path = window.location.pathname;
@@ -59,7 +58,8 @@
     }
     activeKey = initial;
     if (initial !== "user") mainView.set(initial as "posts" | "patches");
-    requestAnimationFrame(updateHighlight);
+    await tick();
+    await updateHighlight();
   });
 
   // Slide the highlight pill to the active slot with an Apple-style curve.
@@ -174,6 +174,7 @@
       fill="none"
       stroke="currentColor"
       viewBox="0 0 24 24"
+      aria-hidden="true"
       ><path
         stroke-linecap="round"
         stroke-linejoin="round"

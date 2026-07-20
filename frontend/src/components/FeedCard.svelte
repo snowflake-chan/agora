@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onDestroy, onMount } from "svelte";
   import type { FeedItem } from "../lib/posts";
   import { stripMarkdown } from "../lib/utils";
   import AuthorMeta from "./AuthorMeta.svelte";
@@ -31,7 +31,7 @@
     const diff = end - Date.now();
     if (diff <= 0) { countdown = "已结束"; countdownUrgent = true; return; }
     const sec = Math.floor(diff / 1000), min = Math.floor(sec / 60), hour = Math.floor(min / 60), day = Math.floor(hour / 24);
-    if (day > 0) { countdown = `剩余 ${day} 天 ${hour % 24} 时`; countdownUrgent = day < 1; }
+    if (day > 0) { countdown = `剩余 ${day} 天 ${hour % 24} 时`; countdownUrgent = false; }
     else if (hour > 0) { countdown = `剩余 ${hour} 时 ${min % 60} 分`; countdownUrgent = hour < 2; }
     else if (min > 0) { countdown = `剩余 ${min} 分`; countdownUrgent = true; }
     else { countdown = `剩余 ${sec} 秒`; countdownUrgent = true; }
@@ -44,14 +44,12 @@
     }
   });
 
-  $effect(() => () => { if (interval) clearInterval(interval); });
+  onDestroy(() => { if (interval) { clearInterval(interval); interval = null; } });
 </script>
 
 <article
   class="feed-card relative px-4 py-4 border-b transition-colors"
   style="border-color: var(--vercel-border);"
-  onmouseenter={(e) => e.currentTarget.style.background = '#141417'}
-  onmouseleave={(e) => e.currentTarget.style.background = ''}
 >
   {#if item.type === "patch"}
     <div class="flex items-center gap-2">
@@ -111,6 +109,10 @@
 </article>
 
 <style>
+  .feed-card:hover {
+    background: #141417;
+  }
+
   .card-link::after {
     content: "";
     position: absolute;
