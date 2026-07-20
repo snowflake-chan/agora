@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { translator } from "../../lib/i18n";
+  import { requestLogin } from "../../lib/login";
   import { renderMarkdown } from "../../lib/markdown";
   import { getPatch, deletePatch, submitPatch, votePatch, listVotes, listPatchComments, createPatchComment, type Patch, type Vote } from "../../lib/patches";
   import { deleteContent, likePost, unlikePost, type Comment } from "../../lib/posts";
@@ -146,7 +147,7 @@
 
   function beginReply(comment: Comment) {
     if (!$currentUser) {
-      window.location.href = `/login?returnTo=${encodeURIComponent(window.location.pathname)}`;
+      requestLogin(window.location.pathname, () => beginReply(comment));
       return;
     }
     replyingTo = comment;
@@ -175,7 +176,7 @@
 
   async function toggleCommentLike(comment: Comment) {
     if (!$currentUser) {
-      window.location.href = `/login?returnTo=${encodeURIComponent(window.location.pathname)}`;
+      requestLogin(window.location.pathname, () => void toggleCommentLike(comment));
       return;
     }
     likingId = comment.id;

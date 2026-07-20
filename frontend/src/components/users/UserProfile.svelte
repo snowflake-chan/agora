@@ -1,6 +1,8 @@
 <script lang="ts">
+  import { PenLineIcon } from "@lucide/svelte";
   import { onMount } from "svelte";
   import { translator } from "../../lib/i18n";
+  import { requestLogin } from "../../lib/login";
   import {
     followUser,
     getUser,
@@ -53,7 +55,7 @@
   async function toggleFollow() {
     if (!user) return;
     if (!$currentUser) {
-      window.location.href = `/login?returnTo=${encodeURIComponent(window.location.pathname)}`;
+      requestLogin(window.location.pathname, toggleFollow);
       return;
     }
     followingBusy = true;
@@ -114,7 +116,12 @@
       </div>
     </div>
 
-    {#if $currentUser?.id !== user.id}
+    {#if $currentUser?.id === user.id}
+      <a class="edit-profile-button" href="/my">
+        <PenLineIcon size={14} strokeWidth={1.8} />
+        {$translator("profile.edit")}
+      </a>
+    {:else}
       <button
         class:following={user.is_following}
         class="follow-button"
@@ -221,7 +228,7 @@
     color: var(--vercel-text-tertiary); font-size: .625rem; font-weight: 650;
     letter-spacing: .14em; text-transform: uppercase;
   }
-  .profile-header h1 { font-size: 1.5rem; font-weight: 650; letter-spacing: -.04em; }
+  .profile-header h1 { font-size: 1.5rem; font-weight: 650; letter-spacing: 0; }
   .profile-handle { color: var(--vercel-text-tertiary); font-size: .8rem; }
   .profile-bio {
     grid-column: 1 / -1; max-width: 42rem; color: var(--vercel-text-secondary);
@@ -243,6 +250,18 @@
     color: var(--vercel-text-secondary);
   }
   .follow-button:hover:not(:disabled) { transform: translateY(-1px); }
+  .edit-profile-button {
+    display: inline-flex; align-self: center; min-width: 5.5rem; padding: .5rem .9rem;
+    align-items: center; justify-content: center; gap: .4rem;
+    border: 1px solid var(--vercel-border-hover); border-radius: .45rem;
+    color: var(--vercel-text-secondary); background: transparent;
+    font-size: .8rem; font-weight: 600;
+    transition: color 180ms ease, border-color 180ms ease, background 180ms ease, transform 180ms ease;
+  }
+  .edit-profile-button:hover {
+    transform: translateY(-1px); border-color: var(--vercel-text-secondary);
+    color: var(--vercel-text); background: var(--vercel-hover);
+  }
   .content-filters {
     display: flex; gap: 1.25rem; overflow-x: auto;
     border-bottom: 1px solid var(--vercel-border);
@@ -296,7 +315,7 @@
   @keyframes pulse { to { opacity: .45; } }
   @media (max-width: 36rem) {
     .profile-header { grid-template-columns: 1fr; }
-    .follow-button { justify-self: start; }
+    .follow-button, .edit-profile-button { justify-self: start; }
     .profile-item { grid-template-columns: 1fr; }
     .item-rail { grid-row: auto; flex-direction: row; justify-content: space-between; }
   }

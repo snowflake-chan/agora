@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { translator } from "../../lib/i18n";
+  import { requestLogin } from "../../lib/login";
   import { getPost, listComments, createComment, deleteContent, likePost, unlikePost, type Post, type Comment } from "../../lib/posts";
   import { toaster } from "../../stores/toaster";
   import { currentUser } from "../../stores/auth";
@@ -50,7 +51,7 @@
 
   function focusCommentReply(comment: Comment) {
     if (!$currentUser) {
-      window.location.href = `/login?returnTo=${encodeURIComponent(window.location.pathname)}`;
+      requestLogin(window.location.pathname, () => handleReplyClick(comment));
       return;
     }
     handleReplyClick(comment);
@@ -58,7 +59,7 @@
 
   function focusReply() {
     if (!$currentUser) {
-      window.location.href = `/login?returnTo=${encodeURIComponent(window.location.pathname)}`;
+      requestLogin(window.location.pathname, focusReply);
       return;
     }
     document.querySelector<HTMLTextAreaElement>("#reply-textarea")?.focus();
@@ -66,7 +67,7 @@
 
   async function handleContentLike(id: string, liked: boolean) {
     if (!$currentUser) {
-      window.location.href = `/login?returnTo=${encodeURIComponent(window.location.pathname)}`;
+      requestLogin(window.location.pathname, () => void handleContentLike(id, liked));
       return;
     }
     likingId = id;

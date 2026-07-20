@@ -29,7 +29,7 @@ import SettingsButton from "./SettingsButton.svelte";
     top: 0;
     left: 0;
     right: 0;
-    z-index: 50;
+    z-index: var(--z-header);
     border-bottom: 1px solid rgba(255,255,255,0.05);
     background: rgba(12, 12, 14, 0.35);
     backdrop-filter: blur(28px) saturate(180%);
@@ -45,7 +45,7 @@ import SettingsButton from "./SettingsButton.svelte";
     position: fixed;
     bottom: 8px;
     left: 50%;
-    z-index: 9998;
+    z-index: var(--z-nav);
     transform: translateX(-50%);
     background: rgba(18, 18, 22, 0.45);
     border: 1px solid rgba(255,255,255,0.08);
@@ -64,7 +64,7 @@ import SettingsButton from "./SettingsButton.svelte";
     height: 2.25rem;
     border-radius: 9999px;
     color: #fff;
-    transition: all 0.15s ease;
+    transition: color 0.15s ease, background 0.15s ease, transform 0.15s ease;
     cursor: pointer;
     text-decoration: none;
     background: transparent;
@@ -75,6 +75,10 @@ import SettingsButton from "./SettingsButton.svelte";
   .pill-item:hover {
     color: #fff;
     background: rgba(255, 255, 255, 0.12);
+  }
+
+  .pill-item:active {
+    transform: scale(0.94);
   }
 
   .pill-tooltip {
@@ -92,7 +96,7 @@ import SettingsButton from "./SettingsButton.svelte";
     white-space: nowrap;
     pointer-events: none;
     opacity: 0;
-    transition: all 0.15s ease;
+    transition: opacity 0.15s ease, transform 0.15s ease;
   }
 
   .pill-item:hover .pill-tooltip {

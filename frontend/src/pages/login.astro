@@ -1,16 +1,72 @@
 ---
 import Layout from "../layouts/Layout.astro";
-import LoginForm from "../components/auth/LoginForm.svelte";
-import LocalizedText from "../components/LocalizedText.svelte";
+import LoginDialog from "../components/auth/LoginDialog.svelte";
+
 const returnTo = Astro.url.searchParams.get("returnTo") ?? "/";
 ---
 
 <Layout title="Sign in · Agora" titleKey="auth.signIn">
-  <main class="mx-auto flex min-h-dvh max-w-sm flex-col items-center justify-center px-4">
-    <h1 class="mb-1 text-3xl font-bold tracking-tight" style="color: var(--vercel-text);">Agora</h1>
-    <p class="mb-8 text-sm" style="color: var(--vercel-text-tertiary);">
-      <LocalizedText messageKey="auth.signInDescription" client:load />
-    </p>
-    <div class="card w-full p-6"><LoginForm {returnTo} client:load /></div>
+  <main class="auth-route">
+    <a class="route-brand" href="/" aria-label="Agora">
+      <img src="/favicon.svg" alt="" width="22" height="22" />
+      <span>Agora</span>
+    </a>
+    <div class="route-workspace" aria-hidden="true">
+      <span></span><span></span><span></span>
+    </div>
+    <LoginDialog open {returnTo} standalone client:load />
   </main>
 </Layout>
+
+<style>
+  .auth-route {
+    position: relative;
+    min-height: 100dvh;
+    overflow: hidden;
+  }
+
+  .route-brand {
+    position: fixed;
+    top: 1rem;
+    left: 1rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    color: var(--vercel-text);
+    font-size: 1rem;
+    font-weight: 650;
+  }
+
+  .route-workspace {
+    position: absolute;
+    inset: 16% 8%;
+    display: grid;
+    grid-template-columns: minmax(12rem, 22rem) 1fr;
+    grid-template-rows: repeat(3, 1fr);
+    overflow: hidden;
+    border: 1px solid var(--vercel-border);
+    border-radius: var(--vercel-radius-lg);
+    opacity: 0.42;
+  }
+
+  .route-workspace span {
+    border-right: 1px solid var(--vercel-border);
+    border-bottom: 1px solid var(--vercel-border);
+    background: var(--vercel-surface);
+  }
+
+  .route-workspace span:first-child {
+    grid-row: 1 / -1;
+  }
+
+  @media (max-width: 42rem) {
+    .route-workspace {
+      inset: 12% 1rem;
+      grid-template-columns: 1fr;
+    }
+
+    .route-workspace span:first-child {
+      grid-row: auto;
+    }
+  }
+</style>

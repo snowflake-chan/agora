@@ -23,10 +23,7 @@
 </script>
 
 <article
-  class="patch-card relative px-4 py-4 border-b transition-colors"
-  style="border-color: var(--vercel-border);"
-  onmouseenter={(e) => e.currentTarget.style.background = '#141417'}
-  onmouseleave={(e) => e.currentTarget.style.background = ''}
+  class="patch-card"
 >
   <div class="flex items-start gap-3">
     <div class="min-w-0 flex-1">
@@ -56,6 +53,22 @@
 </article>
 
 <style>
+  .patch-card {
+    position: relative;
+    padding: 1rem;
+    border-bottom: 1px solid var(--vercel-border);
+    transition: background 180ms ease, box-shadow 180ms ease;
+  }
+
+  .patch-card:last-child {
+    border-bottom: 0;
+  }
+
+  .patch-card:hover {
+    background: var(--vercel-hover);
+    box-shadow: inset 2px 0 var(--vercel-border-hover);
+  }
+
   .card-link::after {
     content: "";
     position: absolute;

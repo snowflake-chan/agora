@@ -4,6 +4,7 @@
   import { Clock3Icon, FlameIcon, SparklesIcon, UsersIcon } from "@lucide/svelte";
   import { appleEase } from "../lib/motion";
   import { translator } from "../lib/i18n";
+  import { requestLogin } from "../lib/login";
   import { homeLayout, initPreferences } from "../lib/preferences";
   import { initAuth, currentUser } from "../stores/auth";
   import { mainView } from "../stores/nav";
@@ -57,7 +58,7 @@
     if (next === "following") {
       const user = authReady ? $currentUser : await initAuth();
       if (!user) {
-        window.location.href = `/login?returnTo=${encodeURIComponent("/")}`;
+        requestLogin("/", () => selectMode(next));
         return;
       }
     }
@@ -78,71 +79,73 @@
         </div>
         <p class="view-description">{$translator(modeKeys[feedMode].description)}</p>
       </div>
-      <div class="feed-toolbar">
-        <div class="feed-tabs" role="tablist" aria-label={$translator("feed.sorting")}>
-          {#each feedModes as mode}
-            <button
-              type="button"
-              class:active={feedMode === mode}
-              role="tab"
-              aria-selected={feedMode === mode}
-              title={$translator(modeKeys[mode].description)}
-              onclick={() => selectMode(mode)}
-            >
-              {#if mode === "recommended"}
-                <SparklesIcon size={15} strokeWidth={1.8} />
-              {:else if mode === "trending"}
-                <FlameIcon size={15} strokeWidth={1.8} />
-              {:else if mode === "following"}
-                <UsersIcon size={15} strokeWidth={1.8} />
-              {:else}
-                <Clock3Icon size={15} strokeWidth={1.8} />
-              {/if}
-              <span>{$translator(modeKeys[mode].label)}</span>
-            </button>
-          {/each}
+      <div class="workspace-shell" class:page-layout={$homeLayout === "pages"}>
+        <div class="feed-toolbar">
+          <div class="feed-tabs" role="tablist" aria-label={$translator("feed.sorting")}>
+            {#each feedModes as mode}
+              <button
+                type="button"
+                class:active={feedMode === mode}
+                role="tab"
+                aria-selected={feedMode === mode}
+                title={$translator(modeKeys[mode].description)}
+                onclick={() => selectMode(mode)}
+              >
+                {#if mode === "recommended"}
+                  <SparklesIcon size={15} strokeWidth={1.8} />
+                {:else if mode === "trending"}
+                  <FlameIcon size={15} strokeWidth={1.8} />
+                {:else if mode === "following"}
+                  <UsersIcon size={15} strokeWidth={1.8} />
+                {:else}
+                  <Clock3Icon size={15} strokeWidth={1.8} />
+                {/if}
+                <span>{$translator(modeKeys[mode].label)}</span>
+              </button>
+            {/each}
+          </div>
         </div>
-      </div>
-      <div class="workspace-grid" class:page-layout={$homeLayout === "pages"}>
-        <section class="stream-panel" aria-label={$translator("home.activity")}>
-          {#if authReady}
-            {#key feedMode}
-              <FeedList
-                mode={feedMode}
-                onSelect={$homeLayout === "split" ? selectItem : null}
-                selectedId={$homeLayout === "split" ? selected?.id ?? null : null}
-                onFirstItem={$homeLayout === "split" ? (item) => selected ??= item : null}
-                onItemsUpdated={$homeLayout === "split" ? syncSelection : null}
-                onStateChange={(state) => feedState = state}
-              />
-            {/key}
-          {:else}
-            <div class="empty-state"><div class="spinner mb-3"></div>{$translator("feed.loading")}</div>
-          {/if}
-        </section>
-        {#if $homeLayout === "split"}
-          <section class="detail-panel" aria-label={$translator("home.select")}>
-          {#if selected}
-            {#key `${selected.id}:${selected.reply_count}:${selected.like_count}:${selected.for_count}:${selected.against_count}:${selected.status}`}
-              {#if selected.type === "post"}
-                <PostDetail postId={selected.id} embedded />
-              {:else}
-                <PatchDetail patchId={selected.id} embedded />
-              {/if}
-            {/key}
-          {:else if feedState === "loading"}
-            <div class="detail-loading" aria-label={$translator("home.loading")} aria-live="polite">
-              <span></span><span></span><span></span><span></span>
-              <p>{$translator("home.loading")}</p>
-            </div>
-          {:else}
-            <div class="detail-empty">
-              <span class="detail-empty-mark" aria-hidden="true">→</span>
-              <p>{feedState === "empty" ? $translator("home.empty") : $translator("home.select")}</p>
-            </div>
-          {/if}
+        <div class="workspace-grid">
+          <section class="stream-panel" aria-label={$translator("home.activity")}>
+            {#if authReady}
+              {#key feedMode}
+                <FeedList
+                  mode={feedMode}
+                  onSelect={$homeLayout === "split" ? selectItem : null}
+                  selectedId={$homeLayout === "split" ? selected?.id ?? null : null}
+                  onFirstItem={$homeLayout === "split" ? (item) => selected ??= item : null}
+                  onItemsUpdated={$homeLayout === "split" ? syncSelection : null}
+                  onStateChange={(state) => feedState = state}
+                />
+              {/key}
+            {:else}
+              <div class="empty-state"><div class="spinner mb-3"></div>{$translator("feed.loading")}</div>
+            {/if}
           </section>
-        {/if}
+          {#if $homeLayout === "split"}
+            <section class="detail-panel" aria-label={$translator("home.select")}>
+            {#if selected}
+              {#key `${selected.id}:${selected.reply_count}:${selected.like_count}:${selected.for_count}:${selected.against_count}:${selected.status}`}
+                {#if selected.type === "post"}
+                  <PostDetail postId={selected.id} embedded />
+                {:else}
+                  <PatchDetail patchId={selected.id} embedded />
+                {/if}
+              {/key}
+            {:else if feedState === "loading"}
+              <div class="detail-loading" aria-label={$translator("home.loading")} aria-live="polite">
+                <span></span><span></span><span></span><span></span>
+                <p>{$translator("home.loading")}</p>
+              </div>
+            {:else}
+              <div class="detail-empty">
+                <span class="detail-empty-mark" aria-hidden="true">→</span>
+                <p>{feedState === "empty" ? $translator("home.empty") : $translator("home.select")}</p>
+              </div>
+            {/if}
+            </section>
+          {/if}
+        </div>
       </div>
     </div>
   {:else}
@@ -156,18 +159,20 @@
 <style>
   .main-view { position: relative; min-height: 60vh; }
   .view-pane { position: absolute; inset: 0; width: 100%; }
-  .view-title { color: var(--vercel-text); font-size: clamp(1.5rem, 2vw, 2rem); font-weight: 650; letter-spacing: -0.04em; }
+  .view-title { color: var(--vercel-text); font-size: clamp(1.5rem, 2vw, 2rem); font-weight: 650; letter-spacing: 0; }
   .stream-heading { display: flex; align-items: end; justify-content: space-between; gap: 2rem; margin-bottom: 1.25rem; }
-  .feed-toolbar { display: flex; justify-content: flex-start; margin-bottom: 1rem; }
-  .feed-tabs { display: inline-flex; align-items: center; gap: .2rem; padding: .25rem; border: 1px solid var(--vercel-border); border-radius: .5rem; background: rgba(255,255,255,.025); }
+  .feed-toolbar { display: flex; min-height: 3rem; padding: .45rem .55rem; align-items: center; justify-content: flex-start; border-bottom: 1px solid var(--vercel-border); background: color-mix(in srgb, var(--vercel-surface) 72%, transparent); }
+  .feed-tabs { display: inline-flex; align-items: center; gap: .2rem; padding: .2rem; border-radius: .4rem; background: rgba(255,255,255,.025); }
   .feed-tabs button { display: inline-flex; min-height: 2rem; padding: .35rem .7rem; align-items: center; gap: .4rem; border: 0; border-radius: .35rem; background: transparent; color: var(--vercel-text-tertiary); cursor: pointer; font: inherit; font-size: .75rem; font-weight: 600; transition: color .18s ease, background .18s ease; }
   .feed-tabs button:hover { color: var(--vercel-text); background: rgba(255,255,255,.05); }
   .feed-tabs button.active { color: var(--vercel-text); background: rgba(255,255,255,.1); box-shadow: inset 0 0 0 1px rgba(255,255,255,.06); }
   .view-kicker { margin-bottom: .25rem; color: var(--vercel-text-tertiary); font-size: .6875rem; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; }
   .view-description { max-width: 24rem; color: var(--vercel-text-tertiary); font-size: .8125rem; line-height: 1.5; text-align: right; }
-  .workspace-grid { display: grid; grid-template-columns: minmax(19rem, 24rem) minmax(0, 1fr); height: min(52rem, calc(100dvh - 11rem)); min-height: 38rem; overflow: hidden; border: 1px solid var(--vercel-border); border-radius: var(--vercel-radius-lg); background: rgba(18, 18, 20, .7); }
-  .workspace-grid.page-layout { grid-template-columns:minmax(0,1fr); width:100%; max-width:52rem; height:auto; min-height:0; margin-right:auto; overflow:visible; }
-  .workspace-grid.page-layout .stream-panel { overflow:visible; border-right:0; }
+  .workspace-shell { display:flex; height:min(52rem,calc(100dvh - 11rem)); min-height:38rem; overflow:hidden; flex-direction:column; border:1px solid var(--vercel-border); border-radius:var(--vercel-radius-lg); background:color-mix(in srgb,var(--vercel-card) 86%,transparent); box-shadow:0 1.25rem 4rem color-mix(in srgb,var(--vercel-bg) 48%,transparent); }
+  .workspace-grid { display:grid; min-height:0; flex:1; grid-template-columns:minmax(19rem,24rem) minmax(0,1fr); overflow:hidden; }
+  .workspace-shell.page-layout { width:100%; max-width:52rem; height:auto; min-height:0; margin-right:auto; overflow:visible; }
+  .workspace-shell.page-layout .workspace-grid { grid-template-columns:minmax(0,1fr); overflow:visible; }
+  .workspace-shell.page-layout .stream-panel { overflow:visible; border-right:0; }
   .stream-panel { min-width: 0; overflow-y: auto; border-right: 1px solid var(--vercel-border); background: rgba(12, 12, 14, .72); }
   .detail-panel { min-width: 0; overflow-y: auto; padding: clamp(1.25rem, 2.5vw, 2.5rem); }
   .detail-empty { display: grid; min-height: 60vh; place-content: center; justify-items: center; gap: 1rem; color: var(--vercel-text-tertiary); font-size: .875rem; text-align: center; }
@@ -182,9 +187,11 @@
   @media (max-width: 63.99rem) {
     .stream-heading { align-items: start; flex-direction: column; gap: .5rem; }
     .view-description { text-align: left; }
-    .feed-toolbar { overflow-x: auto; margin-bottom: .75rem; }
-    .feed-tabs { flex-shrink: 0; }
-    .workspace-grid { display: block; height: auto; min-height: 0; }
+    .feed-toolbar { overflow: hidden; }
+    .feed-tabs { display: grid; width: 100%; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .feed-tabs button { min-width: 0; padding-inline: .15rem; justify-content: center; gap: .25rem; font-size: .6875rem; }
+    .workspace-shell { height:auto; min-height:0; }
+    .workspace-grid { display:block; }
     .stream-panel { overflow: visible; border-right: 0; }
     .detail-panel { display: none; }
   }
