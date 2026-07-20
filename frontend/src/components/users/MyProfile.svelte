@@ -9,6 +9,7 @@
   import { translateError, translator } from "../../lib/i18n";
   import { initAuth, currentUser, updateProfile, logout } from "../../stores/auth";
   import type { UserUpdateData } from "../../lib/auth";
+  import { avatarInitial, displayName } from "../../lib/utils";
 
   let saving = $state(false);
   let message = $state<{ type: "success" | "error"; text: string } | null>(null);
@@ -122,10 +123,10 @@
         aria-label={$translator("profile.viewPublic")}
       >
         <span class="identity-avatar" aria-hidden="true">
-          {($currentUser.nickname ?? $currentUser.username)[0].toUpperCase()}
+          {avatarInitial($currentUser.nickname, $currentUser.username)}
         </span>
         <span class="identity-copy">
-          <strong>{$currentUser.nickname ?? $currentUser.username}</strong>
+          <strong>{displayName($currentUser.nickname, $currentUser.username)}</strong>
           <small>@{$currentUser.username}</small>
         </span>
       </a>

@@ -19,8 +19,15 @@
   let passwordVisible = $state(false);
   let errorMessage = $state("");
   let destination = $state("/");
+  let mounted = $state(false);
 
   onMount(() => {
+    mounted = true;
+  });
+
+  $effect(() => {
+    void returnTo;
+    if (!mounted) return;
     destination = safeReturnTo(
       returnTo ||
         new URLSearchParams(window.location.search).get("returnTo") ||

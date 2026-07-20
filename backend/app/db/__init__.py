@@ -22,7 +22,9 @@ class _LazyAsyncSession:
     def _ensure(self):
         """Sync init — create_async_engine() does NOT require await."""
         if self._maker is None:
-            engine = create_async_engine(settings.DATABASE_URL, echo=True)
+            # SQL logging can expose report text, emails, and other user data.
+            # Keep it opt-in for local debugging rather than enabled in production.
+            engine = create_async_engine(settings.DATABASE_URL, echo=settings.DB_ECHO)
             self._maker = async_sessionmaker(engine, expire_on_commit=False)
 
     def __call__(self):

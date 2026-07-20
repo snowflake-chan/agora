@@ -26,12 +26,13 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql+asyncpg://agora:agora@postgres:5432/agora
+      APP_ENV: ${APP_ENV:-development}
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       GITHUB_REPO: ${GITHUB_REPO:-}
       SUPER_ADMIN_EMAIL: ${SUPER_ADMIN_EMAIL:-}
       CORS_ORIGIN: ""
-      DEPLOY_ENABLED: ${DEPLOY_ENABLED:-true}
+      DEPLOY_ENABLED: ${DEPLOY_ENABLED:-false}
       REPO_DIR: /repo
       REDIS_URL: redis://redis:6379/0
       AUTH_LOGIN_ATTEMPTS: ${AUTH_LOGIN_ATTEMPTS:-10}

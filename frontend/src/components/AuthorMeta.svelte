@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { getUserGuild, type UserGuildBadge } from "../lib/guilds";
   import { translator } from "../lib/i18n";
-  import { timeAgo } from "../lib/utils";
+  import { avatarInitial, displayName, timeAgo } from "../lib/utils";
 
   let { username, userId, createdAt }: { username: string; userId?: string; createdAt: string } = $props();
 
@@ -20,13 +20,23 @@
 </script>
 
 <div class="author-meta relative z-10 text-xs" style="color: var(--vercel-text-tertiary);">
-  <a href={profileHref} class="avatar avatar-sm no-underline hover:opacity-80 transition-opacity" style="cursor: {userId ? 'pointer' : 'default'};">
-    {(username ?? "?")[0].toUpperCase()}
-  </a>
-  <span class="author-identity">
-    <a href={profileHref} class="author-name no-underline hover:underline" style="color: var(--vercel-text-secondary); cursor: {userId ? 'pointer' : 'default'};">
-      {username ?? $translator("common.anonymous")}
+  {#if userId}
+    <a href={profileHref} class="avatar avatar-sm no-underline hover:opacity-80 transition-opacity">
+      {avatarInitial(username)}
     </a>
+  {:else}
+    <span class="avatar avatar-sm" aria-hidden="true">{avatarInitial(username)}</span>
+  {/if}
+  <span class="author-identity">
+    {#if userId}
+      <a href={profileHref} class="author-name no-underline hover:underline" style="color: var(--vercel-text-secondary);">
+        {displayName(username, $translator("common.anonymous"))}
+      </a>
+    {:else}
+      <span class="author-name" style="color: var(--vercel-text-secondary);">
+        {displayName(username, $translator("common.anonymous"))}
+      </span>
+    {/if}
     {#if guild}
       <a class="guild-badge" href={`/guilds/${guild.guild_id}`}>
         Lv.{guild.guild_level} {guild.guild_name}

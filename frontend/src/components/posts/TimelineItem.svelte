@@ -12,7 +12,7 @@
   import { getUserGuild, type UserGuildBadge } from "../../lib/guilds";
   import { translator } from "../../lib/i18n";
   import { renderMarkdown } from "../../lib/markdown";
-  import { timeAgo } from "../../lib/utils";
+  import { avatarInitial, displayName, timeAgo } from "../../lib/utils";
 
   let {
     username,
@@ -101,11 +101,21 @@
   <div class="card">
     <!-- Header -->
     <div class="timeline-header px-4 py-2 border-b" style="border-color: var(--vercel-border);">
-      <a href={profileHref} class="avatar avatar-sm no-underline hover:opacity-80 transition-opacity" style="cursor: {userId ? 'pointer' : 'default'};">
-        {(username ?? "?")[0].toUpperCase()}
-      </a>
+      {#if userId}
+        <a href={profileHref} class="avatar avatar-sm no-underline hover:opacity-80 transition-opacity">
+          {avatarInitial(username)}
+        </a>
+      {:else}
+        <span class="avatar avatar-sm" aria-hidden="true">
+          {avatarInitial(username)}
+        </span>
+      {/if}
       <div class="timeline-identity">
-        <a href={profileHref} class="timeline-author text-sm font-medium no-underline hover:underline" style="cursor: {userId ? 'pointer' : 'default'};">{username ?? $translator("common.anonymous")}</a>
+        {#if userId}
+          <a href={profileHref} class="timeline-author text-sm font-medium no-underline hover:underline">{displayName(username, $translator("common.anonymous"))}</a>
+        {:else}
+          <span class="timeline-author text-sm font-medium">{displayName(username, $translator("common.anonymous"))}</span>
+        {/if}
         {#if guild}
           <a class="timeline-guild" href={`/guilds/${guild.guild_id}`}>
             Lv.{guild.guild_level} {guild.guild_name}

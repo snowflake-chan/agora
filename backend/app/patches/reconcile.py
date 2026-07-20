@@ -1,62 +1,80 @@
-"""Startup reconciliation: retry patches stuck in transitional states."""
+"""Startup and periodic reconciliation for governance transitions."""
 
+import asyncio
 from datetime import datetime, timezone
 
 from sqlalchemy import select
 
+from app.config import settings
 from app.db import async_session
 from app.db.models.patch import Patch as PatchModel
-from app.patches.github import merge_pr
+
+
+async def tally_expired_once() -> None:
+    """Tally every expired proposal using an independent transaction."""
+    from app.patches.routes import _tally
+
+    async with async_session() as lookup_session:
+        expired_ids = (
+            await lookup_session.execute(
+                select(PatchModel.id).where(
+                    PatchModel.status == "voting",
+                    PatchModel.voting_ends_at.is_not(None),
+                    PatchModel.voting_ends_at <= datetime.now(timezone.utc),
+                )
+            )
+        ).scalars().all()
+
+    for patch_id in expired_ids:
+        async with async_session() as session:
+            patch = await session.scalar(
+                select(PatchModel).where(
+                    PatchModel.id == patch_id,
+                    PatchModel.status == "voting",
+                )
+            )
+            if patch is not None:
+                await _tally(session, patch)
+
+
+async def merge_passed_once() -> None:
+    """Retry passed proposals whose GitHub outcome was not yet confirmed."""
+    from app.patches.routes import _do_merge_and_deploy
+
+    async with async_session() as session:
+        passed_ids = (
+            await session.execute(
+                select(PatchModel.id).where(PatchModel.status == "passed")
+            )
+        ).scalars().all()
+
+    for patch_id in passed_ids:
+        await _do_merge_and_deploy(str(patch_id), 0)
 
 
 async def reconcile() -> None:
-    """Retry any patches stuck in 'passed' or tally expired 'voting' patches."""
+    """Recover passed proposals and tally expired votes once at startup."""
     print("[reconcile] Checking patches...")
     try:
-        deploy_required = False
-        async with async_session() as session:
-            # Patches that passed but never merged (crash during deploy)
-            passed = (
-                await session.execute(
-                    select(PatchModel).where(PatchModel.status == "passed")
-                )
-            ).scalars().all()
-
-            for patch in passed:
-                try:
-                    await merge_pr(patch.pr_number)
-                    patch.status = "merged"
-                    deploy_required = True
-                    print(f"[reconcile] Merged #{patch.pr_number} ({patch.title})")
-                except Exception:
-                    patch.status = "failed"
-                    print(f"[reconcile] Merge FAILED #{patch.pr_number} ({patch.title})")
-
-            # Expired voting patches
-            expired = (
-                await session.execute(
-                    select(PatchModel).where(
-                        PatchModel.status == "voting",
-                        PatchModel.voting_ends_at < datetime.now(timezone.utc),
-                    )
-                )
-            ).scalars().all()
-
-            for patch in expired:
-                from app.patches.routes import _tally
-
-                await _tally(session, patch)
-                print(f"[reconcile] Tallied expired #{patch.pr_number} ({patch.title})")
-
-            await session.commit()
-        if deploy_required:
-            from app.patches.routes import _trigger_deploy
-
-            try:
-                await _trigger_deploy()
-            except Exception as deploy_exc:
-                print(f"[reconcile] Deployment launch FAILED: {deploy_exc}")
-    except Exception as e:
-        print(f"[reconcile] Error: {e}")
+        # Both online tallying and startup recovery use the same row-locking
+        # merge path, so a restart cannot race an already-running worker.
+        await merge_passed_once()
+        await tally_expired_once()
+    except Exception as exc:
+        print(f"[reconcile] Error: {exc}")
 
     print("[reconcile] Done.")
+
+
+async def run_scheduler() -> None:
+    """Keep the fixed voting deadline independent of page traffic."""
+    interval = max(1.0, settings.GOVERNANCE_POLL_SECONDS)
+    while True:
+        await asyncio.sleep(interval)
+        try:
+            await merge_passed_once()
+            await tally_expired_once()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            print(f"[reconcile] Periodic tally error: {exc}")

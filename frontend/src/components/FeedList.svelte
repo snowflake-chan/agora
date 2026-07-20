@@ -40,6 +40,12 @@
   let removedIds = new Set<string>();
   let loaded = new Set<number>();
 
+  $effect(() => {
+    const currentItems = items;
+    onItemsUpdated?.(currentItems);
+    if (!selectedId && currentItems[0]) onFirstItem?.(currentItems[0]);
+  });
+
   onMount(async () => {
     onStateChange?.("loading");
     await loadOnce();
@@ -77,8 +83,6 @@
       const next = await getFeed(requestedPage, mode);
       if (next.length === 0) { hasMore = false; return; }
       items = mergeUnique(items, next);
-      onItemsUpdated?.(items);
-      if (items.length === next.length && next[0]) onFirstItem?.(next[0]);
       page++;
     } catch {
       loaded.delete(requestedPage);
@@ -138,8 +142,6 @@
       );
       items = mergeUnique(next, retained);
       removedIds.clear();
-      onItemsUpdated?.(items);
-      if (!selectedId && next[0]) onFirstItem?.(next[0]);
     } catch {
       // The next SSE event or the manual retry can recover a transient refresh.
     } finally {

@@ -7,6 +7,15 @@ function activeLocale(): Locale {
   return "en";
 }
 
+export function displayName(...values: Array<string | null | undefined>): string {
+  return values.find((candidate) => candidate?.trim())?.trim() || "?";
+}
+
+export function avatarInitial(...values: Array<string | null | undefined>): string {
+  const value = displayName(...values);
+  return (Array.from(value)[0] || "?").toLocaleUpperCase();
+}
+
 export function timeAgo(dateStr: string, requestedLocale = activeLocale()): string {
   const elapsedSeconds = Math.round((new Date(dateStr).getTime() - Date.now()) / 1000);
   const format = new Intl.RelativeTimeFormat(requestedLocale, { numeric: "auto" });

@@ -26,7 +26,6 @@ from app.schemas.user import (
     UserUpdate,
 )
 from app.db.models.user import User, get_user_db
-from app.utils import calc_guild_level
 from .deps import current_user, optional_current_user
 
 router = APIRouter()
@@ -201,6 +200,7 @@ async def list_user_patches(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     session: AsyncSession = Depends(get_session),
+    viewer: User | None = Depends(optional_current_user),
 ):
     """List patches by a specific user."""
     if not await session.scalar(select(User.id).where(User.id == user_id)):
@@ -209,9 +209,12 @@ async def list_user_patches(
 
     offset = (page - 1) * page_size
 
+    visibility = PatchModel.status != "draft"
+    if viewer is not None and viewer.id == user_id:
+        visibility = or_(visibility, PatchModel.author_id == viewer.id)
     stmt = (
         select(PatchModel)
-        .where(PatchModel.author_id == user_id)
+        .where(PatchModel.author_id == user_id, visibility)
         .order_by(PatchModel.created_at.desc())
         .offset(offset)
         .limit(page_size)
@@ -306,18 +309,35 @@ async def list_user_content(
     if not await session.scalar(select(User.id).where(User.id == user_id)):
         raise HTTPException(status_code=404, detail="USER_NOT_FOUND")
 
+    content_visibility = or_(
+        ContentModel.patch_id.is_(None),
+        PatchModel.status != "draft",
+    )
+    if viewer is not None:
+        content_visibility = or_(
+            content_visibility,
+            PatchModel.author_id == viewer.id,
+        )
     contents = (
         await session.execute(
             select(ContentModel)
-            .where(ContentModel.author_id == user_id)
+            .outerjoin(PatchModel, ContentModel.patch_id == PatchModel.id)
+            .where(
+                ContentModel.author_id == user_id,
+                ContentModel.guild_id.is_(None),
+                content_visibility,
+            )
             .order_by(ContentModel.created_at.desc())
             .limit(1000)
         )
     ).scalars().all()
+    visibility = PatchModel.status != "draft"
+    if viewer is not None and viewer.id == user_id:
+        visibility = or_(visibility, PatchModel.author_id == viewer.id)
     patches = (
         await session.execute(
             select(PatchModel)
-            .where(PatchModel.author_id == user_id)
+            .where(PatchModel.author_id == user_id, visibility)
             .order_by(PatchModel.created_at.desc())
             .limit(1000)
         )
@@ -483,20 +503,10 @@ async def get_user_guild(
     ).scalars().first()
     if not member:
         return None
-    member_count = await session.scalar(
-        select(func.count(GuildMemberModel.id)).where(
-            GuildMemberModel.guild_id == member.guild_id,
-            or_(
-                GuildMemberModel.status == "approved",
-                GuildMemberModel.status.is_(None),
-                GuildMemberModel.status == "",
-            ),
-        )
-    )
     return UserGuildBadge(
         guild_id=member.guild_id,
         guild_name=member.guild.name,
-        guild_level=calc_guild_level(member_count or 0),
+        guild_level=member.guild.level,
         role=member.role,
     )
 

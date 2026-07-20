@@ -2,19 +2,21 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from sqlalchemy import func, select, or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import lazyload
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
 from app.config import settings
-from app.deps import check_not_banned
+from app.deps import check_not_banned, require_content_visible, require_patch_visible
 from app.db import get_session
 from app.db.models.content import Content as ContentModel
 from app.db.models.guild import Guild, GuildMember
 from app.db.models.moderation import BanRecord, Report
 from app.db.models.patch import Patch as PatchModel
 from app.db.models.user import User
-from app.db.models.vote import Vote as VoteModel
+from app.schemas.moderation import ReportCreate
 from app.users.deps import current_user
 
 router = APIRouter()
@@ -40,12 +42,13 @@ async def super_admin_required(user: User = Depends(current_user)):
 
 @router.post("/reports")
 async def create_report(
-    content_id: UUID | None = None,
-    patch_id: UUID | None = None,
-    reason: str = Query(..., min_length=1, max_length=500),
+    body: ReportCreate,
     user: User = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ):
+    content_id = body.content_id
+    patch_id = body.patch_id
+    reason = body.reason
     await check_not_banned(user.id, session)
     if content_id is None and patch_id is None:
         raise HTTPException(422, detail="REPORT_TARGET_REQUIRED")
@@ -57,24 +60,39 @@ async def create_report(
         raise HTTPException(422, detail="REPORT_REASON_REQUIRED")
 
     if content_id is not None:
-        target_exists = await session.scalar(
-            select(ContentModel.id)
-            .where(ContentModel.id == content_id)
-            .with_for_update()
+        target = (
+            await session.execute(
+                select(ContentModel)
+                .options(
+                    lazyload(ContentModel.author),
+                    lazyload(ContentModel.parent),
+                    lazyload(ContentModel.replying_to),
+                )
+                .where(ContentModel.id == content_id)
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        target = await require_content_visible(
+            target,
+            user,
+            session,
+            allow_staff=True,
         )
         target_filter = Report.content_id == content_id
-        not_found_code = "CONTENT_NOT_FOUND"
     else:
-        target_exists = await session.scalar(
-            select(PatchModel.id)
-            .where(PatchModel.id == patch_id)
-            .with_for_update()
-        )
+        target = (
+            await session.execute(
+                select(PatchModel)
+                .options(lazyload(PatchModel.author))
+                .where(PatchModel.id == patch_id)
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        target = require_patch_visible(target, user, allow_staff=True)
         target_filter = Report.patch_id == patch_id
-        not_found_code = "PATCH_NOT_FOUND"
 
-    if target_exists is None:
-        raise HTTPException(404, detail=not_found_code)
+    if target.author_id == user.id:
+        raise HTTPException(403, detail="REPORT_OWN_TARGET_FORBIDDEN")
 
     dup = (await session.execute(
         select(Report).where(target_filter, Report.reporter_id == user.id)
@@ -131,36 +149,54 @@ async def list_reports(
 
     response = []
     for report in rows:
+        target = None
         if report.content_id is not None:
             target_type = "content"
             target_id = report.content_id
             target = report.content
-            title = target.title if target else "(内容已删除)"
+            title = target.title if target else ""
             body = target.content[:200] if target and target.content else ""
             author = target.author if target else None
+            if target is None:
+                target_href = None
+            elif target.type == "post":
+                target_href = f"/posts/{target.id}"
+            elif target.patch_id is not None:
+                target_href = f"/patches/{target.patch_id}#{target.id}"
+            elif target.guild_id is not None:
+                target_href = f"/guilds/{target.guild_id}#{target.id}"
+            elif target.parent_id is not None:
+                target_href = f"/posts/{target.parent_id}#{target.id}"
+            else:
+                target_href = None
         elif report.patch_id is not None:
             target_type = "patch"
             target_id = report.patch_id
             target = report.patch
-            title = target.title if target else "(变更提案已删除)"
+            title = target.title if target else ""
             body = target.content[:200] if target and target.content else ""
             author = target.author if target else None
+            target_href = f"/patches/{target.id}" if target else None
         else:
             target_type = "deleted"
             target_id = None
-            title = "(目标已删除)"
+            title = ""
             body = ""
             author = None
+            target_href = None
 
         response.append(dict(
             id=report.id,
             target_type=target_type,
             target_id=target_id,
+            target_href=target_href,
+            target_deleted=target is None,
             content_id=report.content_id,
             patch_id=report.patch_id,
             content_title=title,
             content_body=body,
-            content_author=author.username if author else "(已删除)",
+            content_author=author.username if author else "",
+            content_author_deleted=author is None,
             content_author_id=str(author.id) if author else "",
             patch_title=report.patch.title if report.patch else None,
             reporter_username=report.reporter.username if report.reporter else "",
@@ -187,36 +223,109 @@ async def resolve_report(
     if action in ("delete_post", "delete_patch") and user.role != "super_admin":
         raise HTTPException(403, detail="FORBIDDEN")
 
-    r = (await session.execute(select(Report).where(Report.id == report_id))).scalar_one_or_none()
-    if not r:
+    report_target = (
+        await session.execute(
+            select(Report.content_id, Report.patch_id)
+            .where(Report.id == report_id)
+        )
+    ).one_or_none()
+    if report_target is None:
         raise HTTPException(404, detail="REPORT_NOT_FOUND")
-    if r.content_id is not None and r.patch_id is not None:
+    initial_content_id, initial_patch_id = report_target
+    if initial_content_id is not None and initial_patch_id is not None:
         raise HTTPException(409, detail="REPORT_TARGET_INVALID")
-    if action == "delete_post" and r.patch_id is not None:
+    if action == "delete_post" and initial_patch_id is not None:
         raise HTTPException(400, detail="INVALID_REPORT_ACTION")
-    if action == "delete_patch" and r.content_id is not None:
+    if action == "delete_patch" and initial_content_id is not None:
         raise HTTPException(400, detail="INVALID_REPORT_ACTION")
+
+    # Lock the target before locking any report rows. Report creation uses the
+    # same target-first order, which prevents both duplicate processing and a
+    # report/report deadlock when several reports share one target.
+    target_exists = False
+    if initial_content_id is not None:
+        target_exists = (
+            await session.scalar(
+                select(ContentModel.id)
+                .where(ContentModel.id == initial_content_id)
+                .with_for_update()
+            )
+            is not None
+        )
+    elif initial_patch_id is not None:
+        target_exists = (
+            await session.scalar(
+                select(PatchModel.id)
+                .where(PatchModel.id == initial_patch_id)
+                .with_for_update()
+            )
+            is not None
+        )
+
+    if target_exists:
+        target_filter = (
+            Report.content_id == initial_content_id
+            if initial_content_id is not None
+            else Report.patch_id == initial_patch_id
+        )
+        target_reports = (
+            await session.execute(
+                select(Report)
+                .options(
+                    lazyload(Report.reporter),
+                    lazyload(Report.content),
+                    lazyload(Report.patch),
+                )
+                .where(target_filter)
+                .order_by(Report.id)
+                .with_for_update()
+            )
+        ).scalars().all()
+        r = next((item for item in target_reports if item.id == report_id), None)
+        if r is None:
+            raise HTTPException(404, detail="REPORT_NOT_FOUND")
+        if r.status != "pending":
+            raise HTTPException(409, detail="REPORT_ALREADY_RESOLVED")
+        related_reports = [
+            item for item in target_reports
+            if item.id != report_id and item.status == "pending"
+        ]
+    else:
+        # A deleted target has already had its FK set to NULL. Lock only the
+        # tombstone report and re-read its state before deciding the action.
+        r = (
+            await session.execute(
+                select(Report)
+                .options(
+                    lazyload(Report.reporter),
+                    lazyload(Report.content),
+                    lazyload(Report.patch),
+                )
+                .where(Report.id == report_id)
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if r is None:
+            raise HTTPException(404, detail="REPORT_NOT_FOUND")
+        if r.status != "pending":
+            raise HTTPException(409, detail="REPORT_ALREADY_RESOLVED")
+        related_reports = []
 
     content_id = r.content_id
     patch_id = r.patch_id
+    if content_id is not None and patch_id is not None:
+        raise HTTPException(409, detail="REPORT_TARGET_INVALID")
+    if action == "delete_post" and patch_id is not None:
+        raise HTTPException(400, detail="INVALID_REPORT_ACTION")
+    if action == "delete_patch" and content_id is not None:
+        raise HTTPException(400, detail="INVALID_REPORT_ACTION")
+    if action in ("delete_post", "delete_patch") and content_id is None and patch_id is None:
+        raise HTTPException(409, detail="REPORT_TARGET_GONE")
+
     r.status = "dismissed" if action == "dismissed" else "resolved"
 
-    others = []
-    if content_id is not None or patch_id is not None:
-        target_filter = (
-            Report.content_id == content_id
-            if content_id is not None
-            else Report.patch_id == patch_id
-        )
-        others = (await session.execute(
-            select(Report).where(
-                target_filter,
-                Report.status == "pending",
-                Report.id != r.id,
-            )
-        )).scalars().all()
-        for other in others:
-            other.status = "resolved"
+    for other in related_reports:
+        other.status = r.status
 
     # Persist report state before a target delete can SET NULL the foreign keys.
     await session.flush()
@@ -234,7 +343,7 @@ async def resolve_report(
             await session.delete(patch)
 
     await session.commit()
-    return {"ok": True, "also_resolved": len(others)}
+    return {"ok": True, "also_resolved": len(related_reports)}
 
 
 # ═══════════════════════════════════════════
@@ -370,14 +479,38 @@ async def delete_patch_admin(patch_id: UUID, user: User = Depends(super_admin_re
 
 
 @router.patch("/guilds/{guild_id}")
-async def admin_update_guild(guild_id: UUID, name: str | None = Query(None, min_length=1, max_length=80), logo: str | None = Query(None, max_length=500), description: str | None = Query(None, max_length=2000), level: int | None = Query(None, ge=1, le=5), user: User = Depends(super_admin_required), session: AsyncSession = Depends(get_session)):
+async def admin_update_guild(
+    guild_id: UUID,
+    name: str | None = Query(None, min_length=1, max_length=80),
+    logo: str | None = Query(None, max_length=500),
+    description: str | None = Query(None, max_length=2000),
+    level: int | None = Query(None, ge=1, le=5),
+    user: User = Depends(super_admin_required),
+    session: AsyncSession = Depends(get_session),
+):
     g = (await session.execute(select(Guild).where(Guild.id == guild_id))).scalar_one_or_none()
     if not g: raise HTTPException(404)
-    if name: g.name = name
-    if logo is not None: g.logo = logo
-    if description is not None: g.description = description
+    normalized_name = name.strip() if name is not None else None
+    if name is not None and not normalized_name:
+        raise HTTPException(422, detail="GUILD_NAME_REQUIRED")
+    if normalized_name:
+        duplicate_name = await session.scalar(
+            select(Guild.id).where(
+                Guild.name == normalized_name,
+                Guild.id != guild_id,
+            )
+        )
+        if duplicate_name:
+            raise HTTPException(409, detail="GUILD_NAME_TAKEN")
+        g.name = normalized_name
+    if logo is not None: g.logo = logo.strip() or None
+    if description is not None: g.description = description.strip() or None
     if level is not None: g.level = level
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        raise HTTPException(409, detail="GUILD_NAME_TAKEN") from exc
     return {"ok": True}
 
 
@@ -407,7 +540,11 @@ async def admin_list_discussions(guild_id: UUID, user: User = Depends(super_admi
 
 @router.delete("/guilds/{guild_id}/discussions/{post_id}")
 async def admin_delete_discussion(guild_id: UUID, post_id: UUID, user: User = Depends(super_admin_required), session: AsyncSession = Depends(get_session)):
-    c = (await session.execute(select(ContentModel).where(ContentModel.id == post_id, ContentModel.guild_id == guild_id))).scalar_one_or_none()
+    c = (await session.execute(select(ContentModel).where(
+        ContentModel.id == post_id,
+        ContentModel.guild_id == guild_id,
+        ContentModel.type == "guild_post",
+    ))).scalar_one_or_none()
     if not c: raise HTTPException(404)
     await session.delete(c); await session.commit()
     return {"ok": True}
@@ -466,7 +603,24 @@ async def seed_super_admin(
 
 # ── Level Names ──
 
-DEFAULT_LEVEL_NAMES = {1: "heiker", 2: "black客", 3: "黑色的客人", 4: "黑客", 5: "Natriumchlorid"}
+DEFAULT_LEVEL_NAMES = {level: f"Level {level}" for level in range(1, 6)}
+
+
+def _normalize_level_names(value: object) -> dict[int, str] | None:
+    """Validate persisted level names before they reach the UI."""
+    if not isinstance(value, dict):
+        return None
+    if len(value) != 5 or {str(key) for key in value} != {"1", "2", "3", "4", "5"}:
+        return None
+    normalized: dict[int, str] = {}
+    for key, label in value.items():
+        if not isinstance(label, str):
+            return None
+        label = label.strip()
+        if not label or len(label) > 80:
+            return None
+        normalized[int(key)] = label
+    return normalized
 
 
 @router.get("/level-names")
@@ -475,22 +629,30 @@ async def get_level_names(session: AsyncSession = Depends(get_session)):
     row = (await session.execute(select(SiteSetting).where(SiteSetting.key == "level_names"))).scalar_one_or_none()
     import json
     if row and row.value:
-        return json.loads(row.value)
+        try:
+            normalized = _normalize_level_names(json.loads(row.value))
+        except (TypeError, ValueError):
+            normalized = None
+        if normalized is not None:
+            return normalized
     return DEFAULT_LEVEL_NAMES
 
 
 @router.put("/level-names")
 async def set_level_names(
-    data: dict = None,
+    data: object = Body(...),
     user: User = Depends(super_admin_required),
     session: AsyncSession = Depends(get_session),
 ):
     from app.db.models.settings import SiteSetting
     import json
+    normalized = _normalize_level_names(data)
+    if normalized is None:
+        raise HTTPException(422, detail="INVALID_LEVEL_NAMES")
     row = (await session.execute(select(SiteSetting).where(SiteSetting.key == "level_names"))).scalar_one_or_none()
     if not row:
         row = SiteSetting(key="level_names")
         session.add(row)
-    row.value = json.dumps(data, ensure_ascii=False)
+    row.value = json.dumps(normalized, ensure_ascii=False)
     await session.commit()
     return {"ok": True}

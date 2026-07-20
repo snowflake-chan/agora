@@ -51,6 +51,8 @@ import AboutButton from "./AboutButton.svelte";
     bottom: max(8px, env(safe-area-inset-bottom));
     left: 50%;
     z-index: var(--z-nav);
+    width: max-content;
+    max-width: calc(100vw - 1rem);
     transform: translateX(-50%);
     background: color-mix(in srgb, var(--vercel-card) 78%, transparent);
     border: 1px solid var(--vercel-border);
@@ -67,6 +69,8 @@ import AboutButton from "./AboutButton.svelte";
     justify-content: center;
     width: 2.25rem;
     height: 2.25rem;
+    min-width: 2.25rem;
+    flex: 0 0 2.25rem;
     border-radius: 9999px;
     color: var(--vercel-text);
     transition: color 0.15s ease, background 0.15s ease, transform 0.15s ease;
@@ -120,12 +124,41 @@ import AboutButton from "./AboutButton.svelte";
     }
 
     .pill-bar {
+      width: calc(100vw - 1rem);
+      max-width: none;
       right: 0.5rem;
       bottom: max(0.5rem, env(safe-area-inset-bottom));
       left: 0.5rem;
       transform: none;
       border-radius: 1rem;
       background: color-mix(in srgb, var(--vercel-card) 82%, transparent);
+    }
+
+    /* Keep every action in a stable equal-width slot on touch/tablet widths.
+       The labels remain available through aria-label/title and the hover
+       tooltip, but never compete with the icon for layout space. */
+    .pill-track {
+      width: 100%;
+      box-sizing: border-box;
+      justify-content: stretch;
+      gap: 0.125rem;
+    }
+
+    .pill-track > .pill-item {
+      width: auto;
+      height: 2.5rem;
+      min-width: 0;
+      min-height: 2.5rem;
+      flex: 1 1 0;
+    }
+
+    .pill-track > .pill-divider {
+      display: none;
+    }
+
+    .pill-highlight {
+      top: 0.125rem;
+      height: 2.25rem;
     }
   }
 </style>

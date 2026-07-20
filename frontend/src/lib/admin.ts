@@ -14,11 +14,14 @@ export interface ReportItem {
   id: string;
   target_type: "content" | "patch" | "deleted";
   target_id: string | null;
+  target_href?: string | null;
+  target_deleted?: boolean;
   content_id: string | null;
   patch_id: string | null;
   content_title: string;
   content_body: string;
   content_author: string;
+  content_author_deleted?: boolean;
   content_author_id: string | null;
   patch_title?: string | null;
   reporter_username: string;
@@ -76,9 +79,14 @@ export async function createReport(
   reason: string,
   targetType: ReportTargetType = "content",
 ) {
-  const params = new URLSearchParams({ reason });
-  params.set(targetType === "patch" ? "patch_id" : "content_id", targetId);
-  return req(`/reports?${params}`, { method: "POST" });
+  return req("/reports", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      reason,
+      [targetType === "patch" ? "patch_id" : "content_id"]: targetId,
+    }),
+  });
 }
 
 export async function listReports(status?: string): Promise<ReportItem[]> {
