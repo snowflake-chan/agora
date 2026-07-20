@@ -1,12 +1,16 @@
 """Start the FastAPI server in the background for integration tests."""
 
 import multiprocessing
+import os
 import time
 import urllib.request
 
 import pytest
 import uvicorn
 from uvicorn.config import Config
+
+os.environ["SUPER_ADMIN_EMAIL"] = "admin-test@example.com"
+os.environ["AUTH_REGISTER_ATTEMPTS"] = "10000"
 
 
 def run_server():

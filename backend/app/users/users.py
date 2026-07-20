@@ -262,6 +262,7 @@ async def follow_user(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(current_user),
 ):
+    await check_not_banned(user.id, session)
     if user_id == user.id:
         raise HTTPException(status_code=422, detail="CANNOT_FOLLOW_SELF")
     if not await session.scalar(select(User.id).where(User.id == user_id)):

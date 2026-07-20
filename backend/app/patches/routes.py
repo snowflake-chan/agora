@@ -25,9 +25,12 @@ from app.schemas.patch import (
 from app.schemas.post import CommentCreate, CommentRead
 from app.patches.github import (
     GitHubPullRequestError,
+    get_commit_checks,
     get_pull_request,
     merge_pr,
+    pull_request_readiness_error,
 )
+from app.deps import check_not_banned
 from app.users.deps import current_user, optional_current_user
 
 router = APIRouter()
@@ -320,7 +323,6 @@ async def create_patch(
     user: User = Depends(current_user),
 ):
     """Create a new patch as draft."""
-    from app.deps import check_not_banned
     await check_not_banned(user.id, session, "mute_patch")
     if not data.title.strip():
         raise HTTPException(status_code=422, detail="TITLE_REQUIRED")
@@ -423,7 +425,6 @@ async def submit_patch(
     user: User = Depends(current_user),
 ):
     """Submit for voting with a 3-day voting period (draft → voting)."""
-    from app.deps import check_not_banned
     await check_not_banned(user.id, session, "mute_patch")
     stmt = select(PatchModel).where(PatchModel.id == patch_id)
     result = await session.execute(stmt)
@@ -448,10 +449,30 @@ async def submit_patch(
                 status_code=502, detail="GITHUB_PR_LOOKUP_FAILED"
             ) from exc
 
-        if pull_request.get("state") != "open":
-            raise HTTPException(status_code=422, detail="PULL_REQUEST_NOT_OPEN")
-        if pull_request.get("draft"):
-            raise HTTPException(status_code=422, detail="PULL_REQUEST_IS_DRAFT")
+        head_sha = pull_request.get("head", {}).get("sha")
+        if not head_sha:
+            raise HTTPException(status_code=502, detail="GITHUB_PR_LOOKUP_FAILED")
+        try:
+            commit_checks = await get_commit_checks(head_sha)
+        except GitHubPullRequestError as exc:
+            raise HTTPException(
+                status_code=502, detail="GITHUB_CHECK_LOOKUP_FAILED"
+            ) from exc
+
+        readiness_error = pull_request_readiness_error(
+            pull_request,
+            commit_checks,
+        )
+        if readiness_error:
+            status_code = (
+                409
+                if readiness_error in (
+                    "PULL_REQUEST_READINESS_PENDING",
+                    "PULL_REQUEST_CHECKS_PENDING",
+                )
+                else 422
+            )
+            raise HTTPException(status_code=status_code, detail=readiness_error)
 
     patch.status = "voting"
     now = datetime.now(timezone.utc)
@@ -478,6 +499,7 @@ async def vote_patch(
     user: User = Depends(current_user),
 ):
     """Cast or change a vote on a patch."""
+    await check_not_banned(user.id, session)
     if data.choice not in ("for", "against", "abstain"):
         raise HTTPException(status_code=422, detail="INVALID_VOTE_CHOICE")
 
@@ -671,6 +693,7 @@ async def create_patch_comment(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(current_user),
 ):
+    await check_not_banned(user.id, session, "mute_post")
     patch = await session.scalar(
         select(PatchModel).where(PatchModel.id == patch_id)
     )

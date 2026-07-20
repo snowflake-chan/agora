@@ -415,6 +415,7 @@ async def like_post(
     user: User = Depends(current_user),
 ):
     """Like a post. Repeated requests are idempotent."""
+    await check_not_banned(user.id, session)
     content = await session.scalar(
         select(ContentModel).where(
             ContentModel.id == post_id, ContentModel.type.in_(("post", "comment"))

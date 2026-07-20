@@ -163,7 +163,7 @@
   .stream-heading { display: flex; align-items: end; justify-content: space-between; gap: 2rem; margin-bottom: 1.25rem; }
   .feed-toolbar { display: flex; min-height: 3rem; padding: .45rem .55rem; align-items: center; justify-content: flex-start; border-bottom: 1px solid var(--vercel-border); background: color-mix(in srgb, var(--vercel-surface) 72%, transparent); }
   .feed-tabs { display: inline-flex; align-items: center; gap: .2rem; padding: .2rem; border-radius: .4rem; background: rgba(255,255,255,.025); }
-  .feed-tabs button { display: inline-flex; min-height: 2rem; padding: .35rem .7rem; align-items: center; gap: .4rem; border: 0; border-radius: .35rem; background: transparent; color: var(--vercel-text-tertiary); cursor: pointer; font: inherit; font-size: .75rem; font-weight: 600; transition: color .18s ease, background .18s ease; }
+  .feed-tabs button { display: inline-flex; min-height: 2rem; padding: .35rem .7rem; align-items: center; gap: .4rem; border: 0; border-radius: .35rem; background: transparent; color: var(--vercel-text-tertiary); cursor: pointer; font: inherit; font-size: .75rem; font-weight: 600; white-space: nowrap; transition: color .18s ease, background .18s ease; }
   .feed-tabs button:hover { color: var(--vercel-text); background: rgba(255,255,255,.05); }
   .feed-tabs button.active { color: var(--vercel-text); background: rgba(255,255,255,.1); box-shadow: inset 0 0 0 1px rgba(255,255,255,.06); }
   .view-kicker { margin-bottom: .25rem; color: var(--vercel-text-tertiary); font-size: .6875rem; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; }
@@ -194,5 +194,9 @@
     .workspace-grid { display:block; }
     .stream-panel { overflow: visible; border-right: 0; }
     .detail-panel { display: none; }
+  }
+
+  @media (max-width: 22.5rem) {
+    .feed-tabs button :global(svg) { display: none; }
   }
 </style>

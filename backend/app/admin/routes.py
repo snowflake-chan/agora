@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.config import settings
+from app.deps import check_not_banned
 from app.db import get_session
 from app.db.models.content import Content as ContentModel
 from app.db.models.guild import Guild, GuildMember
@@ -44,6 +45,7 @@ async def create_report(
     user: User = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ):
+    await check_not_banned(user.id, session)
     c = (await session.execute(select(ContentModel).where(ContentModel.id == content_id))).scalar_one_or_none()
     if not c:
         raise HTTPException(404, detail="CONTENT_NOT_FOUND")

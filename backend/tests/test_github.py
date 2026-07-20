@@ -2,7 +2,11 @@ import httpx
 import pytest
 
 from app.config import settings
-from app.patches.github import GitHubPullRequestError, get_pull_request
+from app.patches.github import (
+    GitHubPullRequestError,
+    get_pull_request,
+    pull_request_readiness_error,
+)
 
 
 @pytest.mark.asyncio
@@ -50,3 +54,40 @@ async def test_get_pull_request_reports_missing_pr(monkeypatch):
 
     with pytest.raises(GitHubPullRequestError, match="PULL_REQUEST_NOT_FOUND"):
         await get_pull_request(999)
+
+
+def test_pull_request_readiness_requires_mergeability_and_passing_checks():
+    ready = {
+        "state": "open",
+        "draft": False,
+        "mergeable": True,
+        "mergeable_state": "clean",
+    }
+    passing = {
+        "check_runs": [
+            {"status": "completed", "conclusion": "success"},
+            {"status": "completed", "conclusion": "skipped"},
+        ],
+        "statuses": [],
+    }
+    assert pull_request_readiness_error(ready, passing) is None
+
+    assert pull_request_readiness_error(
+        {**ready, "mergeable": False, "mergeable_state": "dirty"},
+        passing,
+    ) == "PULL_REQUEST_NOT_MERGEABLE"
+    assert pull_request_readiness_error(
+        {**ready, "mergeable_state": "behind"},
+        passing,
+    ) == "PULL_REQUEST_OUT_OF_DATE"
+    assert pull_request_readiness_error(
+        ready,
+        {"check_runs": [], "statuses": []},
+    ) == "PULL_REQUEST_CHECKS_MISSING"
+    assert pull_request_readiness_error(
+        ready,
+        {
+            "check_runs": [{"status": "completed", "conclusion": "failure"}],
+            "statuses": [],
+        },
+    ) == "PULL_REQUEST_CHECKS_FAILED"

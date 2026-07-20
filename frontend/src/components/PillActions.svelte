@@ -510,4 +510,24 @@
       transform: translateY(-0.25rem);
     }
   }
+
+  @media (max-width: 22.5rem) {
+    .pill-label {
+      display: none;
+    }
+
+    :global(.pill-track) {
+      justify-content: space-between;
+      gap: 0;
+    }
+
+    :global(.pill-track .pill-item) {
+      width: 2.5rem;
+      min-width: 2.5rem;
+      height: 2.75rem;
+      justify-content: center;
+      gap: 0;
+      padding-inline: 0.2rem;
+    }
+  }
 </style>

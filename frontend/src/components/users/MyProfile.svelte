@@ -576,13 +576,21 @@
 
     .settings-index {
       position: static;
-      flex-direction: row;
-      overflow-x: auto;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      overflow: visible;
       padding-bottom: 0.35rem;
     }
 
     .settings-index a {
-      flex: 0 0 auto;
+      min-width: 0;
+      min-height: 3.75rem;
+      justify-content: center;
+      flex-direction: column;
+      gap: 0.35rem;
+      padding-inline: 0.35rem;
+      text-align: center;
+      line-height: 1.25;
     }
 
     .settings-section {
