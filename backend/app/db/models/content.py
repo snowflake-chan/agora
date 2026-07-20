@@ -22,6 +22,9 @@ class Content(Base):
     replying_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("content.id", ondelete="SET NULL"), index=True, nullable=True
     )
+    guild_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("guild.id", ondelete="CASCADE"), index=True, nullable=True
+    )
     tags: Mapped[list[str] | None] = mapped_column(ARRAY(String(50)))
 
     created_at: Mapped[datetime] = mapped_column(

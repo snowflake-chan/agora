@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -5,8 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import get_session
 from app.db.models.content import Content as ContentModel
 from app.db.models.patch import Patch as PatchModel
+from app.db.models.vote import Vote as VoteModel
 from app.db.models.user import User
 from app.notifications.service import create_notification
+from app.deps import check_not_banned
 from app.schemas.post import (
     CommentCreate,
     CommentRead,
@@ -86,6 +90,7 @@ async def create_post(
     user: User = Depends(current_user),
 ):
     """Create a new post."""
+    await check_not_banned(user.id, session, "mute_post")
     if not data.title.strip():
         raise HTTPException(status_code=422, detail="Title is required")
     if not data.content.strip():
@@ -151,6 +156,22 @@ async def get_feed(
         )
     ).scalars().all()
 
+    # Attach vote counts for patches in feed
+    patch_ids = [str(p.id) for p in patches]
+    vote_counts: dict = {}
+    if patch_ids:
+        vote_stmt = (
+            select(VoteModel.patch_id, VoteModel.choice, func.count(VoteModel.id))
+            .where(VoteModel.patch_id.in_(patch_ids))
+            .group_by(VoteModel.patch_id, VoteModel.choice)
+        )
+        vote_rows = (await session.execute(vote_stmt)).all()
+        for pid, choice, cnt in vote_rows:
+            key = str(pid)
+            if key not in vote_counts:
+                vote_counts[key] = {"for": 0, "against": 0, "abstain": 0}
+            vote_counts[key][choice] = cnt
+
     # Attach reply counts for posts in feed
     post_ids = [p.id for p in posts]
     reply_counts: dict = {}
@@ -177,11 +198,21 @@ async def get_feed(
         ))
 
     for p in patches:
+        # Backfill voting_ends_at for legacy voting patches that were created
+        # before submit_patch initialized it. Default to created_at + 3 days
+        # (matches the canonical 3-day voting window).
+        ends = p.voting_ends_at
+        if ends is None and p.status == "voting" and p.created_at is not None:
+            ends = p.created_at + timedelta(days=3)
+        vc = vote_counts.get(str(p.id), {})
         items.append(FeedItem(
             id=p.id, type="patch", title=p.title, content=p.content,
             author_id=p.author_id, author_username=p.author.username,
             created_at=p.created_at,
             pr_number=p.pr_number, status=p.status,
+            voting_ends_at=ends,
+            for_count=vc.get("for", 0),
+            against_count=vc.get("against", 0),
         ))
 
     items.sort(key=lambda x: x.created_at, reverse=True)
@@ -303,6 +334,7 @@ async def create_comment(
     user: User = Depends(current_user),
 ):
     """Reply to a post, optionally mention which comment you're replying to."""
+    await check_not_banned(user.id, session, "mute_post")
     # Verify post exists
     post_stmt = select(ContentModel).where(
         ContentModel.id == post_id, ContentModel.type == "post"

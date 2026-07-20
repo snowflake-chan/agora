@@ -56,6 +56,9 @@ async def register(
         window_seconds=settings.AUTH_REGISTER_WINDOW_SECONDS,
     )
 
+    if len(data.password) < 8:
+        raise HTTPException(status_code=422, detail="REGISTER_PASSWORD_TOO_SHORT")
+
     existing = await user_db.get_by_email(data.email)
     if existing:
         raise HTTPException(status_code=409, detail="REGISTER_EMAIL_TAKEN")
@@ -65,9 +68,6 @@ async def register(
     )
     if existing_username.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="REGISTER_USERNAME_TAKEN")
-
-    if len(data.password) < 8:
-        raise HTTPException(status_code=422, detail="REGISTER_PASSWORD_TOO_SHORT")
 
     user: User = await user_db.create(
         {
@@ -95,14 +95,16 @@ async def login(
     strategy: Strategy = Depends(auth_backend.get_strategy),
 ) -> UserRead:
     """Authenticate with email & password, set session cookie."""
+    normalized_email = data.email.strip().lower()
+
     await enforce_rate_limit(
         scope="login",
-        identifier=data.email.strip().lower(),
+        identifier=normalized_email,
         limit=settings.AUTH_LOGIN_ATTEMPTS,
         window_seconds=settings.AUTH_LOGIN_WINDOW_SECONDS,
     )
 
-    user: User | None = await user_db.get_by_email(data.email)
+    user: User | None = await user_db.get_by_email(normalized_email)
     if not user:
         raise HTTPException(status_code=401, detail="LOGIN_INVALID_CREDENTIALS")
 

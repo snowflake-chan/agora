@@ -267,6 +267,8 @@ async def create_patch(
     user: User = Depends(current_user),
 ):
     """Create a new patch as draft."""
+    from app.deps import check_not_banned
+    await check_not_banned(user.id, session, "mute_patch")
     if not data.title.strip():
         raise HTTPException(status_code=422, detail="TITLE_REQUIRED")
     if not data.content.strip():
@@ -338,6 +340,8 @@ async def submit_patch(
     user: User = Depends(current_user),
 ):
     """Submit for voting with a 3-day voting period (draft → voting)."""
+    from app.deps import check_not_banned
+    await check_not_banned(user.id, session, "mute_patch")
     stmt = select(PatchModel).where(PatchModel.id == patch_id)
     result = await session.execute(stmt)
     patch = result.scalar_one_or_none()

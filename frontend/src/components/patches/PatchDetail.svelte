@@ -173,29 +173,55 @@
       </div>
 
       {#if $currentUser}
-        {#if currentUserVote}
-          <div class="mb-3 text-sm" style="color: var(--vercel-text-secondary);">
-            你的投票：<span class="font-medium" style="color: var(--vercel-text);">{currentUserVote.choice === "for" ? "赞成" : currentUserVote.choice === "against" ? "反对" : "弃权"}</span>
-          </div>
-        {/if}
-        <div class="flex gap-2">
+        <div class="vote-buttons">
           <button
-            class="btn {currentUserVote?.choice === 'for' ? 'btn-primary' : 'btn-secondary'} btn-sm"
+            class="vote-btn"
+            class:vote-active-for={currentUserVote?.choice === "for"}
+            class:vote-other={currentUserVote && currentUserVote.choice !== "for"}
             onclick={() => promptVote("for")}
           >
-            赞成
+            <svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5" />
+            </svg>
+            <span>赞成</span>
+            {#if currentUserVote?.choice === "for"}
+              <svg class="size-3.5 checkmark" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+              </svg>
+            {/if}
           </button>
           <button
-            class="btn {currentUserVote?.choice === 'against' ? 'btn-primary' : 'btn-secondary'} btn-sm"
+            class="vote-btn"
+            class:vote-active-against={currentUserVote?.choice === "against"}
+            class:vote-other={currentUserVote && currentUserVote.choice !== "against"}
             onclick={() => promptVote("against")}
           >
-            反对
+            <svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14H5.236a2 2 0 01-1.789-2.894l3.5-7A2 2 0 018.736 3h4.018a2 2 0 01.485.06l3.76.94m-7 10v5a2 2 0 002 2h.096c.5 0 .905-.405.905-.904 0-.715.211-1.413.608-2.008L17 13V4h-3m-7 10h2" />
+            </svg>
+            <span>反对</span>
+            {#if currentUserVote?.choice === "against"}
+              <svg class="size-3.5 checkmark" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+              </svg>
+            {/if}
           </button>
           <button
-            class="btn {currentUserVote?.choice === 'abstain' ? 'btn-primary' : 'btn-secondary'} btn-sm"
+            class="vote-btn vote-btn-abstain"
+            class:vote-active-abstain={currentUserVote?.choice === "abstain"}
+            class:vote-other={currentUserVote && currentUserVote.choice !== "abstain"}
             onclick={() => promptVote("abstain")}
           >
-            弃权
+            <svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="9" stroke-width="2" />
+              <path stroke-linecap="round" stroke-width="2" d="M8 12h8" />
+            </svg>
+            <span>弃权</span>
+            {#if currentUserVote?.choice === "abstain"}
+              <svg class="size-3.5 checkmark" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+              </svg>
+            {/if}
           </button>
         </div>
       {:else}
@@ -288,5 +314,69 @@
     color: var(--vercel-text);
     background: rgba(255,255,255,0.08);
     border-color: rgba(255,255,255,0.12);
+  }
+
+  /* ---- vote buttons ---- */
+  .vote-buttons {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .vote-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 1rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.04);
+    color: var(--vercel-text-tertiary);
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.25, 0.1, 0.25, 1);
+    user-select: none;
+  }
+
+  .vote-btn:hover {
+    background: rgba(255,255,255,0.08);
+    border-color: rgba(255,255,255,0.14);
+    color: var(--vercel-text-secondary);
+  }
+
+  /* active – for */
+  .vote-active-for {
+    background: rgba(34, 197, 94, 0.18) !important;
+    border-color: rgba(34, 197, 94, 0.55) !important;
+    color: #fff !important;
+    box-shadow: 0 0 12px rgba(34, 197, 94, 0.12);
+  }
+
+  /* active – against */
+  .vote-active-against {
+    background: rgba(239, 68, 68, 0.18) !important;
+    border-color: rgba(239, 68, 68, 0.55) !important;
+    color: #fff !important;
+    box-shadow: 0 0 12px rgba(239, 68, 68, 0.12);
+  }
+
+  /* active – abstain */
+  .vote-active-abstain {
+    background: rgba(255,255,255,0.12) !important;
+    border-color: rgba(255,255,255,0.35) !important;
+    color: #fff !important;
+  }
+
+  /* non-active choices after voting – dimmed but clickable to switch */
+  .vote-btn.vote-other {
+    opacity: 0.28;
+  }
+  .vote-btn.vote-other:hover {
+    opacity: 0.6;
+  }
+
+  .vote-btn .checkmark {
+    margin-left: auto;
+    opacity: 0.9;
   }
 </style>
