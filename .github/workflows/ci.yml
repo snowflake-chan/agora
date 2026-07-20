@@ -47,10 +47,12 @@ jobs:
           alembic upgrade head
 
       - name: Start server & run tests
+        env:
+          DATABASE_URL: postgresql+asyncpg://agora:agora@localhost:5432/agora
+          JWT_SECRET: test-secret
+          REDIS_URL: redis://localhost:6379/0
         run: |
           cd backend
-          DATABASE_URL=postgresql+asyncpg://agora:agora@localhost:5432/agora \
-          JWT_SECRET=test-secret \
           uvicorn app.main:app --host 0.0.0.0 --port 8000 &
           sleep 2
           python -m pytest tests/ -v --tb=short
