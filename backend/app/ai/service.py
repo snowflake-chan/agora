@@ -35,6 +35,16 @@ from app.config import settings
 
 
 _provider_semaphore = asyncio.Semaphore(settings.AI_MAX_CONCURRENT_REQUESTS)
+_POLITICAL_MODERATION_REASON = "political_or_uncertain"
+
+
+def _political_source_error(provenance: str) -> AIServiceError:
+    return AIServiceError(
+        422,
+        "POLITICAL_CONTENT_UNAVAILABLE",
+        source_moderation_reason=_POLITICAL_MODERATION_REASON,
+        source_moderation_provenance=provenance,
+    )
 
 
 def ai_is_enabled() -> bool:
@@ -62,7 +72,7 @@ def _validate_request(
     if sum(len(value) for value in values) > settings.AI_MAX_INPUT_CHARS:
         raise AIServiceError(422, "AI_INPUT_TOO_LONG")
     if any(contains_political_signals(value) for value in values):
-        raise AIServiceError(422, "POLITICAL_CONTENT_UNAVAILABLE")
+        raise _political_source_error("local_guard")
     return values
 
 
@@ -79,7 +89,11 @@ async def _prepare_request(
     )
     await enforce_ai_rate_limit(user_id, client_identifier)
     if settings.AI_POLITICAL_CLASSIFIER_URL.strip():
-        await require_trusted_local_classification(values)
+        await require_trusted_local_classification(
+            values,
+            source_moderation_reason=_POLITICAL_MODERATION_REASON,
+            source_moderation_provenance="trusted_classifier",
+        )
 
 
 async def _request_completion(
@@ -104,15 +118,22 @@ async def _request_completion(
 
 def _reject_political(status: str) -> None:
     if status != "non_political":
-        raise AIServiceError(422, "POLITICAL_CONTENT_UNAVAILABLE")
+        raise _political_source_error("provider")
 
 
 async def _reject_political_output(*values: str) -> None:
     """Recheck provider output locally instead of trusting its classification."""
     if any(contains_political_signals(value) for value in values):
-        raise AIServiceError(422, "POLITICAL_CONTENT_UNAVAILABLE")
+        raise AIServiceError(422, "AI_OUTPUT_BLOCKED")
     if settings.AI_POLITICAL_CLASSIFIER_URL.strip():
-        await require_trusted_local_classification(list(values))
+        try:
+            await require_trusted_local_classification(
+                list(values),
+            )
+        except AIServiceError as error:
+            if error.code == "POLITICAL_CONTENT_UNAVAILABLE":
+                raise AIServiceError(422, "AI_OUTPUT_BLOCKED") from error
+            raise
 
 
 async def summarize(
@@ -185,7 +206,11 @@ async def translate_bundle(
     if settings.AI_POLITICAL_CLASSIFIER_URL.strip():
         # Cache hits still pass the current trusted classifier. A result cached in a
         # development environment must never bypass production's semantic gate.
-        await require_trusted_local_classification(source_values)
+        await require_trusted_local_classification(
+            source_values,
+            source_moderation_reason=_POLITICAL_MODERATION_REASON,
+            source_moderation_provenance="trusted_classifier",
+        )
 
     cache_key = translation_cache_key(
         fields=source_fields,

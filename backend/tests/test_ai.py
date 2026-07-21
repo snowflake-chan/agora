@@ -10,12 +10,14 @@ from app.ai import client as ai_client
 from app.ai import classifier as political_classifier
 from app.ai import storage
 from app.ai import routes as ai_routes
+from app.ai.politics import contains_political_signals
 from app.ai.routes import (
     ai_eligible_user,
     published_poll_questions,
     router as ai_router,
 )
 from app.config import settings
+from app.db import get_session
 
 
 class FakeRedis:
@@ -58,6 +60,11 @@ def ai_app():
         return []
 
     app.dependency_overrides[published_poll_questions] = no_published_questions
+
+    async def no_database_session():
+        yield object()
+
+    app.dependency_overrides[get_session] = no_database_session
     return app
 
 
@@ -282,7 +289,7 @@ async def test_local_guard_rechecks_mislabeled_provider_output(ai_app, monkeypat
     )
 
     assert response.status_code == 422
-    assert response.json() == {"detail": "POLITICAL_CONTENT_UNAVAILABLE"}
+    assert response.json() == {"detail": "AI_OUTPUT_BLOCKED"}
 
 
 @pytest.mark.asyncio
@@ -344,7 +351,12 @@ async def test_trusted_local_classifier_failure_is_fail_closed(ai_app, monkeypat
 
 
 @pytest.mark.asyncio
-async def test_trusted_local_classifier_rechecks_provider_output(ai_app, monkeypatch):
+@pytest.mark.parametrize("output_status", ["political", "uncertain"])
+async def test_trusted_local_classifier_rechecks_provider_output(
+    ai_app,
+    monkeypatch,
+    output_status,
+):
     monkeypatch.setattr(
         settings,
         "AI_POLITICAL_CLASSIFIER_URL",
@@ -353,7 +365,7 @@ async def test_trusted_local_classifier_rechecks_provider_output(ai_app, monkeyp
     mock_redis(monkeypatch, FakeRedis())
     requests = mock_local_classifier(
         monkeypatch,
-        [["non_political"], ["political"]],
+        [["non_political"], [output_status]],
     )
     mock_deepseek(
         monkeypatch,
@@ -372,7 +384,7 @@ async def test_trusted_local_classifier_rechecks_provider_output(ai_app, monkeyp
     )
 
     assert response.status_code == 422
-    assert response.json() == {"detail": "POLITICAL_CONTENT_UNAVAILABLE"}
+    assert response.json() == {"detail": "AI_OUTPUT_BLOCKED"}
     assert len(requests) == 2
 
 
@@ -396,7 +408,7 @@ async def test_invalid_model_json_is_a_safe_error(ai_app, monkeypatch):
     ("finish_reason", "expected_status", "expected_detail"),
     [
         ("length", 502, "AI_UPSTREAM_INVALID_RESPONSE"),
-        ("content_filter", 422, "POLITICAL_CONTENT_UNAVAILABLE"),
+        ("content_filter", 422, "AI_PROVIDER_FILTERED"),
     ],
 )
 async def test_nonfinal_provider_responses_are_never_returned(
@@ -636,6 +648,206 @@ async def test_structured_translation_preserves_fields_context_and_order(
     assert len(redis.get_calls) == 1
     assert len(redis.set_calls) == 1
     assert "Release notes" not in redis.get_calls[0]
+
+
+@pytest.mark.asyncio
+async def test_release_candidate_translation_is_not_misclassified(
+    ai_app,
+    monkeypatch,
+):
+    mock_redis(monkeypatch, FakeRedis())
+    mock_deepseek(
+        monkeypatch,
+        [
+            {
+                "political_status": "non_political",
+                "translations": ["快速視窗", "候選人"],
+            }
+        ],
+    )
+
+    response = await post(
+        ai_app,
+        "/api/v1/ai/translate/fields",
+        {
+            "fields": [
+                {"key": "title", "text": "Fast window"},
+                {"key": "body", "text": "Candidate"},
+            ],
+            "target_locale": "zh-TW",
+            "context": "patch",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["fields"] == [
+        {"key": "title", "translation": "快速視窗"},
+        {"key": "body", "translation": "候選人"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_related_fields_use_one_contextual_classifier_document(
+    ai_app,
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        settings,
+        "AI_POLITICAL_CLASSIFIER_URL",
+        "http://politics-classifier:8080/classify",
+    )
+    mock_redis(monkeypatch, FakeRedis())
+    classifier_requests = mock_local_classifier(
+        monkeypatch,
+        [["non_political"], ["non_political"]],
+    )
+    mock_deepseek(
+        monkeypatch,
+        [
+            {
+                "political_status": "non_political",
+                "translations": ["Old merged work", "History"],
+            }
+        ],
+    )
+
+    response = await post(
+        ai_app,
+        "/api/v1/ai/translate/fields",
+        {
+            "fields": [
+                {"key": "title", "text": "舊合併作品"},
+                {"key": "body", "text": "歷史"},
+            ],
+            "target_locale": "en",
+            "context": "post",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    source_batch = json.loads(classifier_requests[0].content)["texts"]
+    assert source_batch == ["舊合併作品\n\n歷史"]
+    assert len(classifier_requests) == 2
+
+
+@pytest.mark.asyncio
+async def test_source_political_verdict_can_transition_canonical_content(
+    ai_app,
+    monkeypatch,
+):
+    content_id = uuid.uuid4()
+    calls = []
+    held = SimpleNamespace(
+        id=content_id,
+        revision_number=3,
+        type="comment",
+        parent_id=uuid.UUID(int=4),
+        patch_id=None,
+        guild_id=None,
+    )
+
+    async def hold(session, **kwargs):
+        calls.append((session, kwargs))
+        return held
+
+    async def deliver(content):
+        calls.append(("delivered", content))
+
+    monkeypatch.setattr(ai_routes, "hold_translation_source_for_review", hold)
+    monkeypatch.setattr(ai_routes, "_deliver_translation_moderation_hold", deliver)
+    mock_redis(monkeypatch, FakeRedis())
+    mock_deepseek(
+        monkeypatch,
+        [{"political_status": "political", "translations": None}],
+    )
+
+    response = await post(
+        ai_app,
+        "/api/v1/ai/translate/fields",
+        {
+            "fields": [{"key": "body", "text": "An indirect source"}],
+            "target_locale": "en",
+            "context": "comment",
+            "source_content_id": str(content_id),
+            "source_revision_number": 3,
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": "POLITICAL_CONTENT_REVIEW_PENDING"}
+    assert response.headers["x-agora-moderation-status"] == "pending_review"
+    assert response.headers["x-agora-moderation-reason"] == "political_or_uncertain"
+    assert response.headers["x-agora-content-id"] == str(content_id)
+    assert response.headers["x-agora-revision-number"] == "3"
+    assert response.headers["x-agora-target-href"] == f"/posts/{held.parent_id}#{content_id}"
+    assert calls[0][1] == {
+        "content_id": content_id,
+        "revision_number": 3,
+        "context": "comment",
+        "fields": [("body", "An indirect source")],
+        "reason": "political_or_uncertain",
+        "verdict_provenance": "provider",
+        "actor_id": uuid.UUID(int=1),
+        "actor_is_staff": False,
+    }
+    assert calls[1] == ("delivered", held)
+
+
+@pytest.mark.asyncio
+async def test_ai_hold_uses_durable_delivery(monkeypatch):
+    content = SimpleNamespace(
+        id=uuid.uuid4(),
+        revision_number=2,
+        type="post",
+        parent_id=None,
+        patch_id=None,
+    )
+    delivered = []
+
+    async def deliver(content_id):
+        delivered.append(content_id)
+
+    monkeypatch.setattr(ai_routes, "deliver_moderation_effects", deliver)
+
+    await ai_routes._deliver_translation_moderation_hold(content)
+    assert delivered == [content.id]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Candidate",
+        "候选人",
+        "候選人",
+        "Product policy",
+        "產品政策",
+        "隱私政策",
+        "產品安全政策",
+        "Deployment regulation",
+    ],
+)
+def test_ambiguous_administration_terms_are_not_political_by_themselves(text):
+    assert contains_political_signals(text) is False
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "政府選舉候選人",
+        "候选人连任",
+        "A government regulation update",
+        "新政策將影響所有人",
+        "国家安全政策",
+        "國家安全政策",
+        "国家产品安全政策",
+        "國家產品安全政策",
+        "国家数据保留政策",
+        "中国平台安全政策",
+        "The EU regulation changes voting access",
+    ],
+)
+def test_ambiguous_terms_still_block_with_political_context(text):
+    assert contains_political_signals(text) is True
 
 
 @pytest.mark.asyncio

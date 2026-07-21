@@ -5,6 +5,7 @@
   import { requestLogin } from "../../lib/login";
   import {
     isModerationRestricted,
+    moderationTargetContentId,
     onModerationUpdateForPath,
   } from "../../lib/moderation";
   import { createReport } from "../../lib/admin";
@@ -56,7 +57,28 @@
 
   onMount(() => {
     void loadPostDetail();
-    return onModerationUpdateForPath(`/posts/${postId}`, () => {
+    return onModerationUpdateForPath(`/posts/${postId}`, (detail) => {
+      const targetContentId = moderationTargetContentId(detail, postId);
+      if (
+        detail.type === "moderation_pending"
+        && targetContentId === postId
+        && post
+      ) {
+        const canSeePending = $currentUser?.id === post.author_id
+          || $currentUser?.role === "moderator"
+          || $currentUser?.role === "super_admin";
+        if (canSeePending) {
+          post = {
+            ...post,
+            moderation_status: "pending_review",
+            moderation_reason: null,
+            moderation_review_note: null,
+          };
+        } else {
+          post = null;
+          comments = [];
+        }
+      }
       void loadPostDetail(false);
     });
   });
@@ -417,6 +439,7 @@
           moderationStatus={item.moderationStatus}
           moderationReason={item.moderationReason}
           moderationReviewNote={item.moderationReviewNote}
+          moderationTargetHref={`/posts/${postId}`}
         />
       {/each}
     </div>

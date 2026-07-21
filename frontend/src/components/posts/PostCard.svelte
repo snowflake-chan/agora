@@ -12,8 +12,17 @@
   let { post }: { post: Post } = $props();
 
   let snippet = $derived(stripMarkdown(post.content));
-  let moderationRestricted = $derived(isModerationRestricted(post.moderation_status));
-  let moderationVisible = $derived(hasModerationNotice(post.moderation_status));
+  let moderationQueued = $state(false);
+  let effectiveModerationStatus = $derived(
+    moderationQueued ? "pending_review" : post.moderation_status,
+  );
+  let moderationRestricted = $derived(isModerationRestricted(effectiveModerationStatus));
+  let moderationVisible = $derived(hasModerationNotice(effectiveModerationStatus));
+
+  $effect(() => {
+    const nextStatus = post.moderation_status;
+    if (nextStatus !== "published") moderationQueued = false;
+  });
 </script>
 
 <article
@@ -23,8 +32,8 @@
   {#if moderationVisible}
     <div class="post-card-topline">
       <ModerationNotice
-        status={post.moderation_status}
-        reason={post.moderation_reason}
+        status={effectiveModerationStatus}
+        reason={moderationQueued ? null : post.moderation_reason}
         compact
       />
     </div>
@@ -41,12 +50,30 @@
 
   {#if !moderationRestricted}
     <div class="post-card-translation">
-      <PostAiTools text={post.content} title={post.title} context="post" compact translationOnly />
+      <PostAiTools
+        text={post.content}
+        title={post.title}
+        context="post"
+        compact
+        translationOnly
+        sourceContentId={post.id}
+        sourceRevisionNumber={post.revision_number}
+        moderationTargetHref={`/posts/${post.id}`}
+        onModerationQueued={() => (moderationQueued = true)}
+      />
     </div>
   {/if}
 
   {#if post.poll}
-    <PollCard postId={post.id} poll={post.poll} compact readOnly={moderationRestricted} />
+    <PollCard
+      postId={post.id}
+      poll={post.poll}
+      compact
+      readOnly={moderationRestricted}
+      sourceRevisionNumber={post.revision_number}
+      moderationTargetHref={`/posts/${post.id}`}
+      onModerationQueued={() => (moderationQueued = true)}
+    />
   {/if}
 
   <div class="mt-2 flex items-center justify-between gap-2">

@@ -4,7 +4,7 @@ from uuid import UUID
 from sqlalchemy import func, select, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import lazyload
+from sqlalchemy.orm import lazyload, selectinload
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
@@ -48,6 +48,7 @@ async def super_admin_required(user: User = Depends(current_user)):
 
 
 def _content_review_item(content: ContentModel) -> dict:
+    poll = content.poll if content.type == "post" else None
     return {
         "id": content.id,
         "content_id": content.id,
@@ -67,6 +68,12 @@ def _content_review_item(content: ContentModel) -> dict:
         "parent_id": content.parent_id,
         "patch_id": content.patch_id,
         "guild_id": content.guild_id,
+        "poll_question": poll.question if poll is not None else None,
+        "poll_options": (
+            [option.text for option in poll.options]
+            if poll is not None
+            else []
+        ),
     }
 
 
@@ -83,6 +90,9 @@ async def list_content_reviews(
     rows = (
         await session.execute(
             select(ContentModel)
+            .options(
+                selectinload(ContentModel.poll).selectinload(PostPoll.options)
+            )
             .where(ContentModel.moderation_status == status)
             .order_by(ContentModel.created_at.asc(), ContentModel.id.asc())
             .offset((page - 1) * page_size)
@@ -119,6 +129,7 @@ async def review_content(
         raise HTTPException(409, detail="CONTENT_REVIEW_CONFLICT")
 
     approved = body.decision == "approve"
+    first_publication = approved and content.published_at is None
     content.moderation_status = "approved" if approved else "rejected"
     content.moderation_review_note = body.note
     content.moderation_reviewed_by = user.id
@@ -128,13 +139,13 @@ async def review_content(
     content.moderation_reviewed_at = reviewed_at
     # A previously public item keeps its original feed position while its edit
     # is reviewed. New held submissions begin their public lifetime here.
-    if approved and content.published_at is None:
+    if first_publication:
         content.published_at = reviewed_at
     content.moderation_effects_completed_at = None
 
     # A private poll has not had a real voting window yet. Preserve the
     # author's chosen duration, but start it when the post becomes public.
-    if approved and content.type == "post":
+    if first_publication and content.type == "post":
         poll = await session.scalar(
             select(PostPoll)
             .where(PostPoll.post_id == content.id)
@@ -155,7 +166,11 @@ async def review_content(
         print(f"[moderation-delivery] immediate delivery failed: {exc}")
 
     content = await session.scalar(
-        select(ContentModel).where(ContentModel.id == content_id)
+        select(ContentModel)
+        .options(
+            selectinload(ContentModel.poll).selectinload(PostPoll.options)
+        )
+        .where(ContentModel.id == content_id)
     )
     if content is None:
         raise HTTPException(404, detail="CONTENT_NOT_FOUND")

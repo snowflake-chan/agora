@@ -9,6 +9,9 @@ from uuid import UUID, uuid4
 import asyncpg
 import httpx
 import pytest
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+from app.content_moderation import hold_translation_source_for_review
 
 
 pytestmark = pytest.mark.usefixtures("server")
@@ -73,6 +76,226 @@ def _set_patch_status(patch_id: str, status: str) -> None:
             await connection.close()
 
     asyncio.run(update_status())
+
+
+def _set_content_moderation_status(content_id: str, status: str) -> None:
+    async def update_status() -> None:
+        connection = await asyncpg.connect(_database_url())
+        try:
+            await connection.execute(
+                "UPDATE content SET moderation_status = $1 WHERE id = $2",
+                status,
+                UUID(content_id),
+            )
+        finally:
+            await connection.close()
+
+    asyncio.run(update_status())
+
+
+async def _hold_translation_source(**kwargs) -> bool:
+    engine = create_async_engine(os.environ["DATABASE_URL"])
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with sessions() as session:
+            held = await hold_translation_source_for_review(session, **kwargs)
+            return held is not None
+    finally:
+        await engine.dispose()
+
+
+def test_translation_verdict_holds_only_the_current_canonical_source():
+    author, author_user = _account("ai-source-author")
+    viewer, viewer_user = _account("ai-source-viewer")
+    created = author.post(
+        f"{BASE}/posts",
+        json={"title": "Release candidate", "content": "Fast window"},
+    )
+    assert created.status_code == 201, created.text
+    post = created.json()
+    content_id = UUID(post["id"])
+
+    async def hold_once(
+        *,
+        revision: int,
+        body: str,
+        actor_id: UUID,
+        provenance: str = "provider",
+    ) -> bool:
+        return await _hold_translation_source(
+            content_id=content_id,
+            revision_number=revision,
+            context="post",
+            fields=[("title", "Release candidate"), ("body", body)],
+            reason="political_or_uncertain",
+            verdict_provenance=provenance,
+            actor_id=actor_id,
+        )
+
+    author_id = UUID(author_user["id"])
+    viewer_id = UUID(viewer_user["id"])
+    assert asyncio.run(
+        hold_once(revision=2, body="Fast window", actor_id=author_id)
+    ) is False
+    assert asyncio.run(
+        hold_once(revision=1, body="Mismatched text", actor_id=author_id)
+    ) is False
+    # Provider-only classification is untrusted for moderation when another
+    # viewer requested the translation.
+    assert asyncio.run(
+        hold_once(revision=1, body="Fast window", actor_id=viewer_id)
+    ) is False
+
+    async def race_holds() -> list[bool]:
+        return list(
+            await asyncio.gather(
+                hold_once(
+                    revision=1,
+                    body="Fast window",
+                    actor_id=author_id,
+                ),
+                hold_once(
+                    revision=1,
+                    body="Fast window",
+                    actor_id=author_id,
+                ),
+            )
+        )
+
+    assert asyncio.run(race_holds()).count(True) == 1
+    own_detail = author.get(f"{BASE}/posts/{content_id}")
+    assert own_detail.status_code == 200, own_detail.text
+    assert own_detail.json()["moderation_status"] == "pending_review"
+    assert own_detail.json()["moderation_reason"] == "political_or_uncertain"
+    assert viewer.get(f"{BASE}/posts/{content_id}").status_code == 404
+
+
+def test_translation_verdict_does_not_override_approved_revision():
+    author, author_user = _account("ai-approved-author")
+    created = author.post(
+        f"{BASE}/posts",
+        json={"title": "Approved release", "content": "Candidate build"},
+    )
+    assert created.status_code == 201, created.text
+    content_id = created.json()["id"]
+    _set_content_moderation_status(content_id, "approved")
+
+    async def try_hold() -> bool:
+        return await _hold_translation_source(
+            content_id=UUID(content_id),
+            revision_number=1,
+            context="post",
+            fields=[
+                ("title", "Approved release"),
+                ("body", "Candidate build"),
+            ],
+            reason="political_or_uncertain",
+            verdict_provenance="provider",
+            actor_id=UUID(author_user["id"]),
+        )
+
+    assert asyncio.run(try_hold()) is False
+    detail = author.get(f"{BASE}/posts/{content_id}")
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["moderation_status"] == "approved"
+
+
+def test_reapproval_does_not_reopen_a_previously_public_poll():
+    author, author_user = _account("ai-existing-poll-author")
+    admin, admin_user = _account("ai-existing-poll-admin")
+    _set_role(admin_user["id"], "super_admin")
+
+    created = author.post(
+        f"{BASE}/posts",
+        json={
+            "title": "Existing release poll",
+            "content": "Choose the candidate build.",
+            "poll": {
+                "question": "Which build should ship?",
+                "options": ["Stable", "Candidate"],
+                "duration_hours": 24,
+            },
+        },
+    )
+    assert created.status_code == 201, created.text
+    post_id = created.json()["id"]
+
+    held = asyncio.run(
+        _hold_translation_source(
+            content_id=UUID(post_id),
+            revision_number=1,
+            context="post",
+            fields=[
+                ("title", "Existing release poll"),
+                ("body", "Choose the candidate build."),
+            ],
+            reason="political_or_uncertain",
+            verdict_provenance="provider",
+            actor_id=UUID(author_user["id"]),
+        )
+    )
+    assert held is True
+    old_dates = _expire_pending_poll_and_backdate_post(post_id)
+
+    approved = admin.post(
+        f"{BASE}/admin/moderation/{post_id}/review",
+        json={
+            "decision": "approve",
+            "note": "The release terminology is non-political.",
+            "revision_number": 1,
+        },
+    )
+    assert approved.status_code == 200, approved.text
+
+    detail = author.get(f"{BASE}/posts/{post_id}")
+    assert detail.status_code == 200, detail.text
+    poll = detail.json()["poll"]
+    assert poll["is_closed"] is True
+    assert datetime.fromisoformat(poll["closes_at"]) == old_dates["poll"]["closes_at"]
+
+
+def test_pending_translation_delivery_is_recoverable_and_idempotent():
+    author, author_user = _account("ai-pending-delivery-author")
+    created = author.post(
+        f"{BASE}/posts",
+        json={
+            "title": "Recoverable moderation delivery",
+            "content": "A canonical source awaiting a durable signal.",
+        },
+    )
+    assert created.status_code == 201, created.text
+    post_id = created.json()["id"]
+
+    held = asyncio.run(
+        _hold_translation_source(
+            content_id=UUID(post_id),
+            revision_number=1,
+            context="post",
+            fields=[
+                ("title", "Recoverable moderation delivery"),
+                ("body", "A canonical source awaiting a durable signal."),
+            ],
+            reason="political_or_uncertain",
+            verdict_provenance="provider",
+            actor_id=UUID(author_user["id"]),
+        )
+    )
+    assert held is True
+    assert _content_delivery_state(post_id)["moderation_effects_completed_at"] is None
+
+    _run_delivery_reconciliation_twice()
+
+    pending_notifications = [
+        item
+        for item in author.get(f"{BASE}/notifications").json()["items"]
+        if item["type"] == "moderation_pending"
+        and item["link"] == f"/posts/{post_id}"
+    ]
+    assert len(pending_notifications) == 1
+    assert (
+        _content_delivery_state(post_id)["moderation_effects_completed_at"]
+        is not None
+    )
 
 
 def _expire_pending_poll_and_backdate_post(post_id: str) -> dict:
@@ -271,6 +494,8 @@ def test_flagged_post_is_author_only_until_atomic_approval():
         queued = next(item for item in queue if item["id"] == post_id)
         assert queued["content_type"] == "post"
         assert queued["moderation_reason"] == "political_or_uncertain"
+        assert queued["poll_question"] == "Which public policy should be reviewed?"
+        assert queued["poll_options"] == ["First option", "Second option"]
         pending_notification = next(
             item
             for item in author.get(f"{BASE}/notifications").json()["items"]

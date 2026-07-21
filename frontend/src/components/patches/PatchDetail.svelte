@@ -665,6 +665,7 @@
             moderationStatus={comment.moderation_status}
             moderationReason={comment.moderation_reason}
             moderationReviewNote={comment.moderation_review_note}
+            moderationTargetHref={`/patches/${patchId}`}
           />
         {/each}
       </div>

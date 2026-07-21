@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,15 +25,21 @@ from app.ai.service import (
     translate_bundle,
     assist_writing,
 )
+from app.content_moderation import (
+    content_href,
+    hold_translation_source_for_review,
+)
 from app.db import get_session
 from app.db.models.user import User
 from app.db.models.post_poll import PostPoll
 from app.deps import check_not_banned
+from app.moderation_delivery import deliver_moderation_effects
 from app.users.deps import current_user
 from app.users.rate_limit import client_ip
 
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 async def ai_eligible_user(
@@ -56,6 +64,18 @@ def _http_error(error: AIServiceError) -> HTTPException:
         detail=error.code,
         headers=error.headers,
     )
+
+
+async def _deliver_translation_moderation_hold(content) -> None:
+    """Attempt durable delivery; the reconciler retries an interrupted attempt."""
+    try:
+        await deliver_moderation_effects(content.id)
+    except Exception as exc:
+        logger.warning(
+            "AI moderation delivery failed content_id=%s type=%s",
+            content.id,
+            type(exc).__name__,
+        )
 
 
 @router.get("/status", response_model=AIStatusResponse)
@@ -101,6 +121,7 @@ async def translate_fields(
     data: TranslationBundleRequest,
     request: Request,
     user: User = Depends(ai_eligible_user),
+    session: AsyncSession = Depends(get_session),
 ) -> TranslationBundleResponse:
     """Translate related fields together so titles, bodies, and options keep context."""
     try:
@@ -110,6 +131,44 @@ async def translate_fields(
             client_identifier=client_ip(request),
         )
     except AIServiceError as error:
+        held_content = None
+        if (
+            error.source_moderation_reason is not None
+            and error.source_moderation_provenance is not None
+            and data.source_content_id is not None
+            and data.source_revision_number is not None
+        ):
+            held_content = await hold_translation_source_for_review(
+                session,
+                content_id=data.source_content_id,
+                revision_number=data.source_revision_number,
+                context=data.context,
+                fields=[(field.key, field.text) for field in data.fields],
+                reason=error.source_moderation_reason,
+                verdict_provenance=error.source_moderation_provenance,
+                actor_id=user.id,
+                actor_is_staff=getattr(user, "role", None)
+                in ("moderator", "super_admin"),
+            )
+        if held_content is not None:
+            await _deliver_translation_moderation_hold(held_content)
+            headers = dict(error.headers or {})
+            headers.update(
+                {
+                    "X-Agora-Moderation-Status": "pending_review",
+                    "X-Agora-Moderation-Reason": error.source_moderation_reason,
+                    "X-Agora-Content-Id": str(held_content.id),
+                    "X-Agora-Revision-Number": str(
+                        held_content.revision_number
+                    ),
+                    "X-Agora-Target-Href": content_href(held_content),
+                }
+            )
+            error = AIServiceError(
+                422,
+                "POLITICAL_CONTENT_REVIEW_PENDING",
+                headers=headers,
+            )
         raise _http_error(error) from error
 
 

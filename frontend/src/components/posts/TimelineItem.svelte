@@ -55,6 +55,7 @@
     moderationReason = null,
     moderationReviewNote = null,
     revisionNumber = 1,
+    moderationTargetHref = null,
   }: {
     username: string;
     userId: string | null;
@@ -87,16 +88,26 @@
     moderationReason?: string | null;
     moderationReviewNote?: string | null;
     revisionNumber?: number;
+    moderationTargetHref?: string | null;
   } = $props();
 
   let menuOpen = $state(false);
   let menuButton = $state<HTMLButtonElement | null>(null);
   let guild = $state<UserGuildBadge | null>(null);
+  let moderationQueued = $state(false);
   let profileHref = $derived(userId ? `/users/${userId}` : "#");
   let menuId = $derived(
     `timeline-actions-${(contentId ?? `${userId ?? "anonymous"}-${createdAt}`).replace(/[^a-zA-Z0-9_-]/g, "-")}`,
   );
-  let moderationRestricted = $derived(isModerationRestricted(moderationStatus));
+  let effectiveModerationStatus = $derived(
+    moderationQueued ? "pending_review" : moderationStatus,
+  );
+  let moderationRestricted = $derived(isModerationRestricted(effectiveModerationStatus));
+
+  $effect(() => {
+    const nextStatus = moderationStatus;
+    if (nextStatus !== "published") moderationQueued = false;
+  });
 
   onMount(async () => {
     if (!userId) return;
@@ -230,8 +241,8 @@
     <!-- Body -->
     <div class="px-4 py-3 text-sm" style="color: var(--vercel-text-secondary);">
       <ModerationNotice
-        status={moderationStatus}
-        reason={moderationReason}
+        status={effectiveModerationStatus}
+        reason={moderationQueued ? null : moderationReason}
         reviewNote={moderationReviewNote}
       />
       {#if replyingToUsername}
@@ -253,10 +264,27 @@
         </div>
       {/if}
       {#if poll && contentId}
-        <PollCard postId={contentId} {poll} onUpdate={onPollUpdate} readOnly={moderationRestricted} />
+        <PollCard
+          postId={contentId}
+          {poll}
+          onUpdate={onPollUpdate}
+          readOnly={moderationRestricted}
+          sourceRevisionNumber={revisionNumber}
+          {moderationTargetHref}
+          onModerationQueued={() => (moderationQueued = true)}
+        />
       {/if}
       {#if aiText && !moderationRestricted}
-        <PostAiTools text={aiText} title={aiTitle} context={aiContext} compact={title === null} />
+        <PostAiTools
+          text={aiText}
+          title={aiTitle}
+          context={aiContext}
+          compact={title === null}
+          sourceContentId={contentId}
+          sourceRevisionNumber={revisionNumber}
+          {moderationTargetHref}
+          onModerationQueued={() => (moderationQueued = true)}
+        />
       {/if}
     </div>
 

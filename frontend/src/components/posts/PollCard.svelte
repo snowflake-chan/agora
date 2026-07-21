@@ -1,9 +1,11 @@
 <script lang="ts">
   import { BarChart3Icon, CheckIcon, Clock3Icon, LanguagesIcon } from "@lucide/svelte";
   import { onMount } from "svelte";
-  import { getAiStatus, translateFields } from "../../lib/ai";
+  import { AiRequestError, getAiStatus, translateFields } from "../../lib/ai";
+  import { ApiError } from "../../lib/auth";
   import { locale, translateError, translator } from "../../lib/i18n";
   import { requestLogin } from "../../lib/login";
+  import { dispatchModerationUpdate } from "../../lib/moderation";
   import { autoTranslate, initPreferences } from "../../lib/preferences";
   import { voteOnPoll, type Poll } from "../../lib/posts";
   import { currentUser } from "../../stores/auth";
@@ -16,12 +18,18 @@
     compact = false,
     readOnly = false,
     onUpdate = null,
+    sourceRevisionNumber = null,
+    moderationTargetHref = null,
+    onModerationQueued = null,
   }: {
     postId: string;
     poll: Poll;
     compact?: boolean;
     readOnly?: boolean;
     onUpdate?: ((poll: Poll) => void) | null;
+    sourceRevisionNumber?: number | null;
+    moderationTargetHref?: string | null;
+    onModerationQueued?: (() => void) | null;
   } = $props();
 
   let currentPoll = $state<Poll>(poll);
@@ -33,6 +41,7 @@
   let translatedOptions = $state<string[]>([]);
   let visible = $state(false);
   let autoSignature = $state("");
+  let cachedLocale = $state($locale);
   let now = $derived($relativeTimeClock);
   let isClosed = $derived(
     currentPoll.is_closed || Date.parse(currentPoll.closes_at) <= now,
@@ -48,6 +57,14 @@
   $effect(() => {
     currentPoll = poll;
     selectedOptionId = poll.selected_option_id ?? null;
+  });
+
+  $effect(() => {
+    const nextLocale = $locale;
+    if (nextLocale === cachedLocale) return;
+    cachedLocale = nextLocale;
+    translatedQuestion = "";
+    translatedOptions = [];
   });
 
   $effect(() => {
@@ -77,7 +94,7 @@
   }
 
   async function translatePoll() {
-    if (translationLoading) return;
+    if (translationLoading || readOnly) return;
     if (!$currentUser) {
       requestLogin(undefined, () => void translatePoll());
       return;
@@ -91,14 +108,46 @@
           text: option.text,
         })),
       ];
-      const result = await translateFields(fields, $locale, "poll");
+      const result = await translateFields(
+        fields,
+        $locale,
+        "poll",
+        sourceRevisionNumber
+          ? { contentId: postId, revisionNumber: sourceRevisionNumber }
+          : null,
+      );
       translatedQuestion = result.fields[0]?.translation ?? "";
       translatedOptions = result.fields.slice(1).map((field) => field.translation);
     } catch (error) {
-      toaster.error(
-        $translator("common.operationFailed"),
-        translateError(error, $translator, "ai.failed"),
-      );
+      const moderationUpdate = error instanceof AiRequestError
+        ? error.moderationUpdate
+        : null;
+      if (moderationUpdate?.contentId === postId) {
+        toaster.info(
+          $translator("ai.reviewPendingTitle"),
+          $translator("ai.reviewPendingDescription"),
+        );
+        onModerationQueued?.();
+        const targetHref = moderationUpdate.targetHref ?? moderationTargetHref;
+        if (targetHref) {
+          dispatchModerationUpdate({
+            type: "moderation_pending",
+            link: targetHref,
+            contentId: moderationUpdate.contentId,
+          });
+        }
+      } else {
+        const code = error instanceof ApiError ? error.code : "AI_REQUEST_FAILED";
+        const isSafetyBlock = code === "POLITICAL_CONTENT_UNAVAILABLE"
+          || code === "AI_OUTPUT_BLOCKED"
+          || code === "AI_PROVIDER_FILTERED";
+        const message = translateError(error, $translator, "ai.failed");
+        if (isSafetyBlock) {
+          toaster.info($translator("ai.tools"), message);
+        } else {
+          toaster.error($translator("common.operationFailed"), message);
+        }
+      }
     } finally {
       translationLoading = false;
     }
@@ -159,7 +208,7 @@
       {$translator("poll.label")}
     </span>
     <div class="poll-heading-actions">
-      {#if aiEnabled}
+      {#if aiEnabled && !readOnly}
         <button
           type="button"
           class="poll-translate"

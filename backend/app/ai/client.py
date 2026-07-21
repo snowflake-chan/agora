@@ -60,7 +60,9 @@ async def request_structured_completion(
         envelope = CompletionEnvelope.model_validate(response.json(), strict=True)
         choice = envelope.choices[0]
         if choice.finish_reason == "content_filter":
-            raise AIServiceError(422, "POLITICAL_CONTENT_UNAVAILABLE")
+            # The provider does not say whether it filtered the source or its own
+            # generated output. Do not mutate the source content on this signal.
+            raise AIServiceError(422, "AI_PROVIDER_FILTERED")
         if choice.finish_reason != "stop":
             raise AIServiceError(502, "AI_UPSTREAM_INVALID_RESPONSE")
         return response_type.model_validate_json(

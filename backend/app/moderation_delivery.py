@@ -3,22 +3,24 @@
 import asyncio
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import joinedload, lazyload, selectinload
 
 from app.content_moderation import (
+    announce_content_hidden,
     announce_content_published,
+    notify_content_pending,
     notify_content_reviewed,
 )
 from app.db import async_session
 from app.db.models.content import Content
 
 
-DELIVERABLE_STATUSES = ("approved", "rejected")
+DELIVERABLE_STATUSES = ("pending_review", "approved", "rejected")
 
 
 async def deliver_moderation_effects(content_id: UUID) -> bool:
-    """Deliver one content decision at least once, with idempotent notifications."""
+    """Deliver one moderation transition at least once."""
     async with async_session() as session:
         locked_content_id = await session.scalar(
             select(Content.id)
@@ -45,13 +47,17 @@ async def deliver_moderation_effects(content_id: UUID) -> bool:
             return False
 
         try:
-            await notify_content_reviewed(content, required=True)
-            if content.moderation_status == "approved":
-                await announce_content_published(
-                    content,
-                    session=session,
-                    required=True,
-                )
+            if content.moderation_status == "pending_review":
+                await notify_content_pending(content, required=True)
+                await announce_content_hidden(content, required=True)
+            else:
+                await notify_content_reviewed(content, required=True)
+                if content.moderation_status == "approved":
+                    await announce_content_published(
+                        content,
+                        session=session,
+                        required=True,
+                    )
         except Exception:
             # Notification rows that committed before a later failure are
             # deduplicated on retry. Leaving this marker empty is the outbox.
@@ -73,10 +79,19 @@ async def reconcile_moderation_effects_once(*, limit: int = 100) -> int:
                 select(Content.id)
                 .where(
                     Content.moderation_status.in_(DELIVERABLE_STATUSES),
-                    Content.moderation_reviewed_at.is_not(None),
+                    or_(
+                        Content.moderation_status == "pending_review",
+                        Content.moderation_reviewed_at.is_not(None),
+                    ),
                     Content.moderation_effects_completed_at.is_(None),
                 )
-                .order_by(Content.moderation_reviewed_at.asc(), Content.id.asc())
+                .order_by(
+                    func.coalesce(
+                        Content.moderation_reviewed_at,
+                        Content.updated_at,
+                    ).asc(),
+                    Content.id.asc(),
+                )
                 .limit(limit)
             )
         ).scalars().all()

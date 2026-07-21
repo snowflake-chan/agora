@@ -82,6 +82,8 @@ export interface AdminModerationItem {
   moderation_reviewed_at: string | null;
   created_at: string;
   target_href: string;
+  poll_question: string | null;
+  poll_options: string[];
 }
 
 export async function setUserRole(userId: string, role: string) {

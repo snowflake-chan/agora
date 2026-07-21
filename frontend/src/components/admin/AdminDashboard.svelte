@@ -639,6 +639,16 @@
                   </a>
                 </h2>
                 <p class="content-excerpt">{review.content}</p>
+                {#if review.poll_question}
+                  <div class="moderation-poll">
+                    <strong>{$translator("poll.label")}: {review.poll_question}</strong>
+                    <ul>
+                      {#each review.poll_options as option}
+                        <li>{option}</li>
+                      {/each}
+                    </ul>
+                  </div>
+                {/if}
                 <p class="moderation-reason">
                   <ShieldAlert size={14} strokeWidth={1.8} aria-hidden="true" />
                   {moderationReasonLabel(review.moderation_reason)}
@@ -1132,6 +1142,29 @@
     margin: 0.55rem 0 0;
     color: var(--vercel-warning);
     font-size: 0.75rem;
+  }
+
+  .moderation-poll {
+    max-width: 65ch;
+    margin-top: 0.55rem;
+    padding-left: 0.75rem;
+    border-left: 2px solid var(--vercel-border-hover);
+    color: var(--vercel-text-secondary);
+    font-size: 0.75rem;
+    line-height: 1.5;
+  }
+
+  .moderation-poll strong {
+    color: var(--vercel-text);
+    font-weight: 650;
+  }
+
+  .moderation-poll ul {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.9rem;
+    margin: 0.25rem 0 0;
+    padding-left: 1rem;
   }
 
   .moderation-modal-context {

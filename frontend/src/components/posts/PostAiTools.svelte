@@ -2,6 +2,7 @@
   import { FileTextIcon, LanguagesIcon, SparklesIcon } from "@lucide/svelte";
   import { onMount } from "svelte";
   import {
+    AiRequestError,
     getAiStatus,
     summarizeText,
     translateFields,
@@ -10,8 +11,10 @@
   import { ApiError } from "../../lib/auth";
   import { locale, translateError, translator, type Locale } from "../../lib/i18n";
   import { requestLogin } from "../../lib/login";
+  import { dispatchModerationUpdate } from "../../lib/moderation";
   import { autoTranslate, initPreferences } from "../../lib/preferences";
   import { currentUser } from "../../stores/auth";
+  import { toaster } from "../../stores/toaster";
 
   let {
     text,
@@ -19,16 +22,24 @@
     context = "post",
     compact = false,
     translationOnly = false,
+    sourceContentId = null,
+    sourceRevisionNumber = null,
+    moderationTargetHref = null,
+    onModerationQueued = null,
   }: {
     text: string;
     title?: string | null;
     context?: TranslationContext;
     compact?: boolean;
     translationOnly?: boolean;
+    sourceContentId?: string | null;
+    sourceRevisionNumber?: number | null;
+    moderationTargetHref?: string | null;
+    onModerationQueued?: (() => void) | null;
   } = $props();
 
   type Tool = "summary" | "translation";
-  type Notice = "political" | "error" | null;
+  type Notice = "political" | "outputBlocked" | "reviewPending" | "error" | null;
   type LocalizedOutput = { locale: Locale; text: string };
   type LocalizedTranslation = {
     locale: Locale;
@@ -48,6 +59,11 @@
   let visible = $state(false);
   let autoSignature = $state("");
   let sourceText = $derived(title?.trim() ? `${title.trim()}\n\n${text}` : text);
+  let sourceReference = $derived(
+    sourceContentId && sourceRevisionNumber && sourceRevisionNumber > 0
+      ? { contentId: sourceContentId, revisionNumber: sourceRevisionNumber }
+      : null,
+  );
 
   $effect(() => {
     const nextLocale = $locale;
@@ -88,14 +104,49 @@
 
   function handleError(error: unknown) {
     const code = error instanceof ApiError ? error.code : "AI_REQUEST_FAILED";
-    notice = code === "POLITICAL_CONTENT_UNAVAILABLE" ? "political" : "error";
-    errorMessage = notice === "error" ? translateError(error, $translator, "ai.failed") : null;
+    const moderationUpdate = error instanceof AiRequestError
+      ? error.moderationUpdate
+      : null;
+    if (
+      moderationUpdate
+      && sourceContentId
+      && moderationUpdate.contentId === sourceContentId
+    ) {
+      notice = "reviewPending";
+      errorMessage = null;
+      toaster.info(
+        $translator("ai.reviewPendingTitle"),
+        $translator("ai.reviewPendingDescription"),
+      );
+      onModerationQueued?.();
+      const targetHref = moderationUpdate.targetHref ?? moderationTargetHref;
+      if (targetHref) {
+        dispatchModerationUpdate({
+          type: "moderation_pending",
+          link: targetHref,
+          contentId: moderationUpdate.contentId,
+        });
+      }
+    } else if (code === "POLITICAL_CONTENT_UNAVAILABLE") {
+      notice = "political";
+      errorMessage = null;
+    } else if (code === "AI_OUTPUT_BLOCKED" || code === "AI_PROVIDER_FILTERED") {
+      notice = "outputBlocked";
+      errorMessage = null;
+    } else {
+      notice = "error";
+      errorMessage = translateError(error, $translator, "ai.failed");
+    }
     active = null;
   }
 
   async function runSummary() {
     if (!$currentUser) {
       requestLogin(undefined, () => void runSummary());
+      return;
+    }
+    if (active === "summary" && summary?.locale === $locale) {
+      active = null;
       return;
     }
     notice = null;
@@ -119,6 +170,10 @@
       requestLogin(undefined, () => void runTranslation());
       return;
     }
+    if (active === "translation" && translation?.locale === $locale) {
+      active = null;
+      return;
+    }
     notice = null;
     errorMessage = null;
     active = "translation";
@@ -130,7 +185,7 @@
         ...(title?.trim() ? [{ key: "title", text: title.trim() }] : []),
         { key: "body", text },
       ];
-      const output = await translateFields(fields, targetLocale, context);
+      const output = await translateFields(fields, targetLocale, context, sourceReference);
       const translatedTitle = output.fields.find((field) => field.key === "title")?.translation ?? null;
       const translatedBody = output.fields.find((field) => field.key === "body")?.translation;
       if (!translatedBody) throw new ApiError("AI_RESPONSE_INVALID");
@@ -165,10 +220,11 @@
             class="ai-tool"
             disabled={loading !== null}
             aria-pressed={active === "summary"}
+            aria-expanded={active === "summary" && summary?.locale === $locale}
             onclick={runSummary}
           >
             <FileTextIcon size={14} strokeWidth={1.8} aria-hidden="true" />
-            {$translator("ai.summarize")}
+            {$translator(active === "summary" && summary?.locale === $locale ? "ai.hideResult" : "ai.summarize")}
           </button>
         {/if}
         <button
@@ -177,10 +233,11 @@
           class="ai-tool"
           disabled={loading !== null}
           aria-pressed={active === "translation"}
+          aria-expanded={active === "translation" && translation?.locale === $locale}
           onclick={runTranslation}
         >
           <LanguagesIcon size={14} strokeWidth={1.8} aria-hidden="true" />
-          {$translator("ai.translate")}
+          {$translator(active === "translation" && translation?.locale === $locale ? "ai.hideResult" : "ai.translate")}
         </button>
       </div>
     </div>
@@ -192,21 +249,23 @@
       <p class="ai-status" aria-live="polite">{$translator("common.processing")}</p>
     {:else if notice === "political"}
       <p class="ai-notice" role="status">{$translator("ai.politicalUnavailable")}</p>
+    {:else if notice === "outputBlocked"}
+      <p class="ai-notice" role="status">{$translator("ai.outputBlocked")}</p>
+    {:else if notice === "reviewPending"}
+      <p class="ai-notice" role="status">{$translator("ai.reviewPendingDescription")}</p>
     {:else if notice === "error"}
       <p class="ai-notice" role="status">{errorMessage ?? $translator("ai.failed")}</p>
     {:else if active === "summary" && summary?.locale === $locale}
-      <details class="ai-output" open>
-        <summary>{$translator("ai.summary")}</summary>
+      <section class="ai-output" aria-label={$translator("ai.summary")} aria-live="polite">
         <p>{summary.text}</p>
-        <small>{$translator("ai.outputNote")}</small>
-      </details>
+        {#if !compact}<small>{$translator("ai.outputNote")}</small>{/if}
+      </section>
     {:else if active === "translation" && translation?.locale === $locale}
-      <details class="ai-output" open>
-        <summary>{$translator("ai.translation")}</summary>
+      <section class="ai-output" aria-label={$translator("ai.translation")} aria-live="polite">
         {#if translation.title}<h4>{translation.title}</h4>{/if}
         <p>{translation.body}</p>
-        <small>{$translator("ai.outputNote")}</small>
-      </details>
+        {#if !compact}<small>{$translator("ai.outputNote")}</small>{/if}
+      </section>
     {/if}
   </section>
 {/if}
@@ -310,21 +369,16 @@
   .ai-output {
     padding-left: 0.8rem;
     border-left: 2px solid var(--vercel-border-hover);
-  }
-
-  .ai-output summary {
-    cursor: pointer;
-    color: var(--vercel-text);
-    font-weight: 600;
+    animation: ai-output-in 180ms ease-out;
   }
 
   .ai-output p {
-    margin: 0.55rem 0 0;
+    margin: 0;
     white-space: pre-wrap;
   }
 
   .ai-output h4 {
-    margin: 0.55rem 0 0;
+    margin: 0 0 0.55rem;
     color: var(--vercel-text);
     font-size: 0.875rem;
     font-weight: 650;
@@ -337,10 +391,23 @@
     font-size: 0.6875rem;
   }
 
+  @keyframes ai-output-in {
+    from { opacity: 0; transform: translateY(-0.2rem); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
   @media (max-width: 24rem) {
     .ai-toolbar {
       align-items: flex-start;
       flex-direction: column;
     }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ai-output { animation: none; }
+  }
+
+  :global(html[data-motion="reduced"]) .ai-output {
+    animation: none;
   }
 </style>

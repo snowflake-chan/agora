@@ -64,7 +64,7 @@
       return;
     }
     const updated = items.find((item) => item.id === selected?.id);
-    if (updated) selected = updated;
+    selected = updated ?? items[0] ?? null;
   }
 
   function syncPatchSelection(items: import("../lib/patches").Patch[]) {

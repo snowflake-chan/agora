@@ -1,13 +1,14 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { translator } from "../../lib/i18n";
+  import { onModerationUpdate } from "../../lib/moderation";
   import { listPosts, type Post } from "../../lib/posts";
   import PostCard from "./PostCard.svelte";
 
   let posts: Post[] = [];
   let loading = true;
 
-  onMount(async () => {
+  async function loadPosts() {
     try {
       posts = await listPosts();
     } catch {
@@ -15,6 +16,11 @@
     } finally {
       loading = false;
     }
+  }
+
+  onMount(() => {
+    void loadPosts();
+    return onModerationUpdate(() => void loadPosts());
   });
 </script>
 

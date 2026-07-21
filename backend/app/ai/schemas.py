@@ -1,6 +1,7 @@
 import re
 import unicodedata
 from typing import Annotated, Literal
+from uuid import UUID
 
 from pydantic import (
     BaseModel,
@@ -16,6 +17,7 @@ Locale = Literal["en", "ja", "zh-TW"]
 PoliticalStatus = Literal["non_political", "political", "uncertain"]
 TranslationContext = Literal["post", "comment", "patch", "guild", "composer", "poll"]
 WritingAction = Literal["polish", "shorten", "clarify"]
+ContentId = Annotated[UUID, Field(strict=False)]
 
 InputText = Annotated[
     str,
@@ -57,6 +59,8 @@ class TranslationBundleRequest(StrictModel):
     fields: list[TranslationField] = Field(min_length=1, max_length=8)
     target_locale: Locale
     context: TranslationContext = "post"
+    source_content_id: ContentId | None = None
+    source_revision_number: int | None = Field(default=None, ge=1)
 
     @model_validator(mode="after")
     def validate_fields(self):
@@ -65,6 +69,14 @@ class TranslationBundleRequest(StrictModel):
             raise ValueError("translation field keys must be unique")
         if sum(len(field.text) for field in self.fields) > 12000:
             raise ValueError("translation input is too long")
+        has_content_id = self.source_content_id is not None
+        has_revision = self.source_revision_number is not None
+        if has_content_id != has_revision:
+            raise ValueError(
+                "source_content_id and source_revision_number must be provided together"
+            )
+        if has_content_id and self.context not in {"post", "comment", "guild", "poll"}:
+            raise ValueError("translation context does not support persistent content")
         return self
 
 

@@ -64,6 +64,8 @@ describe("translation catalog", () => {
         assert.notEqual(messages[locale][key].trim(), "", `${locale}.${key}`);
       }
       assert.match(messages[locale]["ai.politicalUnavailable"], /AI/i);
+      assert.notEqual(messages[locale]["ai.translate"], messages[locale]["ai.hideResult"]);
+      assert.match(messages[locale]["ai.reviewPendingDescription"], /AI/i);
     }
   });
 

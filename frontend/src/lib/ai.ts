@@ -1,4 +1,5 @@
 import { ApiError } from "./auth";
+import { parseAiError, type AiModerationUpdate } from "./ai-errors";
 import { API_BASE } from "./config";
 import type { Locale } from "./i18n";
 
@@ -24,17 +25,32 @@ export interface TranslationBundle {
   cached: boolean;
 }
 
+export interface AiContentSource {
+  contentId: string;
+  revisionNumber: number;
+}
+
+export class AiRequestError extends ApiError {
+  moderationUpdate: AiModerationUpdate | null;
+
+  constructor(code: string, moderationUpdate: AiModerationUpdate | null = null) {
+    super(code);
+    this.name = "AiRequestError";
+    this.moderationUpdate = moderationUpdate;
+  }
+}
+
 let statusRequest: Promise<AiStatus> | null = null;
 
-async function errorDetail(response: Response): Promise<string> {
+async function requestError(response: Response): Promise<AiRequestError> {
+  let payload: unknown = null;
   try {
-    const payload = await response.json();
-    if (typeof payload?.detail === "string") return payload.detail;
-    if (typeof payload?.code === "string") return payload.code;
+    payload = await response.json();
   } catch {
     // Keep a stable client-side fallback when a proxy returns a non-JSON error.
   }
-  return "AI_REQUEST_FAILED";
+  const descriptor = parseAiError(payload, response.headers);
+  return new AiRequestError(descriptor.code, descriptor.moderationUpdate);
 }
 
 async function request<T>(path: string, body: Record<string, unknown>): Promise<T> {
@@ -44,7 +60,7 @@ async function request<T>(path: string, body: Record<string, unknown>): Promise<
     body: JSON.stringify(body),
     credentials: "include",
   });
-  if (!response.ok) throw new ApiError(await errorDetail(response));
+  if (!response.ok) throw await requestError(response);
   return response.json() as Promise<T>;
 }
 
@@ -85,11 +101,18 @@ export async function translateFields(
   fields: TranslationField[],
   targetLocale: Locale,
   context: TranslationContext,
+  source: AiContentSource | null = null,
 ): Promise<TranslationBundle> {
   const result = await request<{ fields?: unknown; cached?: unknown }>("/ai/translate/fields", {
     fields,
     target_locale: targetLocale,
     context,
+    ...(source
+      ? {
+          source_content_id: source.contentId,
+          source_revision_number: source.revisionNumber,
+        }
+      : {}),
   });
   if (!Array.isArray(result.fields) || result.fields.length !== fields.length) {
     throw new ApiError("AI_RESPONSE_INVALID");

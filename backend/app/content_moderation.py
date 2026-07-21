@@ -1,15 +1,20 @@
 from dataclasses import dataclass
+from uuid import UUID
 
 from sqlalchemy import and_, exists, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
-from app.ai.classifier import classify_with_trusted_local_service
+from app.ai.classifier import (
+    classify_with_trusted_local_service,
+    combine_related_texts,
+)
 from app.ai.errors import AIServiceError
 from app.ai.politics import contains_political_signals
 from app.config import settings
 from app.db.models.content import Content, ContentRevision
 from app.db.models.patch import Patch
+from app.db.models.post_poll import PostPoll, PostPollOption
 from app.db.models.user import User
 
 
@@ -134,7 +139,12 @@ async def assess_content_moderation(*texts: str) -> ModerationAssessment:
 
     if settings.AI_POLITICAL_CLASSIFIER_URL.strip():
         try:
-            statuses = await classify_with_trusted_local_service(values)
+            related_texts = combine_related_texts(values)
+            statuses = (
+                await classify_with_trusted_local_service(related_texts)
+                if related_texts
+                else []
+            )
         except AIServiceError:
             # A configured safety dependency failing must not make content public.
             return ModerationAssessment(
@@ -150,6 +160,118 @@ async def assess_content_moderation(*texts: str) -> ModerationAssessment:
     return ModerationAssessment(status="published")
 
 
+async def _canonical_translation_fields(
+    session: AsyncSession,
+    content: Content,
+    context: str,
+) -> list[tuple[str, str]] | None:
+    if context == "post" and content.type == "post":
+        fields: list[tuple[str, str]] = []
+        if content.title and content.title.strip():
+            fields.append(("title", content.title.strip()))
+        fields.append(("body", content.content.strip()))
+        return fields
+
+    if context == "comment" and content.type == "comment":
+        return [("body", content.content.strip())]
+
+    if context == "guild" and content.type == "guild_post":
+        fields = []
+        if content.title and content.title.strip():
+            fields.append(("title", content.title.strip()))
+        fields.append(("body", content.content.strip()))
+        return fields
+
+    if context == "poll" and content.type == "post":
+        poll = await session.scalar(
+            select(PostPoll).where(PostPoll.post_id == content.id)
+        )
+        if poll is None:
+            return None
+        options = list(
+            (
+                await session.scalars(
+                    select(PostPollOption)
+                    .where(PostPollOption.poll_id == poll.id)
+                    .order_by(PostPollOption.position.asc())
+                )
+            ).all()
+        )
+        return [
+            ("question", poll.question.strip()),
+            *[
+                (f"option_{index + 1}", option.text.strip())
+                for index, option in enumerate(options)
+            ],
+        ]
+
+    return None
+
+
+async def hold_translation_source_for_review(
+    session: AsyncSession,
+    *,
+    content_id: UUID,
+    revision_number: int,
+    context: str,
+    fields: list[tuple[str, str]],
+    reason: str,
+    verdict_provenance: str,
+    actor_id: UUID,
+    actor_is_staff: bool = False,
+) -> Content | None:
+    """Atomically hold an unchanged canonical source after an AI source verdict."""
+    locked_id = await session.scalar(
+        select(Content.id)
+        .where(Content.id == content_id)
+        .with_for_update()
+    )
+    if locked_id is None:
+        return None
+
+    content = await session.scalar(
+        select(Content)
+        .where(Content.id == locked_id)
+        .execution_options(populate_existing=True)
+    )
+    if (
+        content is None
+        or content.revision_number != revision_number
+        # An approved item has already received a human decision for this version.
+        or content.moderation_status != "published"
+    ):
+        return None
+
+    trusted_verdict = verdict_provenance in {
+        "local_guard",
+        "trusted_classifier",
+    }
+    if (
+        not trusted_verdict
+        and content.author_id != actor_id
+        and not actor_is_staff
+    ):
+        return None
+
+    canonical_fields = await _canonical_translation_fields(
+        session,
+        content,
+        context,
+    )
+    normalized_fields = [(key, value.strip()) for key, value in fields]
+    if canonical_fields is None or normalized_fields != canonical_fields:
+        return None
+
+    content.moderation_status = "pending_review"
+    content.moderation_reason = reason
+    content.moderation_review_note = None
+    content.moderation_reviewed_by = None
+    content.moderation_reviewed_at = None
+    content.moderation_effects_completed_at = None
+    await session.commit()
+    return content
+
+
 def content_href(content: Content) -> str:
     if content.type == "post":
         return f"/posts/{content.id}"
@@ -162,7 +284,11 @@ def content_href(content: Content) -> str:
     return "/"
 
 
-async def notify_content_pending(content: Content) -> None:
+async def notify_content_pending(
+    content: Content,
+    *,
+    required: bool = False,
+) -> None:
     from app.notifications.service import create_notification
 
     await create_notification(
@@ -176,6 +302,43 @@ async def notify_content_pending(content: Content) -> None:
             f"content-moderation-pending:{content.id}:"
             f"v{content.revision_number}"
         ),
+        required=required,
+    )
+
+
+async def announce_content_hidden(
+    content: Content,
+    *,
+    required: bool = False,
+) -> None:
+    """Refresh the public root after content enters a private review state."""
+    from app.posts.realtime import publish_feed_event
+
+    event_type = "updated"
+    item_type: str | None = None
+    item_id: str | None = None
+    if content.type == "post":
+        event_type = "removed"
+        item_type = "post"
+        item_id = str(content.id)
+    elif content.patch_id is not None:
+        item_type = "patch"
+        item_id = str(content.patch_id)
+    elif content.parent_id is not None:
+        item_type = "post"
+        item_id = str(content.parent_id)
+
+    if item_type is None or item_id is None:
+        return
+    await publish_feed_event(
+        event_type,
+        item_type=item_type,
+        item_id=item_id,
+        event_id=(
+            f"content-moderation-pending:{content.id}:"
+            f"v{content.revision_number}"
+        ),
+        required=required,
     )
 
 

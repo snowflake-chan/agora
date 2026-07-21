@@ -41,11 +41,15 @@
       : null
   );
   let rankingReason = $derived(formatRankingReason(item.ranking_reason));
+  let moderationQueued = $state(false);
+  let effectiveModerationStatus = $derived(
+    moderationQueued ? "pending_review" : item.moderation_status,
+  );
   let moderationRestricted = $derived(
-    item.type === "post" && isModerationRestricted(item.moderation_status),
+    item.type === "post" && isModerationRestricted(effectiveModerationStatus),
   );
   let moderationVisible = $derived(
-    item.type === "post" && hasModerationNotice(item.moderation_status),
+    item.type === "post" && hasModerationNotice(effectiveModerationStatus),
   );
   let now = $state(Date.now());
   let countdownState = $derived(getVotingCountdown(item.voting_ends_at, now));
@@ -54,6 +58,11 @@
     Boolean(item.voting_ends_at) &&
       new Date(item.voting_ends_at as string).getTime() - now < 2 * 60 * 60 * 1000,
   );
+
+  $effect(() => {
+    const nextStatus = item.moderation_status;
+    if (nextStatus !== "published") moderationQueued = false;
+  });
 
   onMount(() => {
     if (item.type !== "patch" || item.status !== "voting" || !item.voting_ends_at) {
@@ -133,8 +142,8 @@
   {#if moderationVisible}
     <div class="stream-card-notice">
       <ModerationNotice
-        status={item.moderation_status}
-        reason={item.moderation_reason}
+        status={effectiveModerationStatus}
+        reason={moderationQueued ? null : item.moderation_reason}
         compact
       />
     </div>
@@ -163,12 +172,24 @@
         context={item.type === "patch" ? "patch" : "post"}
         compact
         translationOnly
+        sourceContentId={item.type === "post" ? item.id : null}
+        sourceRevisionNumber={item.type === "post" ? item.revision_number : null}
+        moderationTargetHref={item.type === "post" ? `/posts/${item.id}` : null}
+        onModerationQueued={() => (moderationQueued = true)}
       />
     </div>
   {/if}
 
   {#if item.type === "post" && item.poll}
-    <PollCard postId={item.id} poll={item.poll} compact readOnly={moderationRestricted} />
+    <PollCard
+      postId={item.id}
+      poll={item.poll}
+      compact
+      readOnly={moderationRestricted}
+      sourceRevisionNumber={item.revision_number}
+      moderationTargetHref={`/posts/${item.id}`}
+      onModerationQueued={() => (moderationQueued = true)}
+    />
   {/if}
 
   <div class="stream-footer">

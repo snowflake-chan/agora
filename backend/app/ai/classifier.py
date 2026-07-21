@@ -57,8 +57,32 @@ async def classify_with_trusted_local_service(
     return envelope.statuses
 
 
-async def require_trusted_local_classification(texts: list[str]) -> None:
+def combine_related_texts(texts: list[str]) -> list[str]:
+    """Classify related fields as one document instead of ambiguous fragments."""
+    values = [text.strip() for text in texts if text and text.strip()]
+    return ["\n\n".join(values)] if values else []
+
+
+async def require_trusted_local_classification(
+    texts: list[str],
+    *,
+    block_uncertain: bool = True,
+    source_moderation_reason: str | None = None,
+    source_moderation_provenance: str | None = None,
+) -> None:
     """Fail closed unless the trusted pre-egress classifier clears every value."""
-    statuses = await classify_with_trusted_local_service(texts)
-    if any(status != "non_political" for status in statuses):
-        raise AIServiceError(422, "POLITICAL_CONTENT_UNAVAILABLE")
+    related_texts = combine_related_texts(texts)
+    if not related_texts:
+        return
+    statuses = await classify_with_trusted_local_service(related_texts)
+    blocked = any(
+        status == "political" or (block_uncertain and status == "uncertain")
+        for status in statuses
+    )
+    if blocked:
+        raise AIServiceError(
+            422,
+            "POLITICAL_CONTENT_UNAVAILABLE",
+            source_moderation_reason=source_moderation_reason,
+            source_moderation_provenance=source_moderation_provenance,
+        )

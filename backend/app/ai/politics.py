@@ -4,9 +4,8 @@ import unicodedata
 
 _ZERO_WIDTH = dict.fromkeys(map(ord, "\u200b\u200c\u200d\u2060\ufeff"), None)
 
-# This deliberately favors false positives. It is a preflight guard that keeps
-# recognizable political text away from the external provider; the provider's
-# structured classification remains a second, independent check.
+# This is a high-confidence preflight guard. Ambiguous administrative words are
+# left to the contextual classifier so product/community language is not blocked.
 _CJK_TERMS = (
     "\u653f\u7b56",
     "\u6cd5\u5f8b",
@@ -151,6 +150,103 @@ _CJK_TERMS = (
     "戦争",
 )
 
+# These words are political only when another term supplies real political
+# context. For example, 候選人 is also the faithful translation of a release
+# candidate, and 政策 is commonly used for product policy.
+_CONTEXTUAL_CJK_TERMS = frozenset(
+    {
+        "制裁",
+        "候选人",
+        "候選人",
+        "连任",
+        "連任",
+    }
+)
+
+_NON_POLITICAL_CJK_PHRASES = (
+    "产品政策",
+    "產品政策",
+    "隐私政策",
+    "隱私政策",
+    "退款政策",
+    "平台政策",
+    "社区政策",
+    "社群政策",
+    "公司政策",
+    "企业政策",
+    "企業政策",
+    "公司内部政策",
+    "公司內部政策",
+    "企业内部政策",
+    "企業內部政策",
+    "团队内部政策",
+    "團隊內部政策",
+    "部署政策",
+    "产品安全政策",
+    "產品安全政策",
+    "平台安全政策",
+    "公司安全政策",
+    "产品内容政策",
+    "產品內容政策",
+    "平台内容政策",
+    "平台內容政策",
+    "产品使用政策",
+    "產品使用政策",
+    "数据保留政策",
+    "資料保留政策",
+    "缓存保留政策",
+    "快取保留政策",
+)
+
+# Product-policy phrases are safe only when they are not qualified by a public
+# jurisdiction. Keep scoped phrases intact so the ordinary political terms
+# below still block them before any text is sent to the external provider.
+_CJK_POLITICAL_SCOPE_TERMS = (
+    "国家",
+    "國家",
+    "中国",
+    "中國",
+    "全国",
+    "全國",
+    "中央",
+    "政府",
+    "官方",
+    "公共部门",
+    "公共部門",
+    "联邦",
+    "聯邦",
+    "省级",
+    "省級",
+    "地方政府",
+    "监管",
+    "監管",
+    "立法",
+    "行政机关",
+    "行政機關",
+)
+_CJK_SCOPE_WINDOW = 8
+
+
+def _strip_unscoped_product_policy_phrases(compact: str) -> str:
+    stripped = compact
+    for phrase in sorted(_NON_POLITICAL_CJK_PHRASES, key=len, reverse=True):
+        search_from = 0
+        while True:
+            start = stripped.find(phrase, search_from)
+            if start < 0:
+                break
+            end = start + len(phrase)
+            context = stripped[
+                max(0, start - _CJK_SCOPE_WINDOW) : min(
+                    len(stripped), end + _CJK_SCOPE_WINDOW
+                )
+            ]
+            if any(scope in context for scope in _CJK_POLITICAL_SCOPE_TERMS):
+                search_from = end
+                continue
+            stripped = stripped[:start] + stripped[end:]
+    return stripped
+
 _ENGLISH_PATTERNS = tuple(
     re.compile(pattern, re.IGNORECASE)
     for pattern in (
@@ -164,7 +260,8 @@ _ENGLISH_PATTERNS = tuple(
         r"\bpolitical part(?:y|ies)\b",
         r"\b(?:congress|parliament|senate)\b",
         r"\blegislat(?:ion|ive|ure)\b",
-        r"\bregulat(?:ion|ions|ory)\b",
+        r"\b(?:government|public|state|federal|national) regulat(?:ion|ions|ory)\b",
+        r"\b(?:eu|european union) regulat(?:ion|ions|ory)\b",
         r"\bconstitutional?(?:ly)?\b",
         r"\bjudiciar(?:y|ies)\b",
         r"\blawmakers?\b",
@@ -193,9 +290,16 @@ _ENGLISH_PATTERNS = tuple(
 
 
 def contains_political_signals(text: str) -> bool:
-    """Conservatively identify recognizable political text before API egress."""
+    """Identify high-confidence political text before API egress."""
     normalized = unicodedata.normalize("NFKC", text).translate(_ZERO_WIDTH)
     compact = "".join(char for char in normalized if char.isalnum())
-    if any(term in compact for term in _CJK_TERMS):
+    political_compact = _strip_unscoped_product_policy_phrases(compact)
+    if any(
+        term in political_compact
+        for term in _CJK_TERMS
+        if term not in _CONTEXTUAL_CJK_TERMS
+    ):
+        return True
+    if sum(term in political_compact for term in _CONTEXTUAL_CJK_TERMS) >= 2:
         return True
     return any(pattern.search(normalized) for pattern in _ENGLISH_PATTERNS)

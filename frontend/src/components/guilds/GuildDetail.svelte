@@ -436,7 +436,25 @@
             {/if}
             <p class="text-sm" style="color: var(--vercel-text-secondary);">{d.content}</p>
             {#if d.moderation_status !== "pending_review" && d.moderation_status !== "rejected"}
-              <PostAiTools text={d.content} title={d.title} context="guild" compact />
+              <PostAiTools
+                text={d.content}
+                title={d.title}
+                context="guild"
+                compact
+                sourceContentId={d.id}
+                sourceRevisionNumber={d.revision_number}
+                moderationTargetHref={`/guilds/${guildId}`}
+                onModerationQueued={() => {
+                  discussions = discussions.map((item) => item.id === d.id
+                    ? {
+                        ...item,
+                        moderation_status: "pending_review",
+                        moderation_reason: null,
+                        moderation_review_note: null,
+                      }
+                    : item);
+                }}
+              />
             {/if}
           </div>
         {/each}
