@@ -9,6 +9,7 @@
   import { appleEase } from "../../lib/motion";
   import { createPost, type PollCreateData } from "../../lib/posts";
   import { toaster } from "../../stores/toaster";
+  import WritingAssist from "./WritingAssist.svelte";
 
   const dispatch = createEventDispatcher();
   const POLL_DURATIONS = [
@@ -213,6 +214,16 @@
           {$translator("poll.label")}
         </span>
       {/if}
+      <div class="composer-tools-spacer"></div>
+      <WritingAssist
+        {title}
+        body={content}
+        context="composer"
+        onApply={(value) => {
+          title = value.title;
+          content = value.body;
+        }}
+      />
     </div>
 
     {#if pollEnabled}
@@ -363,7 +374,8 @@
 <style>
   .composer-dialog { display:flex; flex-direction:column; width:100%; height:min(60rem,calc(100dvh - 2rem)); max-width:87.5rem; overflow:hidden; border:1px solid var(--vercel-border); border-radius:var(--vercel-radius-lg); background:color-mix(in srgb,var(--vercel-card) 96%,transparent); box-shadow:0 8px 48px var(--vercel-shadow); backdrop-filter:blur(24px); }
   .composer-header { display:flex; align-items:center; gap:1rem; padding:.75rem 1.5rem; border-bottom:1px solid var(--vercel-border); }
-  .composer-tools { display:flex; min-height:2.75rem; align-items:center; padding:.35rem 1.25rem; border-bottom:1px solid var(--vercel-border); }
+  .composer-tools { display:flex; min-height:2.75rem; align-items:center; gap:.5rem; padding:.35rem 1.25rem; border-bottom:1px solid var(--vercel-border); }
+  .composer-tools-spacer { flex:1; }
   .composer-tool, .composer-tool-active { display:inline-flex; min-height:2rem; align-items:center; gap:.4rem; padding:.35rem .55rem; border-radius:var(--vercel-radius-sm); color:var(--vercel-text-secondary); font:inherit; font-size:.75rem; font-weight:600; }
   .composer-tool { background:transparent; cursor:pointer; transition:color 150ms ease, background-color 150ms ease; }
   .composer-tool:hover, .composer-tool:focus-visible { color:var(--vercel-text); background:var(--vercel-hover); }
@@ -401,7 +413,8 @@
     .composer-dialog { height:calc(100dvh - 1rem); border-radius:.875rem; }
     .composer-header { flex-wrap:wrap; gap:.5rem; padding:.75rem; }
     .composer-header > div { flex-basis:100%; order:-1; }
-    .composer-tools { padding-inline:.75rem; }
+    .composer-tools { align-items:flex-start; flex-wrap:wrap; padding-inline:.75rem; }
+    .composer-tools-spacer { display:none; }
     .poll-editor { max-height:40dvh; padding-inline:.75rem; }
     .composer-tabs { display:grid; grid-template-columns:1fr 1fr; gap:.25rem; margin:.5rem .75rem 0; padding:.2rem; border-radius:.6rem; background:var(--vercel-surface-muted); }
     .composer-tabs button { padding:.45rem; border-radius:.45rem; color:var(--vercel-text-tertiary); font-size:.75rem; font-weight:600; }

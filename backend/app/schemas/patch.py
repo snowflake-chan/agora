@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 # ── Patch ──
@@ -22,6 +22,7 @@ class PatchRead(BaseModel):
     against_count: int = 0
     abstain_count: int = 0
     comment_count: int = 0
+    revision_number: int = 1
     created_at: datetime
     updated_at: datetime
 
@@ -32,6 +33,25 @@ class PatchCreate(BaseModel):
     title: str
     content: str
     pr_number: int
+    submitted_head_sha: str | None = None
+
+
+class PatchUpdate(BaseModel):
+    revision_number: int = Field(ge=1)
+    title: str | None = None
+    content: str | None = None
+
+
+class PatchRevisionRead(BaseModel):
+    id: UUID
+    patch_id: UUID
+    version: int
+    title: str
+    content: str
+    editor_id: UUID
+    edited_at: datetime
+
+    model_config = {"from_attributes": True}
 
 
 # ── Vote ──

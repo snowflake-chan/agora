@@ -1,3 +1,5 @@
+import type { ModerationStatus } from "./moderation";
+
 const API = "/api/v1/admin";
 
 async function req(path: string, options?: RequestInit) {
@@ -63,6 +65,25 @@ export interface AdminGuildDiscussion {
   created_at: string;
 }
 
+export type ModerationContentType = "post" | "comment" | "guild_post";
+
+export interface AdminModerationItem {
+  id: string;
+  content_type: ModerationContentType;
+  title: string | null;
+  content: string;
+  revision_number: number;
+  author_id: string;
+  author_username: string | null;
+  moderation_status: ModerationStatus;
+  moderation_reason: string | null;
+  moderation_review_note: string | null;
+  moderation_reviewed_by: string | null;
+  moderation_reviewed_at: string | null;
+  created_at: string;
+  target_href: string;
+}
+
 export async function setUserRole(userId: string, role: string) {
   return req(`/users/${userId}/role?role=${role}`, { method: "POST" });
 }
@@ -92,6 +113,30 @@ export async function createReport(
 export async function listReports(status?: string): Promise<ReportItem[]> {
   const qs = status ? `?status=${status}` : "";
   return req(`/reports${qs}`);
+}
+
+export async function listModerationReviews(
+  status: ModerationStatus = "pending_review",
+): Promise<AdminModerationItem[]> {
+  const params = new URLSearchParams({ status });
+  return req(`/moderation?${params}`);
+}
+
+export async function reviewModerationItem(
+  contentId: string,
+  decision: "approve" | "reject",
+  note: string,
+  revisionNumber: number,
+): Promise<AdminModerationItem> {
+  return req(`/moderation/${contentId}/review`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      decision,
+      note: note.trim() || null,
+      revision_number: revisionNumber,
+    }),
+  });
 }
 
 export async function listAdminPosts(): Promise<AdminPost[]> {

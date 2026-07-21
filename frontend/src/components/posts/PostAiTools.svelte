@@ -1,26 +1,53 @@
 <script lang="ts">
   import { FileTextIcon, LanguagesIcon, SparklesIcon } from "@lucide/svelte";
   import { onMount } from "svelte";
-  import { getAiStatus, summarizeText, translateText } from "../../lib/ai";
+  import {
+    getAiStatus,
+    summarizeText,
+    translateFields,
+    type TranslationContext,
+  } from "../../lib/ai";
   import { ApiError } from "../../lib/auth";
   import { locale, translateError, translator, type Locale } from "../../lib/i18n";
   import { requestLogin } from "../../lib/login";
+  import { autoTranslate, initPreferences } from "../../lib/preferences";
   import { currentUser } from "../../stores/auth";
 
-  let { text }: { text: string } = $props();
+  let {
+    text,
+    title = null,
+    context = "post",
+    compact = false,
+    translationOnly = false,
+  }: {
+    text: string;
+    title?: string | null;
+    context?: TranslationContext;
+    compact?: boolean;
+    translationOnly?: boolean;
+  } = $props();
 
   type Tool = "summary" | "translation";
   type Notice = "political" | "error" | null;
   type LocalizedOutput = { locale: Locale; text: string };
+  type LocalizedTranslation = {
+    locale: Locale;
+    title: string | null;
+    body: string;
+    cached: boolean;
+  };
 
   let enabled = $state(false);
   let loading = $state<Tool | null>(null);
   let active = $state<Tool | null>(null);
   let summary = $state<LocalizedOutput | null>(null);
-  let translation = $state<LocalizedOutput | null>(null);
+  let translation = $state<LocalizedTranslation | null>(null);
   let notice = $state<Notice>(null);
   let errorMessage = $state<string | null>(null);
   let cachedLocale = $state<Locale>($locale);
+  let visible = $state(false);
+  let autoSignature = $state("");
+  let sourceText = $derived(title?.trim() ? `${title.trim()}\n\n${text}` : text);
 
   $effect(() => {
     const nextLocale = $locale;
@@ -33,9 +60,31 @@
     errorMessage = null;
   });
 
+  $effect(() => {
+    if (!enabled || !visible || !$autoTranslate || !$currentUser) return;
+    const signature = `${$locale}:${context}:${title ?? ""}:${text}`;
+    if (autoSignature === signature) return;
+    autoSignature = signature;
+    void runTranslation();
+  });
+
   onMount(async () => {
+    initPreferences();
     enabled = (await getAiStatus()).enabled;
   });
+
+  function trackVisibility(node: HTMLElement) {
+    if (typeof IntersectionObserver === "undefined") {
+      visible = true;
+      return;
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => visible = Boolean(entry?.isIntersecting),
+      { rootMargin: "64px" },
+    );
+    observer.observe(node);
+    return { destroy: () => observer.disconnect() };
+  }
 
   function handleError(error: unknown) {
     const code = error instanceof ApiError ? error.code : "AI_REQUEST_FAILED";
@@ -56,7 +105,7 @@
     if (summary?.locale === targetLocale) return;
     loading = "summary";
     try {
-      const output = await summarizeText(text, targetLocale);
+      const output = await summarizeText(sourceText, targetLocale);
       if ($locale === targetLocale) summary = { locale: targetLocale, text: output };
     } catch (error) {
       handleError(error);
@@ -77,8 +126,22 @@
     if (translation?.locale === targetLocale) return;
     loading = "translation";
     try {
-      const output = await translateText(text, targetLocale);
-      if ($locale === targetLocale) translation = { locale: targetLocale, text: output };
+      const fields = [
+        ...(title?.trim() ? [{ key: "title", text: title.trim() }] : []),
+        { key: "body", text },
+      ];
+      const output = await translateFields(fields, targetLocale, context);
+      const translatedTitle = output.fields.find((field) => field.key === "title")?.translation ?? null;
+      const translatedBody = output.fields.find((field) => field.key === "body")?.translation;
+      if (!translatedBody) throw new ApiError("AI_RESPONSE_INVALID");
+      if ($locale === targetLocale) {
+        translation = {
+          locale: targetLocale,
+          title: translatedTitle,
+          body: translatedBody,
+          cached: output.cached,
+        };
+      }
     } catch (error) {
       handleError(error);
     } finally {
@@ -88,24 +151,26 @@
 </script>
 
 {#if enabled}
-  <section class="ai-tools" aria-label={$translator("ai.tools")}>
+  <section use:trackVisibility class:compact class="ai-tools" aria-label={$translator("ai.tools")}>
     <div class="ai-toolbar">
-      <span class="ai-toolbar-label">
+      <span class="ai-toolbar-label" class:visually-compact={compact || translationOnly}>
         <SparklesIcon size={14} strokeWidth={1.8} aria-hidden="true" />
         {$translator("ai.tools")}
       </span>
       <div class="ai-toolbar-actions">
-        <button
-          type="button"
-          class:active={active === "summary"}
-          class="ai-tool"
-          disabled={loading !== null}
-          aria-pressed={active === "summary"}
-          onclick={runSummary}
-        >
-          <FileTextIcon size={14} strokeWidth={1.8} aria-hidden="true" />
-          {$translator("ai.summarize")}
-        </button>
+        {#if !translationOnly}
+          <button
+            type="button"
+            class:active={active === "summary"}
+            class="ai-tool"
+            disabled={loading !== null}
+            aria-pressed={active === "summary"}
+            onclick={runSummary}
+          >
+            <FileTextIcon size={14} strokeWidth={1.8} aria-hidden="true" />
+            {$translator("ai.summarize")}
+          </button>
+        {/if}
         <button
           type="button"
           class:active={active === "translation"}
@@ -119,7 +184,9 @@
         </button>
       </div>
     </div>
-    <p class="ai-disclosure">{$translator("ai.externalProcessing")}</p>
+    {#if !compact}
+      <p class="ai-disclosure">{$translator("ai.externalProcessing")}</p>
+    {/if}
 
     {#if loading}
       <p class="ai-status" aria-live="polite">{$translator("common.processing")}</p>
@@ -136,7 +203,8 @@
     {:else if active === "translation" && translation?.locale === $locale}
       <details class="ai-output" open>
         <summary>{$translator("ai.translation")}</summary>
-        <p>{translation.text}</p>
+        {#if translation.title}<h4>{translation.title}</h4>{/if}
+        <p>{translation.body}</p>
         <small>{$translator("ai.outputNote")}</small>
       </details>
     {/if}
@@ -148,6 +216,20 @@
     margin-top: 1rem;
     padding-top: 0.8rem;
     border-top: 1px solid var(--vercel-border);
+  }
+
+  .ai-tools.compact {
+    margin-top: 0.7rem;
+    padding-top: 0.55rem;
+  }
+
+  .ai-toolbar-label.visually-compact {
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    position: absolute;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
   }
 
   .ai-toolbar,
@@ -239,6 +321,13 @@
   .ai-output p {
     margin: 0.55rem 0 0;
     white-space: pre-wrap;
+  }
+
+  .ai-output h4 {
+    margin: 0.55rem 0 0;
+    color: var(--vercel-text);
+    font-size: 0.875rem;
+    font-weight: 650;
   }
 
   .ai-output small {

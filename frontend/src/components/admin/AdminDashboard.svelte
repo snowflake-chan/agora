@@ -6,8 +6,10 @@
     ChevronDown,
     ChevronUp,
     Eye,
+    ShieldAlert,
     Trash2,
     UnlockKeyhole,
+    X,
   } from "@lucide/svelte";
   import {
     adminDeleteGuild,
@@ -22,15 +24,18 @@
     listAdminGuildDiscussions,
     listAdminPatches,
     listAdminPosts,
+    listModerationReviews,
     listReports,
     listUsers,
     resolveReport,
+    reviewModerationItem,
     setUserRole,
     unbanUser,
     type AdminGuildDiscussion,
     type AdminPatch,
     type AdminPost,
     type AdminUser,
+    type AdminModerationItem,
     type ReportItem,
   } from "../../lib/admin";
   import {
@@ -44,7 +49,7 @@
   import ConfirmDialog from "../ConfirmDialog.svelte";
   import GlassModal from "../GlassModal.svelte";
 
-  type Tab = "reports" | "posts" | "patches" | "users" | "guilds";
+  type Tab = "reports" | "moderation" | "posts" | "patches" | "users" | "guilds";
   type BanStatus = {
     id: string;
     type: string;
@@ -58,6 +63,9 @@
   let isSuperAdmin = $state(false);
   let reports = $state<ReportItem[]>([]);
   let handlingReportId = $state<string | null>(null);
+  let moderationReviews = $state<AdminModerationItem[]>([]);
+  let moderationLoading = $state(false);
+  let moderationError = $state(false);
   let posts = $state<AdminPost[]>([]);
   let patches = $state<AdminPatch[]>([]);
   let users = $state<AdminUser[]>([]);
@@ -94,6 +102,12 @@
   let confirmText = $state("");
   let confirmAction = $state<() => void>(() => {});
 
+  let moderationModal = $state(false);
+  let moderationTarget = $state<AdminModerationItem | null>(null);
+  let moderationDecision = $state<"approve" | "reject">("approve");
+  let moderationNote = $state("");
+  let moderationSaving = $state(false);
+
   const banOptions = [
     { value: "ban_user", key: "admin.ban.account" },
     { value: "mute_post", key: "admin.ban.posts" },
@@ -120,6 +134,7 @@
         listAdminPosts(),
         listAdminPatches(),
       ]);
+      await loadModerationReviews();
       if (isSuperAdmin) {
         [users, guilds] = await Promise.all([listUsers(), listGuilds()]);
       }
@@ -134,6 +149,7 @@
   function tabs(): Array<{ value: Tab; key: string }> {
     const shared: Array<{ value: Tab; key: string }> = [
       { value: "reports", key: "admin.tabs.reports" },
+      { value: "moderation", key: "admin.tabs.moderation" },
       { value: "posts", key: "admin.tabs.posts" },
       { value: "patches", key: "admin.tabs.patches" },
     ];
@@ -165,6 +181,86 @@
   function banLabel(type: string) {
     const option = banOptions.find((item) => item.value === type);
     return option ? $translator(option.key) : type;
+  }
+
+  function moderationTypeLabel(type: AdminModerationItem["content_type"]) {
+    return $translator(`admin.moderationType.${type}`);
+  }
+
+  function moderationReasonLabel(reason: string | null) {
+    if (reason === "political_or_uncertain") {
+      return $translator("admin.moderationReason.politicalOrUncertain");
+    }
+    if (reason === "classifier_unavailable") {
+      return $translator("admin.moderationReason.classifierUnavailable");
+    }
+    return $translator("admin.moderationReason.fallback");
+  }
+
+  async function loadModerationReviews() {
+    moderationLoading = true;
+    moderationError = false;
+    try {
+      moderationReviews = await listModerationReviews("pending_review");
+    } catch {
+      moderationReviews = [];
+      moderationError = true;
+    } finally {
+      moderationLoading = false;
+    }
+  }
+
+  function openModerationReview(
+    item: AdminModerationItem,
+    decision: "approve" | "reject",
+  ) {
+    moderationTarget = item;
+    moderationDecision = decision;
+    moderationNote = "";
+    moderationModal = true;
+  }
+
+  async function submitModerationReview() {
+    if (!moderationTarget || moderationSaving) return;
+    if (moderationDecision === "reject" && !moderationNote.trim()) {
+      showNotice($translator("admin.moderationRejectNoteRequired"), "error");
+      return;
+    }
+
+    moderationSaving = true;
+    try {
+      await reviewModerationItem(
+        moderationTarget.id,
+        moderationDecision,
+        moderationNote,
+        moderationTarget.revision_number,
+      );
+      moderationReviews = moderationReviews.filter(
+        (item) => item.id !== moderationTarget?.id,
+      );
+      showNotice(
+        $translator(
+          moderationDecision === "approve"
+            ? "admin.moderationApproved"
+            : "admin.moderationRejected",
+        ),
+      );
+      moderationModal = false;
+      moderationTarget = null;
+    } catch (error) {
+      if (
+        (error as Error)?.message === "CONTENT_REVIEW_ALREADY_DECIDED"
+        || (error as Error)?.message === "CONTENT_REVIEW_CONFLICT"
+      ) {
+        await loadModerationReviews();
+      }
+      showNotice(
+        translateError(error, $translator, "admin.moderationReviewFailed"),
+        "error",
+      );
+    } finally {
+      moderationSaving = false;
+    }
   }
 
   async function handleReport(reportId: string, action: string) {
@@ -427,6 +523,9 @@
         onclick={() => (tab = item.value)}
       >
         {$translator(item.key)}
+        {#if item.value === "moderation" && moderationReviews.length > 0}
+          <span class="tab-count">{moderationReviews.length}</span>
+        {/if}
       </button>
     {/each}
   </nav>
@@ -501,6 +600,67 @@
                 {:else}
                   <span class="status-text">{$translator("admin.resolved")}</span>
                 {/if}
+              </div>
+            </article>
+          {/each}
+        </div>
+      {/if}
+    </section>
+
+  {:else if tab === "moderation"}
+    <section aria-label={$translator("admin.tabs.moderation")}>
+      {#if moderationLoading}
+        <div class="empty-state"><div class="spinner"></div></div>
+      {:else if moderationError}
+        <div class="inline-error" role="alert">
+          <span>{$translator("admin.moderationLoadFailed")}</span>
+          <button class="btn btn-ghost btn-xs" type="button" onclick={loadModerationReviews}>
+            {$translator("common.retry")}
+          </button>
+        </div>
+      {:else if moderationReviews.length === 0}
+        <div class="empty-state">{$translator("admin.emptyModeration")}</div>
+      {:else}
+        <div class="admin-list">
+          {#each moderationReviews as review (review.id)}
+            <article class="admin-row moderation-row">
+              <div class="row-main">
+                <div class="row-meta">
+                  {$translator("admin.moderationMeta", {
+                    type: moderationTypeLabel(review.content_type),
+                    author: review.author_username || $translator("common.anonymous"),
+                  })}
+                  · {formatDate(review.created_at)}
+                </div>
+                <h2>
+                  <a class="report-target-link" href={review.target_href} target="_blank" rel="noreferrer">
+                    {review.title || $translator("admin.untitled")}
+                    <Eye size={14} aria-hidden="true" />
+                  </a>
+                </h2>
+                <p class="content-excerpt">{review.content}</p>
+                <p class="moderation-reason">
+                  <ShieldAlert size={14} strokeWidth={1.8} aria-hidden="true" />
+                  {moderationReasonLabel(review.moderation_reason)}
+                </p>
+              </div>
+              <div class="row-actions">
+                <button
+                  class="btn btn-secondary btn-sm"
+                  disabled={moderationSaving}
+                  onclick={() => openModerationReview(review, "approve")}
+                >
+                  <Check size={15} aria-hidden="true" />
+                  {$translator("admin.moderationApprove")}
+                </button>
+                <button
+                  class="btn btn-danger-ghost btn-sm"
+                  disabled={moderationSaving}
+                  onclick={() => openModerationReview(review, "reject")}
+                >
+                  <X size={15} aria-hidden="true" />
+                  {$translator("admin.moderationReject")}
+                </button>
               </div>
             </article>
           {/each}
@@ -706,6 +866,56 @@
 {/if}
 
 <GlassModal
+  show={moderationModal}
+  title={$translator(
+    moderationDecision === "approve"
+      ? "admin.moderationApproveTitle"
+      : "admin.moderationRejectTitle",
+  )}
+  onclose={() => (moderationModal = false)}
+>
+  <div class="modal-stack">
+    {#if moderationTarget}
+      <p class="moderation-modal-context">
+        {moderationTarget.title || moderationTypeLabel(moderationTarget.content_type)}
+      </p>
+    {/if}
+    <label>
+      <span class="field-label">{$translator("admin.moderationNote")}</span>
+      <textarea
+        class="input"
+        rows="4"
+        maxlength="500"
+        bind:value={moderationNote}
+        placeholder={$translator("admin.moderationNotePlaceholder")}
+      ></textarea>
+      <span class="field-note">{$translator("admin.moderationNoteHelp")}</span>
+    </label>
+    {#if moderationDecision === "reject" && !moderationNote.trim()}
+      <p class="validation-note">{$translator("admin.moderationRejectNoteRequired")}</p>
+    {/if}
+    <div class="modal-actions">
+      <button class="btn btn-ghost btn-sm" onclick={() => (moderationModal = false)}>
+        {$translator("common.cancel")}
+      </button>
+      <button
+        class={moderationDecision === "approve" ? "btn btn-primary btn-sm" : "btn btn-danger btn-sm"}
+        disabled={moderationSaving || (moderationDecision === "reject" && !moderationNote.trim())}
+        onclick={submitModerationReview}
+      >
+        {$translator(
+          moderationSaving
+            ? "admin.moderationReviewing"
+            : moderationDecision === "approve"
+              ? "admin.moderationApprove"
+              : "admin.moderationReject",
+        )}
+      </button>
+    </div>
+  </div>
+</GlassModal>
+
+<GlassModal
   show={banModal}
   title={$translator("admin.banTitle", { name: banUsername })}
   onclose={() => (banModal = false)}
@@ -853,6 +1063,27 @@
     border-bottom: 1px solid var(--vercel-border);
   }
 
+  .admin-tabs :global(.filter-tab) {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    white-space: nowrap;
+  }
+
+  .tab-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.25rem;
+    height: 1.25rem;
+    padding: 0 0.3rem;
+    color: var(--vercel-warning);
+    background: var(--vercel-warning-bg);
+    border-radius: var(--vercel-radius-sm);
+    font-size: 0.6875rem;
+    font-variant-numeric: tabular-nums;
+  }
+
   .admin-list {
     display: grid;
     border-top: 1px solid var(--vercel-border);
@@ -890,6 +1121,44 @@
     align-items: start;
   }
 
+  .moderation-row {
+    align-items: start;
+  }
+
+  .moderation-reason {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin: 0.55rem 0 0;
+    color: var(--vercel-warning);
+    font-size: 0.75rem;
+  }
+
+  .moderation-modal-context {
+    margin: 0;
+    color: var(--vercel-text-secondary);
+    font-size: 0.8125rem;
+    line-height: 1.5;
+  }
+
+  .validation-note {
+    margin: -0.5rem 0 0;
+    color: var(--vercel-danger);
+    font-size: 0.75rem;
+  }
+
+  .inline-error {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    color: var(--vercel-danger);
+    background: var(--vercel-danger-bg);
+    border-left: 3px solid var(--vercel-danger);
+    font-size: 0.8125rem;
+  }
+
   .resolved {
     opacity: 0.62;
   }
@@ -915,11 +1184,16 @@
   }
 
   .content-excerpt {
+    display: -webkit-box;
     max-width: 65ch;
+    overflow: hidden;
     margin: 0.35rem 0 0;
     color: var(--vercel-text-secondary);
     font-size: 0.8125rem;
     line-height: 1.5;
+    overflow-wrap: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
   }
 
   .status-text {

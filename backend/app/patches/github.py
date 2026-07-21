@@ -102,8 +102,15 @@ def pull_request_readiness_error(
     return None
 
 
-async def merge_pr(pr_number: int) -> bool:
-    """Merge a GitHub PR, treating an already-merged PR as success."""
+def _merged_expected_head(pull_request: dict, expected_head_sha: str) -> bool:
+    return bool(
+        (pull_request.get("merged") or pull_request.get("merged_at"))
+        and pull_request.get("head", {}).get("sha") == expected_head_sha
+    )
+
+
+async def merge_pr(pr_number: int, *, expected_head_sha: str) -> bool:
+    """Merge only the exact PR commit approved by the governance vote."""
     token = settings.GITHUB_TOKEN
     repo = settings.GITHUB_REPO
     if not token:
@@ -117,7 +124,11 @@ async def merge_pr(pr_number: int) -> bool:
     state_url = f"https://api.github.com/repos/{repo}/pulls/{pr_number}"
     async with httpx.AsyncClient(timeout=15.0) as client:
         try:
-            resp = await client.put(url, headers=headers, json={})
+            resp = await client.put(
+                url,
+                headers=headers,
+                json={"sha": expected_head_sha},
+            )
         except httpx.HTTPError as exc:
             # A timeout can happen after GitHub accepted the merge. Check the
             # authoritative PR state before deciding whether a retry is safe.
@@ -129,7 +140,7 @@ async def merge_pr(pr_number: int) -> bool:
                 ) from exc
             if state_response.status_code == 200:
                 pull_request = state_response.json()
-                if pull_request.get("merged") or pull_request.get("merged_at"):
+                if _merged_expected_head(pull_request, expected_head_sha):
                     return False
             raise GitHubMergeUncertainError(
                 "GitHub merge request failed before an outcome was confirmed"
@@ -150,7 +161,7 @@ async def merge_pr(pr_number: int) -> bool:
 
     if state_response.status_code == 200:
         pull_request = state_response.json()
-        if pull_request.get("merged") or pull_request.get("merged_at"):
+        if _merged_expected_head(pull_request, expected_head_sha):
             return False
 
     raise RuntimeError(f"GitHub merge failed ({resp.status_code}): {resp.text}")

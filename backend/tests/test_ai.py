@@ -25,6 +25,8 @@ class FakeRedis:
         self.reservations = list(reservations or [True])
         self.eval_calls = []
         self.set_calls = []
+        self.get_calls = []
+        self.cache = {}
 
     async def eval(self, *args):
         self.eval_calls.append(args)
@@ -32,7 +34,14 @@ class FakeRedis:
 
     async def set(self, *args, **kwargs):
         self.set_calls.append((args, kwargs))
-        return self.reservations.pop(0) if self.reservations else True
+        if kwargs.get("nx"):
+            return self.reservations.pop(0) if self.reservations else True
+        self.cache[args[0]] = args[1]
+        return True
+
+    async def get(self, key):
+        self.get_calls.append(key)
+        return self.cache.get(key)
 
 
 @pytest.fixture
@@ -69,9 +78,12 @@ def configured_ai(monkeypatch):
     monkeypatch.setattr(settings, "AI_RATE_LIMIT_REQUESTS", 20)
     monkeypatch.setattr(settings, "AI_RATE_LIMIT_IP_REQUESTS", 60)
     monkeypatch.setattr(settings, "AI_RATE_LIMIT_GLOBAL_REQUESTS", 200)
+    monkeypatch.setattr(settings, "AI_RATE_LIMIT_GLOBAL_QPS", 8)
     monkeypatch.setattr(settings, "AI_RATE_LIMIT_DAILY_GLOBAL_REQUESTS", 2000)
     monkeypatch.setattr(settings, "AI_RATE_LIMIT_WINDOW_SECONDS", 60)
     monkeypatch.setattr(settings, "AI_POLL_RESERVATION_TTL_SECONDS", 60)
+    monkeypatch.setattr(settings, "AI_TRANSLATION_CACHE_TTL_SECONDS", 604800)
+    monkeypatch.setattr(settings, "AI_MAX_CONCURRENT_REQUESTS", 8)
 
 
 async def post(app: FastAPI, path: str, payload: dict) -> httpx.Response:
@@ -568,11 +580,196 @@ async def test_ai_endpoints_return_valid_non_political_results(
 
     assert response.status_code == 200, response.text
     assert response.json() == expected
-    assert len(redis.eval_calls) == 4
+    assert len(redis.eval_calls) == 5
     if path.endswith("polls/generate"):
         assert len(redis.set_calls) == 1
     else:
         assert redis.set_calls == []
+
+
+@pytest.mark.asyncio
+async def test_structured_translation_preserves_fields_context_and_order(
+    ai_app,
+    monkeypatch,
+):
+    redis = mock_redis(monkeypatch, FakeRedis())
+    requests = mock_deepseek(
+        monkeypatch,
+        [
+            {
+                "political_status": "non_political",
+                "translations": ["Release notes", "Search is faster."],
+            }
+        ],
+    )
+
+    response = await post(
+        ai_app,
+        "/api/v1/ai/translate/fields",
+        {
+            "fields": [
+                {"key": "title", "text": "Release notes"},
+                {"key": "body", "text": "Search is faster."},
+            ],
+            "target_locale": "ja",
+            "context": "post",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "fields": [
+            {"key": "title", "translation": "Release notes"},
+            {"key": "body", "translation": "Search is faster."},
+        ],
+        "cached": False,
+    }
+    provider_payload = json.loads(requests[0].content)
+    user_payload = json.loads(provider_payload["messages"][1]["content"])
+    assert user_payload["task"] == "translate_fields"
+    assert user_payload["content_context"] == "post"
+    assert user_payload["source_items"] == [
+        {"key": "title", "text": "Release notes"},
+        {"key": "body", "text": "Search is faster."},
+    ]
+    assert len(redis.eval_calls) == 5
+    assert len(redis.get_calls) == 1
+    assert len(redis.set_calls) == 1
+    assert "Release notes" not in redis.get_calls[0]
+
+
+@pytest.mark.asyncio
+async def test_structured_translation_cache_hit_skips_provider_and_rate_budget(
+    ai_app,
+    monkeypatch,
+):
+    redis = mock_redis(monkeypatch, FakeRedis())
+    requests = mock_deepseek(
+        monkeypatch,
+        [
+            {
+                "political_status": "non_political",
+                "translations": ["A cached translation"],
+            }
+        ],
+    )
+    payload = {
+        "fields": [{"key": "body", "text": "A source paragraph"}],
+        "target_locale": "zh-TW",
+        "context": "comment",
+    }
+
+    first = await post(ai_app, "/api/v1/ai/translate/fields", payload)
+    second = await post(ai_app, "/api/v1/ai/translate/fields", payload)
+
+    assert first.status_code == 200, first.text
+    assert first.json()["cached"] is False
+    assert second.status_code == 200, second.text
+    assert second.json() == {
+        "fields": [{"key": "body", "translation": "A cached translation"}],
+        "cached": True,
+    }
+    assert len(requests) == 1
+    assert len(redis.eval_calls) == 5
+    assert len(redis.get_calls) == 2
+    assert len(redis.set_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_structured_translation_rejects_wrong_output_count(ai_app, monkeypatch):
+    mock_redis(monkeypatch, FakeRedis())
+    mock_deepseek(
+        monkeypatch,
+        [{"political_status": "non_political", "translations": ["Only one"]}],
+    )
+
+    response = await post(
+        ai_app,
+        "/api/v1/ai/translate/fields",
+        {
+            "fields": [
+                {"key": "title", "text": "A title"},
+                {"key": "body", "text": "A body"},
+            ],
+            "target_locale": "en",
+            "context": "patch",
+        },
+    )
+
+    assert response.status_code == 502
+    assert response.json() == {"detail": "AI_UPSTREAM_INVALID_RESPONSE"}
+
+
+@pytest.mark.asyncio
+async def test_writing_assist_preserves_field_order_and_declares_action(
+    ai_app,
+    monkeypatch,
+):
+    redis = mock_redis(monkeypatch, FakeRedis())
+    requests = mock_deepseek(
+        monkeypatch,
+        [
+            {
+                "political_status": "non_political",
+                "rewrites": ["Clear release title", "A concise release description."],
+            }
+        ],
+    )
+
+    response = await post(
+        ai_app,
+        "/api/v1/ai/writing/assist",
+        {
+            "fields": [
+                {"key": "title", "text": "Release title that is unclear"},
+                {"key": "body", "text": "A release description with extra wording."},
+            ],
+            "target_locale": "en",
+            "context": "composer",
+            "action": "clarify",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "fields": [
+            {"key": "title", "translation": "Clear release title"},
+            {"key": "body", "translation": "A concise release description."},
+        ]
+    }
+    provider_payload = json.loads(requests[0].content)
+    user_payload = json.loads(provider_payload["messages"][1]["content"])
+    assert user_payload["task"] == "write_assist"
+    assert user_payload["writing_action"] == "clarify"
+    assert user_payload["content_context"] == "composer"
+    assert [item["key"] for item in user_payload["source_items"]] == ["title", "body"]
+    assert len(redis.eval_calls) == 5
+
+
+@pytest.mark.asyncio
+async def test_writing_assist_rejects_wrong_output_count(ai_app, monkeypatch):
+    mock_redis(monkeypatch, FakeRedis())
+    mock_deepseek(
+        monkeypatch,
+        [{"political_status": "non_political", "rewrites": ["Only one rewrite"]}],
+    )
+
+    response = await post(
+        ai_app,
+        "/api/v1/ai/writing/assist",
+        {
+            "fields": [
+                {"key": "title", "text": "A title"},
+                {"key": "body", "text": "A body"},
+            ],
+            "target_locale": "en",
+            "context": "patch",
+            "action": "polish",
+        },
+    )
+
+    assert response.status_code == 502
+    assert response.json() == {"detail": "AI_UPSTREAM_INVALID_RESPONSE"}
 
 
 @pytest.mark.asyncio

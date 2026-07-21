@@ -1,6 +1,6 @@
 from .user import User
-from .content import Content
-from .patch import Patch
+from .content import Content, ContentRevision
+from .patch import Patch, PatchRevision
 from .vote import Vote
 from .notification import Notification
 from .post_like import PostLike
@@ -13,7 +13,9 @@ from .settings import SiteSetting
 __all__ = [
     "User",
     "Content",
+    "ContentRevision",
     "Patch",
+    "PatchRevision",
     "Vote",
     "Notification",
     "PostLike",

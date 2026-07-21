@@ -9,11 +9,13 @@ export const theme = writable<Theme>("default");
 export const motion = writable<Motion>("system");
 export const colorMode = writable<ColorMode>("dark");
 export const homeLayout = writable<HomeLayout>("split");
+export const autoTranslate = writable(false);
 
 const THEME_KEY = "agora:theme";
 const MOTION_KEY = "agora:motion";
 const COLOR_MODE_KEY = "agora:colorMode";
 const HOME_LAYOUT_KEY = "agora:homeLayout";
+const AUTO_TRANSLATE_KEY = "agora:autoTranslate";
 
 export function normalizeTheme(value: string | null): Theme {
   return value === "tiktok" ||
@@ -78,11 +80,13 @@ export function initPreferences() {
   let savedMotion: string | null = null;
   let savedColorMode: string | null = null;
   let savedHomeLayout: string | null = null;
+  let savedAutoTranslate: string | null = null;
   try {
     savedTheme = window.localStorage.getItem(THEME_KEY);
     savedMotion = window.localStorage.getItem(MOTION_KEY);
     savedColorMode = window.localStorage.getItem(COLOR_MODE_KEY);
     savedHomeLayout = window.localStorage.getItem(HOME_LAYOUT_KEY);
+    savedAutoTranslate = window.localStorage.getItem(AUTO_TRANSLATE_KEY);
   } catch {}
   const nextTheme = normalizeTheme(savedTheme);
   const nextMotion = normalizeMotion(savedMotion);
@@ -92,6 +96,7 @@ export function initPreferences() {
   motion.set(nextMotion);
   colorMode.set(nextColorMode);
   homeLayout.set(nextHomeLayout);
+  autoTranslate.set(savedAutoTranslate === "true");
   applyTheme(nextTheme);
   applyMotion(nextMotion);
   applyColorMode(nextColorMode);
@@ -135,5 +140,12 @@ export function setHomeLayout(next: HomeLayout) {
   if (typeof window !== "undefined") {
     persistPreference(HOME_LAYOUT_KEY, next);
     applyHomeLayout(next);
+  }
+}
+
+export function setAutoTranslate(next: boolean) {
+  autoTranslate.set(next);
+  if (typeof window !== "undefined") {
+    persistPreference(AUTO_TRANSLATE_KEY, String(next));
   }
 }

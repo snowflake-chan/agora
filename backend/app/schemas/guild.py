@@ -110,7 +110,12 @@ class GuildDiscussionRead(BaseModel):
     content: str
     author_id: uuid.UUID
     author_username: str = ""
+    moderation_status: str = "published"
+    moderation_reason: str | None = None
+    moderation_review_note: str | None = None
+    revision_number: int = 1
     created_at: datetime
+    updated_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 

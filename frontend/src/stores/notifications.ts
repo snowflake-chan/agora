@@ -1,6 +1,10 @@
 import { writable } from "svelte/store";
 import type { Notification } from "../lib/notifications";
 import * as api from "../lib/notifications";
+import {
+  dispatchModerationUpdate,
+  isModerationNotificationType,
+} from "../lib/moderation";
 
 export const unreadCount = writable<number>(0);
 export const notifications = writable<Notification[]>([]);
@@ -41,6 +45,9 @@ function connectSSE() {
         ];
         return next.slice(0, 50);
       });
+      if (isModerationNotificationType(data.type) && typeof data.link === "string") {
+        dispatchModerationUpdate({ type: data.type, link: data.link });
+      }
     } catch {
       // ignore parse errors
     }

@@ -26,6 +26,7 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql+asyncpg://agora:agora@postgres:5432/agora
+      PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-}
       APP_ENV: ${APP_ENV:-development}
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
@@ -53,9 +54,12 @@ services:
       AI_RATE_LIMIT_REQUESTS: ${AI_RATE_LIMIT_REQUESTS:-20}
       AI_RATE_LIMIT_IP_REQUESTS: ${AI_RATE_LIMIT_IP_REQUESTS:-60}
       AI_RATE_LIMIT_GLOBAL_REQUESTS: ${AI_RATE_LIMIT_GLOBAL_REQUESTS:-200}
+      AI_RATE_LIMIT_GLOBAL_QPS: ${AI_RATE_LIMIT_GLOBAL_QPS:-8}
       AI_RATE_LIMIT_DAILY_GLOBAL_REQUESTS: ${AI_RATE_LIMIT_DAILY_GLOBAL_REQUESTS:-2000}
       AI_RATE_LIMIT_WINDOW_SECONDS: ${AI_RATE_LIMIT_WINDOW_SECONDS:-60}
       AI_POLL_RESERVATION_TTL_SECONDS: ${AI_POLL_RESERVATION_TTL_SECONDS:-300}
+      AI_TRANSLATION_CACHE_TTL_SECONDS: ${AI_TRANSLATION_CACHE_TTL_SECONDS:-604800}
+      AI_MAX_CONCURRENT_REQUESTS: ${AI_MAX_CONCURRENT_REQUESTS:-8}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       # HOST_REPO_DIR is discovered automatically by deploy.sh when it runs

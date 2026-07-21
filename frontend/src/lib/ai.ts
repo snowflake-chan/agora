@@ -11,6 +11,19 @@ export interface GeneratedPoll {
   options: string[];
 }
 
+export type TranslationContext = "post" | "comment" | "patch" | "guild" | "composer" | "poll";
+export type WritingAction = "polish" | "shorten" | "clarify";
+
+export interface TranslationField {
+  key: string;
+  text: string;
+}
+
+export interface TranslationBundle {
+  fields: Array<{ key: string; translation: string }>;
+  cached: boolean;
+}
+
 let statusRequest: Promise<AiStatus> | null = null;
 
 async function errorDetail(response: Response): Promise<string> {
@@ -66,6 +79,63 @@ export async function translateText(text: string, targetLocale: Locale): Promise
     throw new ApiError("AI_RESPONSE_INVALID");
   }
   return result.translation.trim();
+}
+
+export async function translateFields(
+  fields: TranslationField[],
+  targetLocale: Locale,
+  context: TranslationContext,
+): Promise<TranslationBundle> {
+  const result = await request<{ fields?: unknown; cached?: unknown }>("/ai/translate/fields", {
+    fields,
+    target_locale: targetLocale,
+    context,
+  });
+  if (!Array.isArray(result.fields) || result.fields.length !== fields.length) {
+    throw new ApiError("AI_RESPONSE_INVALID");
+  }
+  const translated = result.fields.map((field, index) => {
+    const item = field as { key?: unknown; translation?: unknown };
+    if (
+      typeof item.key !== "string"
+      || item.key !== fields[index]?.key
+      || typeof item.translation !== "string"
+      || !item.translation.trim()
+    ) {
+      throw new ApiError("AI_RESPONSE_INVALID");
+    }
+    return { key: item.key, translation: item.translation.trim() };
+  });
+  return { fields: translated, cached: result.cached === true };
+}
+
+export async function assistWriting(
+  fields: TranslationField[],
+  targetLocale: Locale,
+  context: TranslationContext,
+  action: WritingAction,
+): Promise<Array<{ key: string; text: string }>> {
+  const result = await request<{ fields?: unknown }>("/ai/writing/assist", {
+    fields,
+    target_locale: targetLocale,
+    context,
+    action,
+  });
+  if (!Array.isArray(result.fields) || result.fields.length !== fields.length) {
+    throw new ApiError("AI_RESPONSE_INVALID");
+  }
+  return result.fields.map((field, index) => {
+    const item = field as { key?: unknown; translation?: unknown };
+    if (
+      typeof item.key !== "string"
+      || item.key !== fields[index]?.key
+      || typeof item.translation !== "string"
+      || !item.translation.trim()
+    ) {
+      throw new ApiError("AI_RESPONSE_INVALID");
+    }
+    return { key: item.key, text: item.translation.trim() };
+  });
 }
 
 export async function generatePoll(

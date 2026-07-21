@@ -3,13 +3,19 @@
   import { onMount } from "svelte";
   import { translateError, translator } from "../../lib/i18n";
   import { requestLogin } from "../../lib/login";
+  import {
+    isModerationRestricted,
+    onModerationUpdateForPath,
+  } from "../../lib/moderation";
   import { createReport } from "../../lib/admin";
-  import { getPost, listComments, createComment, deleteContent, likePost, unlikePost, type Post, type Comment, type Poll } from "../../lib/posts";
+  import { getPost, listComments, createComment, deleteContent, likePost, unlikePost, updateContent, listContentHistory, type Post, type Comment, type Poll } from "../../lib/posts";
   import { toaster } from "../../stores/toaster";
   import { currentUser } from "../../stores/auth";
   import TimelineItem from "./TimelineItem.svelte";
   import ConfirmDialog from "../ConfirmDialog.svelte";
   import GlassModal from "../GlassModal.svelte";
+  import ContentEditModal from "../content/ContentEditModal.svelte";
+  import RevisionHistoryModal, { type RevisionSnapshot } from "../content/RevisionHistoryModal.svelte";
 
   export let postId: string;
   export let embedded = false;
@@ -29,17 +35,30 @@
   let reportTarget = "";
   let reportReason = "";
   let reporting = false;
+  let postRestricted = false;
+  let editTarget: Post | Comment | null = null;
+  let editKind: "post" | "comment" = "post";
+  let historyTarget: Post | Comment | null = null;
 
-  onMount(async () => {
+  async function loadPostDetail(showError = true) {
     try {
       const [p, c] = await Promise.all([getPost(postId), listComments(postId)]);
       post = p;
       comments = c;
     } catch {
-      toaster.error($translator("common.error"), $translator("post.loadFailed"));
+      if (showError) {
+        toaster.error($translator("common.error"), $translator("post.loadFailed"));
+      }
     } finally {
       loading = false;
     }
+  }
+
+  onMount(() => {
+    void loadPostDetail();
+    return onModerationUpdateForPath(`/posts/${postId}`, () => {
+      void loadPostDetail(false);
+    });
   });
 
   function postReturnTo(fragment?: string) {
@@ -211,6 +230,51 @@
     }
   }
 
+  function openEdit(target: Post | Comment, kind: "post" | "comment") {
+    editTarget = target;
+    editKind = kind;
+  }
+
+  async function saveEdit(payload: {
+    revision_number: number;
+    title?: string;
+    content: string;
+    tags?: string[] | null;
+  }) {
+    if (!editTarget) return;
+    const updated = await updateContent(editTarget.id, payload);
+    if (editKind === "post" && post?.id === updated.id) {
+      post = { ...post, ...updated };
+    } else {
+      comments = comments.map((comment) =>
+        comment.id === updated.id ? { ...comment, ...updated } : comment,
+      );
+    }
+    editTarget = null;
+  }
+
+  function historyCurrent(): RevisionSnapshot | null {
+    if (!historyTarget) return null;
+    return {
+      version: historyTarget.revision_number,
+      title: "title" in historyTarget ? historyTarget.title : null,
+      content: historyTarget.content,
+      tags: "tags" in historyTarget ? historyTarget.tags : null,
+      edited_at: historyTarget.updated_at ?? historyTarget.created_at,
+    };
+  }
+
+  async function loadTargetHistory(): Promise<RevisionSnapshot[]> {
+    if (!historyTarget) return [];
+    return (await listContentHistory(historyTarget.id)).map((revision) => ({
+      version: revision.version,
+      title: revision.title,
+      content: revision.content,
+      tags: revision.tags,
+      edited_at: revision.edited_at,
+    }));
+  }
+
   let postTitle = "";
   let postTags: string[] | null = null;
   let items: Array<{
@@ -227,9 +291,15 @@
     likeCount: number;
     liked: boolean;
     replyCount: number;
+    moderationStatus: Post["moderation_status"];
+    moderationReason: string | null;
+    moderationReviewNote: string | null;
+    revisionNumber: number;
+    updatedAt: string | null;
   }> = [];
 
   $: if (post) {
+    postRestricted = isModerationRestricted(post.moderation_status);
     postTitle = post.title;
     postTags = post.tags;
     items = [
@@ -247,6 +317,11 @@
         likeCount: post.like_count,
         liked: post.liked_by_me,
         replyCount: post.reply_count,
+        moderationStatus: post.moderation_status,
+        moderationReason: post.moderation_reason,
+        moderationReviewNote: post.moderation_review_note,
+        revisionNumber: post.revision_number,
+        updatedAt: post.updated_at,
       },
       ...comments.map((c) => ({
         key: c.id,
@@ -262,6 +337,11 @@
         likeCount: c.like_count,
         liked: c.liked_by_me,
         replyCount: c.reply_count,
+        moderationStatus: c.moderation_status,
+        moderationReason: c.moderation_reason,
+        moderationReviewNote: c.moderation_review_note,
+        revisionNumber: c.revision_number,
+        updatedAt: c.updated_at,
       })),
     ];
   }
@@ -310,8 +390,15 @@
           contentId={item.key}
           onReply={$currentUser && i > 0 ? () => handleReplyClick(comments[i - 1]) : null}
           onDelete={i === 0
-            ? ($currentUser?.id === post?.author_id ? handleDelete : null)
-            : ($currentUser?.id === comments[i - 1]?.author_id ? () => handleDeleteComment(i) : null)}
+            ? ($currentUser?.id === post?.author_id && post.revision_number === 1 && !post.poll ? handleDelete : null)
+            : ($currentUser?.id === comments[i - 1]?.author_id && comments[i - 1]?.revision_number === 1 ? () => handleDeleteComment(i) : null)}
+          onEdit={i === 0
+            ? ($currentUser?.id === post?.author_id && !post.poll ? () => openEdit(post, "post") : null)
+            : ($currentUser?.id === comments[i - 1]?.author_id ? () => openEdit(comments[i - 1], "comment") : null)}
+          onHistory={item.revisionNumber > 1
+            ? () => (historyTarget = i === 0 ? post : comments[i - 1])
+            : null}
+          revisionNumber={item.revisionNumber}
           liked={item.liked}
           likeCount={item.likeCount}
           replyCount={item.replyCount}
@@ -324,14 +411,19 @@
             : () => requestReport(item.key)}
           poll={i === 0 ? post.poll : null}
           onPollUpdate={i === 0 ? handlePollUpdate : null}
-          aiText={i === 0 ? post.content : null}
+          aiText={item.content}
+          aiTitle={item.title}
+          aiContext={i === 0 ? "post" : "comment"}
+          moderationStatus={item.moderationStatus}
+          moderationReason={item.moderationReason}
+          moderationReviewNote={item.moderationReviewNote}
         />
       {/each}
     </div>
   </div>
 
   <!-- Reply form -->
-  {#if $currentUser}
+  {#if $currentUser && !postRestricted}
     <div class="mt-4 ml-7 pt-4 border-t" style="border-color: var(--vercel-border);">
       {#if replyingTo}
         <div class="mb-2 flex items-center gap-2 text-xs" style="color: var(--vercel-text-tertiary);">
@@ -358,7 +450,7 @@
         </div>
       </div>
     </div>
-  {:else}
+  {:else if !$currentUser && !postRestricted}
     <div class="mt-4 ml-7 pt-4 border-t text-center" style="border-color: var(--vercel-border);">
     <a href="/login" class="login-reply-link text-sm">{$translator("post.loginToReply")}</a>
     </div>
@@ -399,6 +491,24 @@
     </button>
   </div>
 </GlassModal>
+
+<ContentEditModal
+  show={editTarget !== null}
+  kind={editKind}
+  title={editTarget && "title" in editTarget ? editTarget.title : ""}
+  content={editTarget?.content ?? ""}
+  tags={editTarget && "tags" in editTarget ? editTarget.tags : null}
+  revisionNumber={editTarget?.revision_number ?? 1}
+  onclose={() => (editTarget = null)}
+  onsave={saveEdit}
+/>
+
+<RevisionHistoryModal
+  show={historyTarget !== null}
+  current={historyCurrent()}
+  load={loadTargetHistory}
+  onclose={() => (historyTarget = null)}
+/>
 
 <style>
   .report-reason {

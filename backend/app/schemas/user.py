@@ -74,4 +74,7 @@ class UserContentItem(BaseModel):
     voting_period_hours: int | None = None
     voting_window_kind: str | None = None
     can_delete: bool = False
+    moderation_status: str = "published"
+    moderation_reason: str | None = None
+    moderation_review_note: str | None = None
 

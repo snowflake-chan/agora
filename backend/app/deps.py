@@ -11,6 +11,10 @@ from app.db.models.guild import GuildMember
 from app.db.models.moderation import BanRecord
 from app.db.models.patch import Patch as PatchModel
 from app.db.models.user import User
+from app.content_moderation import (
+    PUBLIC_MODERATION_STATUSES,
+    content_is_visible,
+)
 
 
 async def check_not_banned(user_id, session: AsyncSession, action: str = "ban_user"):
@@ -70,6 +74,30 @@ async def require_content_visible(
     if content is None:
         raise HTTPException(status_code=404, detail="CONTENT_NOT_FOUND")
 
+    if not content_is_visible(
+        content,
+        user,
+        allow_staff=allow_staff,
+    ):
+        raise HTTPException(status_code=404, detail="CONTENT_NOT_FOUND")
+
+    if content.parent_id is not None:
+        parent = await session.scalar(
+            select(ContentModel)
+            .options(
+                lazyload(ContentModel.author),
+                lazyload(ContentModel.parent),
+                lazyload(ContentModel.replying_to),
+            )
+            .where(ContentModel.id == content.parent_id)
+        )
+        if parent is not None and not content_is_visible(
+            parent,
+            user,
+            allow_staff=allow_staff,
+        ):
+            raise HTTPException(status_code=404, detail="CONTENT_NOT_FOUND")
+
     if content.patch_id is not None:
         patch = await session.scalar(
             select(PatchModel)
@@ -97,3 +125,44 @@ async def require_content_visible(
                 raise HTTPException(status_code=404, detail="CONTENT_NOT_FOUND")
 
     return content
+
+
+async def require_content_interactable(
+    content: ContentModel | None,
+    user: User | None,
+    session: AsyncSession,
+    *,
+    allow_staff: bool = False,
+) -> ContentModel:
+    """Require visibility and a public moderation state for user interactions."""
+    content = await require_content_visible(
+        content,
+        user,
+        session,
+        allow_staff=allow_staff,
+    )
+    parent_status = None
+    if content.parent_id is not None:
+        parent_status = await session.scalar(
+            select(ContentModel.moderation_status).where(
+                ContentModel.id == content.parent_id
+            )
+        )
+    if (
+        content.moderation_status in PUBLIC_MODERATION_STATUSES
+        and (
+            parent_status is None
+            or parent_status in PUBLIC_MODERATION_STATUSES
+        )
+    ):
+        return content
+
+    status = content.moderation_status
+    if parent_status and parent_status not in PUBLIC_MODERATION_STATUSES:
+        status = parent_status
+    detail = (
+        "CONTENT_PENDING_REVIEW"
+        if status == "pending_review"
+        else "CONTENT_REJECTED"
+    )
+    raise HTTPException(status_code=409, detail=detail)

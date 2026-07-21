@@ -8,6 +8,7 @@ export interface Patch {
   title: string;
   content: string;
   pr_number: number;
+  submitted_head_sha: string | null;
   status: string;
   author_id: string;
   author_username: string | null;
@@ -21,6 +22,17 @@ export interface Patch {
   comment_count: number;
   created_at: string;
   updated_at: string;
+  revision_number: number;
+}
+
+export interface PatchRevision {
+  id: string;
+  patch_id: string;
+  version: number;
+  title: string;
+  content: string;
+  editor_id: string;
+  edited_at: string;
 }
 
 export interface Vote {
@@ -65,6 +77,28 @@ export async function createPatch(data: {
     credentials: "include",
   });
   if (!res.ok) throw new Error((await res.json()).detail);
+  return res.json();
+}
+
+export async function updatePatch(
+  id: string,
+  data: { revision_number: number; title?: string; content?: string },
+): Promise<Patch> {
+  const res = await fetch(`${API_BASE}/patches/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+    credentials: "include",
+  });
+  if (!res.ok) throw new ApiError((await res.json()).detail ?? "PATCH_UPDATE_FAILED");
+  return res.json();
+}
+
+export async function listPatchHistory(id: string): Promise<PatchRevision[]> {
+  const res = await fetch(`${API_BASE}/patches/${id}/history`, {
+    credentials: "include",
+  });
+  if (!res.ok) throw new ApiError((await res.json()).detail ?? "PATCH_HISTORY_LOAD_FAILED");
   return res.json();
 }
 

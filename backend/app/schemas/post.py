@@ -77,6 +77,10 @@ class PostRead(BaseModel):
     like_count: int = 0
     liked_by_me: bool = False
     poll: PollRead | None = None
+    moderation_status: str = "published"
+    moderation_reason: str | None = None
+    moderation_review_note: str | None = None
+    revision_number: int = 1
     created_at: datetime
     updated_at: datetime
 
@@ -91,9 +95,41 @@ class PostCreate(BaseModel):
 
 
 class PostUpdate(BaseModel):
+    revision_number: int = Field(ge=1)
     title: str | None = None
     content: str | None = None
     tags: list[str] | None = None
+
+
+class ContentEditRead(BaseModel):
+    id: UUID
+    type: str
+    title: str | None = None
+    content: str
+    tags: list[str] | None = None
+    author_id: UUID
+    parent_id: UUID | None = None
+    patch_id: UUID | None = None
+    guild_id: UUID | None = None
+    moderation_status: str
+    moderation_reason: str | None = None
+    moderation_review_note: str | None = None
+    revision_number: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class ContentRevisionRead(BaseModel):
+    id: UUID
+    content_id: UUID
+    version: int
+    title: str | None = None
+    content: str
+    tags: list[str] | None = None
+    editor_id: UUID
+    edited_at: datetime
+
+    model_config = {"from_attributes": True}
 
 
 class PostLikeRead(BaseModel):
@@ -115,7 +151,12 @@ class CommentRead(BaseModel):
     reply_count: int = 0
     like_count: int = 0
     liked_by_me: bool = False
+    moderation_status: str = "published"
+    moderation_reason: str | None = None
+    moderation_review_note: str | None = None
+    revision_number: int = 1
     created_at: datetime
+    updated_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 
@@ -141,6 +182,10 @@ class FeedItem(BaseModel):
     reply_count: int = 0
     like_count: int = 0
     poll: PollRead | None = None
+    moderation_status: str = "published"
+    moderation_reason: str | None = None
+    moderation_review_note: str | None = None
+    revision_number: int = 1
 
     # Patch-specific
     pr_number: int | None = None

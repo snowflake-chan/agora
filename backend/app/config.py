@@ -4,6 +4,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     DATABASE_URL: str = ""
+    PUBLIC_SITE_URL: str = ""
     DB_ECHO: bool = False
     JWT_SECRET: str = ""
     APP_ENV: str = "production"
@@ -36,9 +37,12 @@ class Settings(BaseSettings):
     AI_RATE_LIMIT_REQUESTS: int = 20
     AI_RATE_LIMIT_IP_REQUESTS: int = 60
     AI_RATE_LIMIT_GLOBAL_REQUESTS: int = 200
+    AI_RATE_LIMIT_GLOBAL_QPS: int = 8
     AI_RATE_LIMIT_DAILY_GLOBAL_REQUESTS: int = 2000
     AI_RATE_LIMIT_WINDOW_SECONDS: int = 60
     AI_POLL_RESERVATION_TTL_SECONDS: int = 300
+    AI_TRANSLATION_CACHE_TTL_SECONDS: int = 604800
+    AI_MAX_CONCURRENT_REQUESTS: int = 8
 
     model_config = SettingsConfigDict(
         env_file="../.env"
@@ -95,12 +99,27 @@ class Settings(BaseSettings):
             raise ValueError("AI_RATE_LIMIT_IP_REQUESTS must be positive")
         if self.AI_RATE_LIMIT_GLOBAL_REQUESTS < 1:
             raise ValueError("AI_RATE_LIMIT_GLOBAL_REQUESTS must be positive")
+        if self.AI_RATE_LIMIT_GLOBAL_QPS < 1:
+            raise ValueError("AI_RATE_LIMIT_GLOBAL_QPS must be positive")
         if self.AI_RATE_LIMIT_DAILY_GLOBAL_REQUESTS < 1:
             raise ValueError("AI_RATE_LIMIT_DAILY_GLOBAL_REQUESTS must be positive")
         if self.AI_RATE_LIMIT_WINDOW_SECONDS < 1:
             raise ValueError("AI_RATE_LIMIT_WINDOW_SECONDS must be positive")
         if self.AI_POLL_RESERVATION_TTL_SECONDS < 1:
             raise ValueError("AI_POLL_RESERVATION_TTL_SECONDS must be positive")
+        if self.AI_TRANSLATION_CACHE_TTL_SECONDS < 1:
+            raise ValueError("AI_TRANSLATION_CACHE_TTL_SECONDS must be positive")
+        if self.AI_MAX_CONCURRENT_REQUESTS < 1:
+            raise ValueError("AI_MAX_CONCURRENT_REQUESTS must be positive")
+        if production_signals:
+            if not self.AI_POLITICAL_CLASSIFIER_URL.strip():
+                raise ValueError(
+                    "AI_POLITICAL_CLASSIFIER_URL is required for production content moderation"
+                )
+            if not self.AI_POLITICAL_CLASSIFIER_URL.startswith(("http://", "https://")):
+                raise ValueError(
+                    "AI_POLITICAL_CLASSIFIER_URL must be an HTTP(S) endpoint"
+                )
         if self.AI_FEATURES_ENABLED and production_signals:
             if self.DEEPSEEK_API_KEY:
                 raise ValueError(
@@ -118,14 +137,6 @@ class Settings(BaseSettings):
                 )
             if not self.AI_BASE_URL.startswith("https://"):
                 raise ValueError("AI_BASE_URL must use HTTPS in production")
-            if not self.AI_POLITICAL_CLASSIFIER_URL.strip():
-                raise ValueError(
-                    "AI_POLITICAL_CLASSIFIER_URL is required when production AI is enabled"
-                )
-            if not self.AI_POLITICAL_CLASSIFIER_URL.startswith(("http://", "https://")):
-                raise ValueError(
-                    "AI_POLITICAL_CLASSIFIER_URL must be an HTTP(S) endpoint"
-                )
         return self
 
 

@@ -1,28 +1,39 @@
 <script lang="ts">
-  import { BarChart3Icon, CheckIcon, Clock3Icon } from "@lucide/svelte";
+  import { BarChart3Icon, CheckIcon, Clock3Icon, LanguagesIcon } from "@lucide/svelte";
   import { onMount } from "svelte";
-  import { translateError, translator } from "../../lib/i18n";
+  import { getAiStatus, translateFields } from "../../lib/ai";
+  import { locale, translateError, translator } from "../../lib/i18n";
   import { requestLogin } from "../../lib/login";
+  import { autoTranslate, initPreferences } from "../../lib/preferences";
   import { voteOnPoll, type Poll } from "../../lib/posts";
   import { currentUser } from "../../stores/auth";
+  import { relativeTimeClock } from "../../stores/relativeTime";
   import { toaster } from "../../stores/toaster";
 
   let {
     postId,
     poll,
     compact = false,
+    readOnly = false,
     onUpdate = null,
   }: {
     postId: string;
     poll: Poll;
     compact?: boolean;
+    readOnly?: boolean;
     onUpdate?: ((poll: Poll) => void) | null;
   } = $props();
 
   let currentPoll = $state<Poll>(poll);
   let selectedOptionId = $state<string | null>(poll.selected_option_id ?? null);
   let submitting = $state(false);
-  let now = $state(Date.now());
+  let aiEnabled = $state(false);
+  let translationLoading = $state(false);
+  let translatedQuestion = $state("");
+  let translatedOptions = $state<string[]>([]);
+  let visible = $state(false);
+  let autoSignature = $state("");
+  let now = $derived($relativeTimeClock);
   let isClosed = $derived(
     currentPoll.is_closed || Date.parse(currentPoll.closes_at) <= now,
   );
@@ -39,10 +50,59 @@
     selectedOptionId = poll.selected_option_id ?? null;
   });
 
-  onMount(() => {
-    const timer = window.setInterval(() => (now = Date.now()), 30_000);
-    return () => window.clearInterval(timer);
+  $effect(() => {
+    if (!aiEnabled || !visible || !$autoTranslate || !$currentUser) return;
+    const signature = `${$locale}:${currentPoll.question}:${currentPoll.options.map((option) => option.text).join("\u0000")}`;
+    if (autoSignature === signature) return;
+    autoSignature = signature;
+    void translatePoll();
   });
+
+  onMount(async () => {
+    initPreferences();
+    aiEnabled = (await getAiStatus()).enabled;
+  });
+
+  function trackVisibility(node: HTMLElement) {
+    if (typeof IntersectionObserver === "undefined") {
+      visible = true;
+      return;
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => visible = Boolean(entry?.isIntersecting),
+      { rootMargin: "64px" },
+    );
+    observer.observe(node);
+    return { destroy: () => observer.disconnect() };
+  }
+
+  async function translatePoll() {
+    if (translationLoading) return;
+    if (!$currentUser) {
+      requestLogin(undefined, () => void translatePoll());
+      return;
+    }
+    translationLoading = true;
+    try {
+      const fields = [
+        { key: "question", text: currentPoll.question },
+        ...currentPoll.options.map((option, index) => ({
+          key: `option_${index + 1}`,
+          text: option.text,
+        })),
+      ];
+      const result = await translateFields(fields, $locale, "poll");
+      translatedQuestion = result.fields[0]?.translation ?? "";
+      translatedOptions = result.fields.slice(1).map((field) => field.translation);
+    } catch (error) {
+      toaster.error(
+        $translator("common.operationFailed"),
+        translateError(error, $translator, "ai.failed"),
+      );
+    } finally {
+      translationLoading = false;
+    }
+  }
 
   function percentage(voteCount: number): number {
     if (!currentPoll.total_votes) return 0;
@@ -55,7 +115,7 @@
   }
 
   function choose(optionId: string) {
-    if (isClosed) return;
+    if (isClosed || readOnly) return;
     if (!$currentUser) {
       requestLogin(undefined, () => choose(optionId));
       return;
@@ -64,7 +124,7 @@
   }
 
   async function submitVote() {
-    if (isClosed || !selectedOptionId) return;
+    if (isClosed || readOnly || !selectedOptionId) return;
     if (!$currentUser) {
       requestLogin(undefined, () => void submitVote());
       return;
@@ -87,6 +147,7 @@
 </script>
 
 <section
+  use:trackVisibility
   class:compact
   class="poll-card"
   aria-label={$translator("poll.label")}
@@ -97,20 +158,37 @@
       <BarChart3Icon size={14} strokeWidth={1.8} aria-hidden="true" />
       {$translator("poll.label")}
     </span>
-    {#if isClosed}
-      <span class="poll-state">{$translator("poll.closed")}</span>
-    {:else}
-      <span class="poll-state">
-        <Clock3Icon size={13} strokeWidth={1.8} aria-hidden="true" />
-        {$translator("poll.open")}
-      </span>
-    {/if}
+    <div class="poll-heading-actions">
+      {#if aiEnabled}
+        <button
+          type="button"
+          class="poll-translate"
+          title={$translator("ai.translate")}
+          aria-label={$translator("ai.translate")}
+          disabled={translationLoading}
+          onclick={(event) => { containInteraction(event); void translatePoll(); }}
+        >
+          <LanguagesIcon size={14} strokeWidth={1.8} aria-hidden="true" />
+        </button>
+      {/if}
+      {#if isClosed}
+        <span class="poll-state">{$translator("poll.closed")}</span>
+      {:else}
+        <span class="poll-state">
+          <Clock3Icon size={13} strokeWidth={1.8} aria-hidden="true" />
+          {$translator("poll.open")}
+        </span>
+      {/if}
+    </div>
   </div>
 
-  <h3 class="poll-question">{currentPoll.question}</h3>
+  <h3 class="poll-question">
+    {currentPoll.question}
+    {#if translatedQuestion}<small lang={$locale}>{translatedQuestion}</small>{/if}
+  </h3>
 
   <div class="poll-options" role="group" aria-label={currentPoll.question}>
-    {#each currentPoll.options as option (option.id)}
+    {#each currentPoll.options as option, index (option.id)}
       {@const selected = selectedOptionId === option.id}
       {@const resultPercent = percentage(option.vote_count)}
       <button
@@ -118,7 +196,7 @@
         class:selected
         class="poll-option"
         aria-pressed={selected}
-        disabled={isClosed || submitting}
+        disabled={isClosed || readOnly || submitting}
         onclick={(event) => {
           containInteraction(event);
           choose(option.id);
@@ -132,7 +210,10 @@
         <span class="poll-option-marker" aria-hidden="true">
           {#if selected}<CheckIcon size={13} strokeWidth={2.3} />{/if}
         </span>
-        <span class="poll-option-text">{option.text}</span>
+        <span class="poll-option-text">
+          {option.text}
+          {#if translatedOptions[index]}<small lang={$locale}>{translatedOptions[index]}</small>{/if}
+        </span>
         {#if showingResults}
           <span class="poll-option-result">{option.vote_count} <span>{resultPercent}%</span></span>
         {/if}
@@ -141,7 +222,9 @@
   </div>
 
   <div class="poll-footer">
-    {#if showingResults}
+    {#if readOnly}
+      <span>{$translator("moderation.ai.interactionsPaused")}</span>
+    {:else if showingResults}
       <span>{$translator("poll.totalVotes", { count: currentPoll.total_votes })}</span>
       {#if !isClosed}
         <span>{$translator("poll.changeHint")}</span>
@@ -150,7 +233,7 @@
       <span>{$translator("poll.pickOption")}</span>
     {/if}
 
-    {#if !isClosed}
+    {#if !isClosed && !readOnly}
       <button
         type="button"
         class="btn btn-secondary btn-sm poll-submit"
@@ -182,6 +265,7 @@
   }
 
   .poll-heading,
+  .poll-heading-actions,
   .poll-footer,
   .poll-kicker,
   .poll-state,
@@ -194,6 +278,33 @@
   .poll-heading {
     justify-content: space-between;
     gap: 0.75rem;
+  }
+
+  .poll-heading-actions {
+    gap: 0.4rem;
+  }
+
+  .poll-translate {
+    display: grid;
+    width: 1.75rem;
+    height: 1.75rem;
+    place-items: center;
+    border: 0;
+    border-radius: var(--vercel-radius-sm);
+    color: var(--vercel-text-tertiary);
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .poll-translate:hover,
+  .poll-translate:focus-visible {
+    color: var(--vercel-text);
+    background: var(--vercel-hover);
+  }
+
+  .poll-translate:disabled {
+    cursor: wait;
+    opacity: 0.5;
   }
 
   .poll-kicker {
@@ -218,6 +329,21 @@
     font-size: 0.9375rem;
     font-weight: 650;
     line-height: 1.45;
+  }
+
+  .poll-question small,
+  .poll-option-text small {
+    display: block;
+    margin-top: 0.18rem;
+    color: var(--vercel-text-secondary);
+    font-size: 0.72rem;
+    font-weight: 500;
+    line-height: 1.4;
+  }
+
+  .poll-option-text {
+    min-width: 0;
+    text-align: left;
   }
 
   .poll-options {

@@ -20,7 +20,7 @@
   --vercel-hover: rgba(255, 255, 255, 0.04);
   --vercel-hover-strong: rgba(255, 255, 255, 0.07);
   --vercel-radius: 8px;
-  --vercel-radius-lg: 12px;
+  --vercel-radius-lg: 8px;
   --vercel-radius-sm: 6px;
   --vercel-accent: #ffffff;
   --vercel-accent-foreground: #0c0c0e;
@@ -68,7 +68,7 @@ main {
 h1, h2, h3, h4, h5, h6 {
   color: var(--vercel-text);
   font-weight: 600;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
 }
 
 a {

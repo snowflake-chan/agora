@@ -8,6 +8,7 @@
   import { toaster } from "../../stores/toaster";
   import { appleEase } from "../../lib/motion";
   import { modal } from "../../lib/modal";
+  import WritingAssist from "../posts/WritingAssist.svelte";
 
   const dispatch = createEventDispatcher();
 
@@ -94,7 +95,7 @@
     </div>
 
     <!-- PR number -->
-    <div class="flex items-center gap-2 border-b px-6 py-2.5" style="border-color: var(--vercel-border);">
+    <div class="patch-meta-tools flex items-center gap-2 border-b px-6 py-2.5" style="border-color: var(--vercel-border);">
       <span class="text-sm" style="color: var(--vercel-text-tertiary);">{GITHUB_REPO}#</span>
       <input
         bind:value={prNumber}
@@ -104,6 +105,17 @@
         style="background: transparent; border: none; color: var(--vercel-text);"
         placeholder={$translator("patch.prNumber")}
       />
+      <div class="composer-ai-tools">
+        <WritingAssist
+          {title}
+          body={content}
+          context="patch"
+          onApply={(value) => {
+            title = value.title;
+            content = value.body;
+          }}
+        />
+      </div>
     </div>
 
     <!-- Split pane: edit | preview -->
@@ -145,14 +157,17 @@
   .composer-pane { display:flex; flex:1; min-width:0; flex-direction:column; }
   .editor-pane { border-right:1px solid var(--vercel-border); }
   .composer-tabs { display:none; }
+  .composer-ai-tools { min-width:0; margin-left:auto; }
   @media (max-width: 48rem) {
     .composer-backdrop { padding:.5rem; }
     .composer-dialog { height:calc(100dvh - 1rem); border-radius:.875rem; }
     .composer-header { flex-wrap:wrap; gap:.5rem; padding:.75rem; }
     .composer-header > div { flex-basis:100%; order:-1; }
+    .patch-meta-tools { flex-wrap:wrap; padding-inline:.75rem; }
     .composer-tabs { display:grid; grid-template-columns:1fr 1fr; gap:.25rem; margin:.5rem .75rem 0; padding:.2rem; border-radius:.6rem; background:var(--vercel-surface-muted); }
     .composer-tabs button { padding:.45rem; border-radius:.45rem; color:var(--vercel-text-tertiary); font-size:.75rem; font-weight:600; }
     .composer-tabs button.active { color:var(--vercel-text); background:var(--vercel-hover-strong); }
+    .composer-ai-tools { width:100%; margin-left:0; }
     .editor-pane { border-right:0; }
     .composer-pane.mobile-hidden { display:none; }
   }

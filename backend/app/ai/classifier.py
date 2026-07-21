@@ -24,8 +24,10 @@ def _build_http_client() -> httpx.AsyncClient:
     )
 
 
-async def require_trusted_local_classification(texts: list[str]) -> None:
-    """Fail closed unless the trusted pre-egress classifier clears every value."""
+async def classify_with_trusted_local_service(
+    texts: list[str],
+) -> list[PoliticalStatus]:
+    """Return trusted local classifications without exposing source text in logs."""
     url = settings.AI_POLITICAL_CLASSIFIER_URL.strip()
     if not url:
         raise AIServiceError(503, "AI_POLITICAL_GUARD_UNAVAILABLE")
@@ -52,5 +54,11 @@ async def require_trusted_local_classification(texts: list[str]) -> None:
 
     if len(envelope.statuses) != len(texts):
         raise AIServiceError(503, "AI_POLITICAL_GUARD_UNAVAILABLE")
-    if any(status != "non_political" for status in envelope.statuses):
+    return envelope.statuses
+
+
+async def require_trusted_local_classification(texts: list[str]) -> None:
+    """Fail closed unless the trusted pre-egress classifier clears every value."""
+    statuses = await classify_with_trusted_local_service(texts)
+    if any(status != "non_political" for status in statuses):
         raise AIServiceError(422, "POLITICAL_CONTENT_UNAVAILABLE")

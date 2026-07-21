@@ -10,15 +10,19 @@
   import { translator, translateError } from "../../lib/i18n";
   import { requestLogin } from "../../lib/login";
   import { guildLevelColor, guildLevelKey, isGuildLogoImage } from "../../lib/guildPresentation";
+  import { onModerationUpdateForPath } from "../../lib/moderation";
   import type { Patch } from "../../lib/patches";
   import { currentUser, initAuth } from "../../stores/auth";
   import { toaster } from "../../stores/toaster";
-  import { avatarInitial, timeAgo } from "../../lib/utils";
+  import { avatarInitial } from "../../lib/utils";
   import { Flag, LockKeyhole, RefreshCw, Trash2 } from "@lucide/svelte";
   import ConfirmDialog from "../ConfirmDialog.svelte";
   import GlassModal from "../GlassModal.svelte";
   import VotingWindowMeta from "../patches/VotingWindowMeta.svelte";
   import GuildMemberCard from "./GuildMemberCard.svelte";
+  import ModerationNotice from "../posts/ModerationNotice.svelte";
+  import PostAiTools from "../posts/PostAiTools.svelte";
+  import RelativeTime from "../RelativeTime.svelte";
 
   let { guildId }: { guildId: string } = $props();
 
@@ -49,10 +53,15 @@
   let reportReason = $state("");
   let reporting = $state(false);
 
-  onMount(async () => {
-    await initAuth();
-    await loadAll();
-    await revealHashTarget();
+  onMount(() => {
+    void (async () => {
+      await initAuth();
+      await loadAll();
+      await revealHashTarget();
+    })();
+    return onModerationUpdateForPath(`/guilds/${guildId}`, () => {
+      if (canViewDiscussions()) void loadDiscussions();
+    });
   });
 
   async function loadAll() {
@@ -317,7 +326,7 @@
             <div class="flex flex-wrap items-center gap-2 mt-2 text-xs" style="color: var(--vercel-text-tertiary);">
               <span>{$translator("guild.voteSummary", { for: p.for_count, against: p.against_count })}</span>
               <span>·</span>
-              <span>{timeAgo(p.created_at)}</span>
+              <RelativeTime value={p.created_at} />
               <VotingWindowMeta
                 status={p.status}
                 votingWindowKind={p.voting_window_kind}
@@ -385,14 +394,20 @@
       {:else}
         {#each discussions as d (d.id)}
           <div id={d.id} class="card discussion-card p-4 mb-2">
+            <ModerationNotice
+              status={d.moderation_status}
+              reason={d.moderation_reason}
+              reviewNote={d.moderation_review_note}
+              compact
+            />
             <div class="flex items-center justify-between mb-1">
               <div class="flex items-center gap-2 text-xs" style="color: var(--vercel-text-tertiary);">
                 <a href="/users/{d.author_id}" class="font-medium no-underline" style="color: var(--vercel-text-secondary);">{d.author_username}</a>
                 <span>·</span>
-                <span>{timeAgo(d.created_at)}</span>
+                <RelativeTime value={d.created_at} />
               </div>
               <div class="discussion-actions">
-                {#if $currentUser?.id !== d.author_id}
+                {#if $currentUser?.id !== d.author_id && d.moderation_status !== "pending_review" && d.moderation_status !== "rejected"}
                   <button
                     class="btn-icon discussion-action"
                     type="button"
@@ -401,7 +416,7 @@
                     onclick={() => openReport(d)}
                   ><Flag size={15} aria-hidden="true" /></button>
                 {/if}
-                {#if $currentUser?.id === d.author_id}
+                {#if $currentUser?.id === d.author_id && d.revision_number === 1}
                   <button
                     class="btn-icon discussion-action discussion-delete"
                     type="button"
@@ -420,6 +435,9 @@
               <h4 class="font-semibold text-sm mb-1" style="color: var(--vercel-text);">{d.title}</h4>
             {/if}
             <p class="text-sm" style="color: var(--vercel-text-secondary);">{d.content}</p>
+            {#if d.moderation_status !== "pending_review" && d.moderation_status !== "rejected"}
+              <PostAiTools text={d.content} title={d.title} context="guild" compact />
+            {/if}
           </div>
         {/each}
       {/if}

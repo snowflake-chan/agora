@@ -14,6 +14,8 @@ from pydantic import (
 
 Locale = Literal["en", "ja", "zh-TW"]
 PoliticalStatus = Literal["non_political", "political", "uncertain"]
+TranslationContext = Literal["post", "comment", "patch", "guild", "composer", "poll"]
+WritingAction = Literal["polish", "shorten", "clarify"]
 
 InputText = Annotated[
     str,
@@ -38,6 +40,50 @@ class TextRequest(StrictModel):
     target_locale: Locale
 
 
+class TranslationField(StrictModel):
+    key: Annotated[
+        str,
+        StringConstraints(
+            strip_whitespace=True,
+            min_length=1,
+            max_length=64,
+            pattern=r"^[a-z][a-z0-9_]*$",
+        ),
+    ]
+    text: InputText
+
+
+class TranslationBundleRequest(StrictModel):
+    fields: list[TranslationField] = Field(min_length=1, max_length=8)
+    target_locale: Locale
+    context: TranslationContext = "post"
+
+    @model_validator(mode="after")
+    def validate_fields(self):
+        keys = [field.key for field in self.fields]
+        if len(set(keys)) != len(keys):
+            raise ValueError("translation field keys must be unique")
+        if sum(len(field.text) for field in self.fields) > 12000:
+            raise ValueError("translation input is too long")
+        return self
+
+
+class WritingAssistRequest(StrictModel):
+    fields: list[TranslationField] = Field(min_length=1, max_length=3)
+    target_locale: Locale
+    context: TranslationContext = "composer"
+    action: WritingAction
+
+    @model_validator(mode="after")
+    def validate_fields(self):
+        keys = [field.key for field in self.fields]
+        if len(set(keys)) != len(keys):
+            raise ValueError("writing field keys must be unique")
+        if sum(len(field.text) for field in self.fields) > 12000:
+            raise ValueError("writing input is too long")
+        return self
+
+
 class PollGenerateRequest(TextRequest):
     exclude_questions: list[ExcludedQuestion] = Field(
         default_factory=list,
@@ -55,6 +101,20 @@ class SummaryResponse(StrictModel):
 
 class TranslationResponse(StrictModel):
     translation: str
+
+
+class TranslationFieldResponse(StrictModel):
+    key: str
+    translation: str
+
+
+class TranslationBundleResponse(StrictModel):
+    fields: list[TranslationFieldResponse]
+    cached: bool
+
+
+class WritingAssistResponse(StrictModel):
+    fields: list[TranslationFieldResponse]
 
 
 class PollResponse(StrictModel):
@@ -101,6 +161,52 @@ class TranslationAIResponse(StrictModel):
     def require_non_political_result(self):
         if self.political_status == "non_political" and self.translation is None:
             raise ValueError("translation is required for non-political content")
+        return self
+
+
+class TranslationBundleAIResponse(StrictModel):
+    political_status: PoliticalStatus
+    translations: list[str] | None = None
+
+    @field_validator("translations")
+    @classmethod
+    def validate_translations(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        normalized = [translation.strip() for translation in value]
+        if any(not translation or len(translation) > 24000 for translation in normalized):
+            raise ValueError("translation is invalid")
+        if sum(len(translation) for translation in normalized) > 48000:
+            raise ValueError("translations are too long")
+        return normalized
+
+    @model_validator(mode="after")
+    def require_non_political_result(self):
+        if self.political_status == "non_political" and self.translations is None:
+            raise ValueError("translations are required for non-political content")
+        return self
+
+
+class WritingAssistAIResponse(StrictModel):
+    political_status: PoliticalStatus
+    rewrites: list[str] | None = None
+
+    @field_validator("rewrites")
+    @classmethod
+    def validate_rewrites(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        normalized = [rewrite.strip() for rewrite in value]
+        if any(not rewrite or len(rewrite) > 24000 for rewrite in normalized):
+            raise ValueError("rewrite is invalid")
+        if sum(len(rewrite) for rewrite in normalized) > 48000:
+            raise ValueError("rewrites are too long")
+        return normalized
+
+    @model_validator(mode="after")
+    def require_non_political_result(self):
+        if self.political_status == "non_political" and self.rewrites is None:
+            raise ValueError("rewrites are required for non-political content")
         return self
 
 

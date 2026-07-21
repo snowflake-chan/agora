@@ -5,6 +5,8 @@
     CircleMinusIcon,
     ExternalLink,
     FlagIcon,
+    HistoryIcon,
+    PencilIcon,
     ThumbsDownIcon,
     ThumbsUpIcon,
   } from "@lucide/svelte";
@@ -19,9 +21,10 @@
   } from "../../lib/governance";
   import { locale, translateError, translator } from "../../lib/i18n";
   import { requestLogin } from "../../lib/login";
+  import { onModerationUpdateForPath } from "../../lib/moderation";
   import { renderMarkdown } from "../../lib/markdown";
-  import { getPatch, deletePatch, submitPatch, votePatch, listVotes, listPatchComments, createPatchComment, type Patch, type Vote } from "../../lib/patches";
-  import { deleteContent, likePost, unlikePost, type Comment } from "../../lib/posts";
+  import { getPatch, deletePatch, submitPatch, votePatch, listVotes, listPatchComments, createPatchComment, updatePatch, listPatchHistory, type Patch, type Vote } from "../../lib/patches";
+  import { deleteContent, likePost, unlikePost, updateContent, listContentHistory, type Comment } from "../../lib/posts";
   import { toaster } from "../../stores/toaster";
   import { currentUser } from "../../stores/auth";
   import { GITHUB_REPO } from "../../lib/config";
@@ -30,6 +33,9 @@
   import GlassModal from "../GlassModal.svelte";
   import TimelineItem from "../posts/TimelineItem.svelte";
   import VotingWindowMeta from "./VotingWindowMeta.svelte";
+  import PostAiTools from "../posts/PostAiTools.svelte";
+  import ContentEditModal from "../content/ContentEditModal.svelte";
+  import RevisionHistoryModal, { type RevisionSnapshot } from "../content/RevisionHistoryModal.svelte";
 
   let { patchId = "", embedded = false }: { patchId: string; embedded?: boolean } = $props();
 
@@ -55,6 +61,10 @@
   let reportReason = $state("");
   let reporting = $state(false);
   let currentTime = $state(Date.now());
+  let editTarget = $state<Patch | Comment | null>(null);
+  let editKind = $state<"patch" | "comment">("patch");
+  let historyPatch = $state<Patch | null>(null);
+  let historyComment = $state<Comment | null>(null);
 
   const STATUS_TYPES: Record<string, string> = {
     draft: "neutral",
@@ -98,7 +108,7 @@
     );
   }
 
-  onMount(async () => {
+  async function loadPatchDetail(showError = true) {
     try {
       const [p, v, c] = await Promise.all([
         getPatch(patchId),
@@ -109,12 +119,21 @@
       votes = v;
       comments = c;
       const myVote = v.find((v) => v.voter_id === $currentUser?.id);
-      if (myVote) currentUserVote = myVote;
+      currentUserVote = myVote ?? null;
     } catch {
-      toaster.error($translator("common.error"), $translator("patch.loadFailed"));
+      if (showError) {
+        toaster.error($translator("common.error"), $translator("patch.loadFailed"));
+      }
     } finally {
       loading = false;
     }
+  }
+
+  onMount(() => {
+    void loadPatchDetail();
+    return onModerationUpdateForPath(`/patches/${patchId}`, () => {
+      void loadPatchDetail(false);
+    });
   });
 
   onMount(() => {
@@ -328,6 +347,70 @@
     }
   }
 
+  function openEdit(target: Patch | Comment, kind: "patch" | "comment") {
+    editTarget = target;
+    editKind = kind;
+  }
+
+  async function saveEdit(payload: {
+    revision_number: number;
+    title?: string;
+    content: string;
+    tags?: string[] | null;
+  }) {
+    if (!editTarget) return;
+    if (editKind === "patch") {
+      patch = await updatePatch(editTarget.id, payload);
+    } else {
+      const updated = await updateContent(editTarget.id, payload);
+      comments = comments.map((comment) =>
+        comment.id === updated.id ? { ...comment, ...updated } : comment,
+      );
+    }
+    editTarget = null;
+  }
+
+  function historyCurrent(): RevisionSnapshot | null {
+    if (historyPatch) {
+      return {
+        version: historyPatch.revision_number,
+        title: historyPatch.title,
+        content: historyPatch.content,
+        edited_at: historyPatch.updated_at,
+      };
+    }
+    if (historyComment) {
+      return {
+        version: historyComment.revision_number,
+        title: null,
+        content: historyComment.content,
+        edited_at: historyComment.updated_at ?? historyComment.created_at,
+      };
+    }
+    return null;
+  }
+
+  async function loadHistory(): Promise<RevisionSnapshot[]> {
+    if (historyPatch) {
+      return (await listPatchHistory(historyPatch.id)).map((revision) => ({
+        version: revision.version,
+        title: revision.title,
+        content: revision.content,
+        edited_at: revision.edited_at,
+      }));
+    }
+    if (historyComment) {
+      return (await listContentHistory(historyComment.id)).map((revision) => ({
+        version: revision.version,
+        title: revision.title,
+        content: revision.content,
+        tags: revision.tags,
+        edited_at: revision.edited_at,
+      }));
+    }
+    return [];
+  }
+
   function goBack() {
     window.history.back();
   }
@@ -378,6 +461,22 @@
         PR #{patch.pr_number}
         <ExternalLink size={13} strokeWidth={1.8} aria-hidden="true" />
       </a>
+      {#if patch.submitted_head_sha}
+        <code class="governed-sha" title={$translator("patch.governedCommit")}>
+          {patch.submitted_head_sha.slice(0, 7)}
+        </code>
+      {/if}
+      {#if patch.revision_number > 1}
+        <button
+          type="button"
+          class="btn-icon patch-history-action"
+          title={$translator("revision.viewHistory")}
+          aria-label={$translator("revision.viewHistory")}
+          onclick={() => (historyPatch = patch)}
+        >
+          <HistoryIcon size={15} strokeWidth={1.8} aria-hidden="true" />
+        </button>
+      {/if}
     </div>
     <h1 class="mt-2 text-xl font-bold" style="color: var(--vercel-text);">{patch.title}</h1>
     <div class="patch-author-row mt-1">
@@ -398,6 +497,7 @@
   <!-- Content (rendered markdown) -->
   <div class="card p-4 mb-8">
     <div class="markdown-body">{@html renderMarkdown(patch.content)}</div>
+    <PostAiTools text={patch.content} title={patch.title} context="patch" />
   </div>
 
   <!-- Vote panel -->
@@ -502,6 +602,10 @@
   {#if $currentUser?.id === patch.author_id}
     <div class="mb-8 flex gap-2">
       {#if patch.status === "draft"}
+        <button class="btn btn-ghost btn-sm" onclick={() => openEdit(patch, "patch")}>
+          <PencilIcon size={15} strokeWidth={1.8} aria-hidden="true" />
+          {$translator("common.edit")}
+        </button>
         <button
           class="btn btn-primary btn-sm"
           disabled={submittingPatch}
@@ -541,8 +645,13 @@
             replyingToContent={comment.replying_to_content}
             replyingToId={comment.replying_id}
             contentId={comment.id}
+            aiText={comment.content}
+            aiContext="comment"
             onReply={$currentUser ? () => beginReply(comment) : null}
-            onDelete={$currentUser?.id === comment.author_id ? () => requestDeleteComment(comment) : null}
+            onDelete={$currentUser?.id === comment.author_id && comment.revision_number === 1 ? () => requestDeleteComment(comment) : null}
+            onEdit={$currentUser?.id === comment.author_id ? () => openEdit(comment, "comment") : null}
+            onHistory={comment.revision_number > 1 ? () => (historyComment = comment) : null}
+            revisionNumber={comment.revision_number}
             liked={comment.liked_by_me}
             likeCount={comment.like_count}
             replyCount={comment.reply_count}
@@ -553,6 +662,9 @@
             onReport={$currentUser?.id === comment.author_id
               ? null
               : () => requestReport(comment.id)}
+            moderationStatus={comment.moderation_status}
+            moderationReason={comment.moderation_reason}
+            moderationReviewNote={comment.moderation_review_note}
           />
         {/each}
       </div>
@@ -656,6 +768,23 @@
   </div>
 </GlassModal>
 
+<ContentEditModal
+  show={editTarget !== null}
+  kind={editKind}
+  title={editTarget && "title" in editTarget ? editTarget.title : ""}
+  content={editTarget?.content ?? ""}
+  revisionNumber={editTarget?.revision_number ?? 1}
+  onclose={() => (editTarget = null)}
+  onsave={saveEdit}
+/>
+
+<RevisionHistoryModal
+  show={historyPatch !== null || historyComment !== null}
+  current={historyCurrent()}
+  load={loadHistory}
+  onclose={() => { historyPatch = null; historyComment = null; }}
+/>
+
 <style>
   .patch-meta-row {
     display: flex;
@@ -666,6 +795,16 @@
 
   .patch-report-action {
     margin-left: auto;
+  }
+
+  .patch-history-action {
+    width: 1.85rem;
+    height: 1.85rem;
+    color: var(--vercel-text-tertiary);
+  }
+
+  .patch-history-action:hover {
+    color: var(--vercel-text);
   }
 
   .patch-author-row {
@@ -685,6 +824,15 @@
 
   .patch-pr-link:hover {
     color: var(--vercel-text);
+  }
+
+  .governed-sha {
+    padding: 0.15rem 0.35rem;
+    border: 1px solid var(--vercel-border);
+    border-radius: var(--vercel-radius-sm);
+    color: var(--vercel-text-tertiary);
+    background: var(--vercel-surface-muted);
+    font-size: 0.68rem;
   }
 
   .section-kicker {
@@ -739,7 +887,7 @@
   .vote-deadline {
     padding: 0.3rem 0.55rem;
     border: 1px solid var(--vercel-border);
-    border-radius: 0.375rem;
+    border-radius: var(--vercel-radius-sm);
     color: var(--vercel-text-secondary);
     font-size: 0.7rem;
     font-variant-numeric: tabular-nums;
@@ -757,7 +905,7 @@
     align-items: baseline;
     gap: 0.4rem;
     padding: 0.6rem 0.7rem;
-    border-radius: 0.4rem;
+    border-radius: var(--vercel-radius-sm);
     background: var(--vercel-surface-muted);
   }
 
@@ -790,7 +938,7 @@
     justify-content: center;
     gap: 0.4rem;
     border: 1px solid var(--vercel-border-hover);
-    border-radius: 0.5rem;
+    border-radius: var(--vercel-radius-sm);
     color: var(--vercel-text-secondary);
     background: var(--vercel-hover);
     font-size: 0.8rem;

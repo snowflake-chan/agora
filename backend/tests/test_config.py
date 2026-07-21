@@ -30,6 +30,7 @@ def test_production_accepts_strong_jwt_secret():
         _env_file=None,
         APP_ENV="production",
         JWT_SECRET="a-unique-production-secret-with-32-characters",
+        AI_POLITICAL_CLASSIFIER_URL="http://politics-classifier:8080/classify",
     )
 
     assert settings.APP_ENV == "production"
@@ -43,6 +44,7 @@ def test_production_rejects_test_deepseek_credentials():
             JWT_SECRET="a-unique-production-secret-with-32-characters",
             AI_FEATURES_ENABLED=True,
             DEEPSEEK_API_KEY="test-only-key",
+            AI_POLITICAL_CLASSIFIER_URL="http://politics-classifier:8080/classify",
         )
 
 
@@ -61,6 +63,7 @@ def test_production_signals_reject_test_deepseek_credentials(production_signal):
             JWT_SECRET="a-unique-production-secret-with-32-characters",
             AI_FEATURES_ENABLED=True,
             DEEPSEEK_API_KEY="test-only-key",
+            AI_POLITICAL_CLASSIFIER_URL="http://politics-classifier:8080/classify",
             **production_signal,
         )
 
@@ -81,14 +84,20 @@ def test_production_accepts_separate_openai_compatible_provider():
     assert settings.resolved_ai_model() == "production-model"
 
 
-def test_production_ai_requires_trusted_local_classifier():
+def test_production_content_moderation_requires_trusted_local_classifier():
     with pytest.raises(ValidationError, match="AI_POLITICAL_CLASSIFIER_URL"):
         Settings(
             _env_file=None,
             APP_ENV="production",
             JWT_SECRET="a-unique-production-secret-with-32-characters",
-            AI_FEATURES_ENABLED=True,
-            AI_API_KEY="production-only-key",
-            AI_BASE_URL="https://provider.example/v1",
-            AI_MODEL="production-model",
+        )
+
+
+def test_production_rejects_invalid_classifier_url():
+    with pytest.raises(ValidationError, match=r"HTTP\(S\)"):
+        Settings(
+            _env_file=None,
+            APP_ENV="production",
+            JWT_SECRET="a-unique-production-secret-with-32-characters",
+            AI_POLITICAL_CLASSIFIER_URL="politics-classifier:8080/classify",
         )

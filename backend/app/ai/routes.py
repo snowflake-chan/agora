@@ -9,9 +9,20 @@ from app.ai.schemas import (
     PollResponse,
     SummaryResponse,
     TextRequest,
+    TranslationBundleRequest,
+    TranslationBundleResponse,
     TranslationResponse,
+    WritingAssistRequest,
+    WritingAssistResponse,
 )
-from app.ai.service import ai_is_enabled, generate_poll, summarize, translate
+from app.ai.service import (
+    ai_is_enabled,
+    generate_poll,
+    summarize,
+    translate,
+    translate_bundle,
+    assist_writing,
+)
 from app.db import get_session
 from app.db.models.user import User
 from app.db.models.post_poll import PostPoll
@@ -77,6 +88,40 @@ async def translate_text(
 ) -> TranslationResponse:
     try:
         return await translate(
+            data,
+            user_id=str(user.id),
+            client_identifier=client_ip(request),
+        )
+    except AIServiceError as error:
+        raise _http_error(error) from error
+
+
+@router.post("/translate/fields", response_model=TranslationBundleResponse)
+async def translate_fields(
+    data: TranslationBundleRequest,
+    request: Request,
+    user: User = Depends(ai_eligible_user),
+) -> TranslationBundleResponse:
+    """Translate related fields together so titles, bodies, and options keep context."""
+    try:
+        return await translate_bundle(
+            data,
+            user_id=str(user.id),
+            client_identifier=client_ip(request),
+        )
+    except AIServiceError as error:
+        raise _http_error(error) from error
+
+
+@router.post("/writing/assist", response_model=WritingAssistResponse)
+async def improve_draft(
+    data: WritingAssistRequest,
+    request: Request,
+    user: User = Depends(ai_eligible_user),
+) -> WritingAssistResponse:
+    """Return a field-preserving draft suggestion; applying it remains a user action."""
+    try:
+        return await assist_writing(
             data,
             user_id=str(user.id),
             client_identifier=client_ip(request),

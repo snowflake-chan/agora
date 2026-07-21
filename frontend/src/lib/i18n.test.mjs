@@ -67,6 +67,21 @@ describe("translation catalog", () => {
     }
   });
 
+  it("ships complete AI moderation workflow copy in every supported locale", () => {
+    const moderationKeys = Object.keys(messages.en).filter(
+      (key) => key.startsWith("moderation.ai.") || key.startsWith("admin.moderation"),
+    );
+
+    assert.ok(moderationKeys.length > 20);
+    for (const locale of locales) {
+      for (const key of moderationKeys) {
+        assert.equal(typeof messages[locale][key], "string", `${locale}.${key}`);
+        assert.notEqual(messages[locale][key].trim(), "", `${locale}.${key}`);
+      }
+      assert.match(messages[locale]["moderation.ai.pendingDescription"], /AI|automated|自動/i);
+    }
+  });
+
   it("localizes system notifications without exposing stored source copy", () => {
     const translate = (key) => messages.ja[key] ?? messages.en[key] ?? key;
     const localized = localizeNotification(
@@ -91,6 +106,53 @@ describe("translation catalog", () => {
       messages["zh-TW"]["notifications.event.followingPostTitle"],
     );
     assert.equal(localized.message, "A user-authored title");
+  });
+
+  it("localizes moderation notifications and preserves only the review note", () => {
+    const translate = (key, params) => {
+      const template = messages["zh-TW"][key] ?? messages.en[key] ?? key;
+      return template.replace(/\{(\w+)\}/g, (match, name) =>
+        Object.hasOwn(params ?? {}, name) ? String(params[name]) : match,
+      );
+    };
+    const pending = localizeNotification(
+      { type: "moderation_pending", message: "political_or_uncertain" },
+      translate,
+    );
+    const unavailable = localizeNotification(
+      { type: "moderation_pending", message: "classifier_unavailable" },
+      translate,
+    );
+    const rejected = localizeNotification(
+      {
+        type: "moderation_rejected",
+        message: "請刪除具體人名後重新發佈。",
+      },
+      translate,
+    );
+    const approved = localizeNotification(
+      {
+        type: "moderation_approved",
+        message: "已移除不確定內容。",
+      },
+      translate,
+    );
+
+    assert.equal(pending.title, messages["zh-TW"]["notifications.event.moderationPendingTitle"]);
+    assert.equal(pending.message, messages["zh-TW"]["notifications.event.moderationPendingMessage"]);
+    assert.doesNotMatch(pending.message, /political_or_uncertain/);
+    assert.equal(
+      unavailable.message,
+      messages["zh-TW"]["notifications.event.moderationPendingUnavailableMessage"],
+    );
+    assert.doesNotMatch(unavailable.message, /classifier_unavailable/);
+    assert.equal(rejected.title, messages["zh-TW"]["notifications.event.moderationRejectedTitle"]);
+    assert.match(rejected.message, /管理員備註/);
+    assert.match(rejected.message, /請刪除具體人名後重新發佈/);
+    assert.doesNotMatch(rejected.message, /Your content was not approved/);
+    assert.equal(approved.title, messages["zh-TW"]["notifications.event.moderationApprovedTitle"]);
+    assert.match(approved.message, /已移除不確定內容/);
+    assert.doesNotMatch(approved.message, /Your content passed review/);
   });
 });
 

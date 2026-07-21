@@ -3,6 +3,7 @@ from uuid import UUID
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi_users.password import PasswordHelper
@@ -14,7 +15,12 @@ from app.db.models.follow import Follow
 from app.db.models.guild import GuildMember as GuildMemberModel
 from app.db.models.moderation import BanRecord
 from app.db.models.post_like import PostLike
+from app.db.models.post_poll import PostPoll
 from app.deps import check_not_banned
+from app.content_moderation import (
+    content_visibility_clause,
+    moderation_metadata_for,
+)
 from app.post_polls import load_post_polls
 from app.schemas.guild import UserGuildBadge
 from app.schemas.post import PostRead
@@ -157,7 +163,11 @@ async def list_user_posts(
 
     stmt = (
         select(ContentModel)
-        .where(ContentModel.author_id == user_id, ContentModel.type == "post")
+        .where(
+            ContentModel.author_id == user_id,
+            ContentModel.type == "post",
+            content_visibility_clause(viewer),
+        )
         .order_by(ContentModel.created_at.desc())
         .offset(offset)
         .limit(page_size)
@@ -174,6 +184,7 @@ async def list_user_posts(
             .where(
                 ContentModel.parent_id.in_(post_ids),
                 ContentModel.type == "comment",
+                content_visibility_clause(viewer),
             )
             .group_by(ContentModel.parent_id)
         )
@@ -195,6 +206,8 @@ async def list_user_posts(
             author_username=p.author.username,
             reply_count=counts.get(p.id, 0),
             poll=polls_by_post.get(p.id),
+            **moderation_metadata_for(p, viewer),
+            revision_number=p.revision_number,
             created_at=p.created_at,
             updated_at=p.updated_at,
         )
@@ -263,6 +276,7 @@ async def list_user_patches(
             for_count=counts_map.get(str(p.id), {}).get("for", 0),
             against_count=counts_map.get(str(p.id), {}).get("against", 0),
             abstain_count=counts_map.get(str(p.id), {}).get("abstain", 0),
+            revision_number=p.revision_number,
             created_at=p.created_at,
             updated_at=p.updated_at,
         )
@@ -329,6 +343,15 @@ async def list_user_content(
             content_visibility,
             PatchModel.author_id == viewer.id,
         )
+    parent_content = aliased(ContentModel)
+    parent_visibility = or_(
+        ContentModel.parent_id.is_(None),
+        ContentModel.parent_id.in_(
+            select(parent_content.id).where(
+                content_visibility_clause(viewer, model=parent_content)
+            )
+        ),
+    )
     contents = (
         await session.execute(
             select(ContentModel)
@@ -337,6 +360,8 @@ async def list_user_content(
                 ContentModel.author_id == user_id,
                 ContentModel.guild_id.is_(None),
                 content_visibility,
+                content_visibility_clause(viewer),
+                parent_visibility,
             )
             .order_by(ContentModel.created_at.desc())
             .limit(1000)
@@ -355,6 +380,18 @@ async def list_user_content(
     ).scalars().all()
 
     content_ids = [item.id for item in contents]
+    poll_post_ids: set[UUID] = set()
+    post_content_ids = [item.id for item in contents if item.type == "post"]
+    if post_content_ids:
+        poll_post_ids = set(
+            (
+                await session.scalars(
+                    select(PostPoll.post_id).where(
+                        PostPoll.post_id.in_(post_content_ids)
+                    )
+                )
+            ).all()
+        )
     replying_ids = [item.replying_id for item in contents if item.replying_id]
     post_ids = [item.parent_id for item in contents if item.parent_id]
     patch_ids = [item.patch_id for item in contents if item.patch_id]
@@ -367,7 +404,10 @@ async def list_user_content(
             (
                 await session.execute(
                     select(ContentModel.replying_id, func.count(ContentModel.id))
-                    .where(ContentModel.replying_id.in_(content_ids))
+                    .where(
+                        ContentModel.replying_id.in_(content_ids),
+                        content_visibility_clause(viewer),
+                    )
                     .group_by(ContentModel.replying_id)
                 )
             ).all()
@@ -376,7 +416,10 @@ async def list_user_content(
             (
                 await session.execute(
                     select(ContentModel.parent_id, func.count(ContentModel.id))
-                    .where(ContentModel.parent_id.in_(content_ids))
+                    .where(
+                        ContentModel.parent_id.in_(content_ids),
+                        content_visibility_clause(viewer),
+                    )
                     .group_by(ContentModel.parent_id)
                 )
             ).all()
@@ -399,7 +442,10 @@ async def list_user_content(
                 await session.execute(
                     select(ContentModel.id, User.username, ContentModel.content)
                     .join(User, ContentModel.author_id == User.id)
-                    .where(ContentModel.id.in_(replying_ids))
+                    .where(
+                        ContentModel.id.in_(replying_ids),
+                        content_visibility_clause(viewer),
+                    )
                 )
             ).all()
         }
@@ -455,7 +501,13 @@ async def list_user_content(
                     else reply_counts.get(item.id, 0)
                 ),
                 like_count=like_counts.get(item.id, 0),
-                can_delete=bool(viewer and viewer.id == item.author_id),
+                can_delete=bool(
+                    viewer
+                    and viewer.id == item.author_id
+                    and item.revision_number == 1
+                    and item.id not in poll_post_ids
+                ),
+                **moderation_metadata_for(item, viewer),
             )
         )
     profile_patch_ids = [patch.id for patch in patches]
@@ -465,7 +517,10 @@ async def list_user_content(
             (
                 await session.execute(
                     select(ContentModel.patch_id, func.count(ContentModel.id))
-                    .where(ContentModel.patch_id.in_(profile_patch_ids))
+                    .where(
+                        ContentModel.patch_id.in_(profile_patch_ids),
+                        content_visibility_clause(viewer),
+                    )
                     .group_by(ContentModel.patch_id)
                 )
             ).all()
