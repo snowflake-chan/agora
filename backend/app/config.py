@@ -58,6 +58,8 @@ class Settings(BaseSettings):
     AI_RATE_LIMIT_WINDOW_SECONDS: int = 60
     AI_POLL_RESERVATION_TTL_SECONDS: int = 300
     AI_TRANSLATION_CACHE_TTL_SECONDS: int = 604800
+    DAILY_QUESTION_ENABLED: bool = True
+    DAILY_QUESTION_HOUR_UTC: int = 9
     AI_MAX_CONCURRENT_REQUESTS: int = 8
 
     model_config = SettingsConfigDict(
@@ -162,6 +164,8 @@ class Settings(BaseSettings):
             raise ValueError("AI_POLL_RESERVATION_TTL_SECONDS must be positive")
         if self.AI_TRANSLATION_CACHE_TTL_SECONDS < 1:
             raise ValueError("AI_TRANSLATION_CACHE_TTL_SECONDS must be positive")
+        if not 0 <= self.DAILY_QUESTION_HOUR_UTC <= 23:
+            raise ValueError("DAILY_QUESTION_HOUR_UTC must be between 0 and 23")
         if self.AI_MAX_CONCURRENT_REQUESTS < 1:
             raise ValueError("AI_MAX_CONCURRENT_REQUESTS must be positive")
         if production_signals:

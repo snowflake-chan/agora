@@ -473,6 +473,7 @@ async def generate_poll(
     user_id: str,
     client_identifier: str,
     published_questions: list[str] | None = None,
+    task: str = "poll",
 ) -> PollResponse:
     await _prepare_request(
         text=data.text,
@@ -488,7 +489,7 @@ async def generate_poll(
     for attempt in range(2):
         result = await _request_completion(
             user_message=build_user_message(
-                task="poll",
+                task=task,
                 text=data.text,
                 target_locale=data.target_locale,
                 exclude_questions=excluded_questions,

@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
+from app.daily_questions import run_daily_question_scheduler
 from app.moderation_delivery import (
     reconcile_moderation_effects,
     run_moderation_delivery_scheduler,
@@ -28,6 +29,7 @@ async def lifespan(app: FastAPI):
     await reconcile_moderation_effects()
     schedulers = (
         asyncio.create_task(run_scheduler()),
+        asyncio.create_task(run_daily_question_scheduler()),
         asyncio.create_task(
             run_moderation_delivery_scheduler(
                 settings.GOVERNANCE_POLL_SECONDS

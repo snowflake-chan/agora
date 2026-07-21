@@ -105,11 +105,15 @@ def build_user_message(
             "output_political_status": "non_political | political | uncertain | null",
             "rewrites": "array of strings in source_items order | null",
         }
-    elif task == "poll":
+    elif task in {"poll", "daily_poll"}:
         task_instruction = (
-            "Create one neutral Yahoo-style opinion question with 2 to 6 concise, "
-            "mutually distinct options. Do not repeat or closely paraphrase an excluded "
-            "question. Do not add an explanation."
+            "Create one concise, genuinely discussable community question with 2 to 6 "
+            "mutually distinct options. It may be challenging, controversial, or outside "
+            "the local community, but must not contain pornography, explicit sexual content, "
+            "sexual exploitation, sexual content involving minors, graphic sexual detail, "
+            "targeted hate, doxxing, or instructions for wrongdoing. Avoid partisan calls "
+            "to action and do not repeat or closely paraphrase an excluded question. "
+            "Return no explanation."
         )
         output_schema = {
             "political_status": "non_political | political | uncertain",
@@ -133,7 +137,7 @@ def build_user_message(
             payload["writing_action"] = writing_action
     else:
         payload["source_text"] = text
-    if task == "poll":
+    if task in {"poll", "daily_poll"}:
         payload["excluded_questions"] = exclude_questions or []
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 

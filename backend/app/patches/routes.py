@@ -664,6 +664,13 @@ async def submit_patch(
     if patch.status != "draft":
         raise HTTPException(status_code=422, detail="PATCH_NOT_DRAFT")
 
+    if patch.revision_number > 1:
+        moderation = await assess_content_moderation(patch.title, patch.content)
+        if moderation.status != "published":
+            raise HTTPException(
+                status_code=422, detail="PATCH_CONTENT_REVIEW_REQUIRED"
+            )
+
     # A proposal must still point to mergeable work when voting starts. Keep
     # draft creation available in installations that have not connected GitHub.
     submitted_head_sha: str | None = None
