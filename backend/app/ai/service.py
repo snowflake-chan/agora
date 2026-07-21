@@ -1,4 +1,7 @@
-from app.ai.client import request_structured_completion
+import json
+from typing import AsyncIterator
+
+from app.ai.client import request_structured_completion, stream_structured_completion
 from app.ai.classifier import (
     require_semantic_classification,
     semantic_moderation_is_configured,
@@ -338,6 +341,130 @@ async def assist_writing(
             for field, rewrite in zip(data.fields, rewrites, strict=True)
         ],
     )
+
+
+def _completed_json_string(payload: str, key: str) -> str | None:
+    key_index = payload.find(json.dumps(key))
+    if key_index < 0:
+        return None
+    colon_index = payload.find(":", key_index + len(key) + 2)
+    if colon_index < 0:
+        return None
+    position = colon_index + 1
+    while position < len(payload) and payload[position] in " \r\n\t":
+        position += 1
+    try:
+        value, _ = json.JSONDecoder().raw_decode(payload, position)
+    except json.JSONDecodeError:
+        return None
+    return value if isinstance(value, str) else None
+
+
+def _completed_json_array_strings(payload: str, key: str) -> list[str]:
+    key_index = payload.find(json.dumps(key))
+    if key_index < 0:
+        return []
+    array_index = payload.find("[", key_index + len(key) + 2)
+    if array_index < 0:
+        return []
+    decoder = json.JSONDecoder()
+    values: list[str] = []
+    position = array_index + 1
+    while position < len(payload):
+        while position < len(payload) and payload[position] in " \r\n\t,":
+            position += 1
+        if position >= len(payload) or payload[position] == "]":
+            break
+        try:
+            value, position = decoder.raw_decode(payload, position)
+        except json.JSONDecodeError:
+            break
+        if not isinstance(value, str):
+            break
+        values.append(value.strip())
+    return values
+
+
+async def stream_assist_writing(
+    data: WritingAssistRequest,
+    *,
+    user_id: str,
+    client_identifier: str,
+) -> AsyncIterator[dict[str, object]]:
+    source_values = [field.text for field in data.fields]
+    await _prepare_request(
+        text="",
+        additional_untrusted_text=source_values,
+        user_id=user_id,
+        client_identifier=client_identifier,
+    )
+    user_message = build_user_message(
+        task="write_assist",
+        target_locale=data.target_locale,
+        source_items=[{"key": field.key, "text": field.text} for field in data.fields],
+        content_context=data.context,
+        writing_action=data.action,
+    )
+    content = ""
+    emitted_count = 0
+    try:
+        async for delta in stream_structured_completion(
+            user_message=user_message,
+            max_tokens=16384,
+        ):
+            content += delta
+            completed = _completed_json_array_strings(content, "rewrites")
+            source_status = _completed_json_string(content, "political_status")
+            output_status = _completed_json_string(content, "output_political_status")
+            if source_status == "non_political" and output_status == "non_political":
+                while emitted_count < min(len(completed), len(data.fields)):
+                    rewrite = completed[emitted_count]
+                    if rewrite:
+                        await _recheck_political_output(rewrite)
+                        yield {
+                            "type": "field",
+                            "field": {
+                                "key": data.fields[emitted_count].key,
+                                "translation": rewrite,
+                            },
+                        }
+                    emitted_count += 1
+        if not content.strip():
+            raise AIServiceError(502, "AI_UPSTREAM_INVALID_RESPONSE")
+        try:
+            result = WritingAssistAIResponse.model_validate_json(content, strict=True)
+        except ValueError as exc:
+            raise AIServiceError(502, "AI_UPSTREAM_INVALID_RESPONSE") from exc
+    except AIServiceError:
+        if emitted_count > 0:
+            raise
+        result = await _request_completion(
+            user_message=user_message,
+            response_type=WritingAssistAIResponse,
+            max_tokens=16384,
+            user_id=user_id,
+            client_identifier=client_identifier,
+        )
+
+    _reject_political(result.political_status)
+    _reject_political_output_status(result.output_political_status)
+    rewrites = result.rewrites
+    if rewrites is None or len(rewrites) != len(data.fields):
+        raise AIServiceError(502, "AI_UPSTREAM_INVALID_RESPONSE")
+    await _recheck_political_output(*rewrites)
+    response = WritingAssistResponse(
+        fields=[
+            TranslationFieldResponse(key=field.key, translation=rewrite)
+            for field, rewrite in zip(data.fields, rewrites, strict=True)
+        ],
+    )
+    while emitted_count < len(response.fields):
+        yield {
+            "type": "field",
+            "field": response.fields[emitted_count].model_dump(),
+        }
+        emitted_count += 1
+    yield {"type": "result", "data": response.model_dump()}
 
 
 async def generate_poll(

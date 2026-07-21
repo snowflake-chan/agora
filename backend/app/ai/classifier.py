@@ -177,7 +177,7 @@ async def classify_semantic_content(
                     result = await request_structured_completion(
                         user_message=build_moderation_message(document),
                         response_type=ModerationAIResponse,
-                        max_tokens=24,
+                        max_tokens=128,
                         system_prompt=MODERATION_SYSTEM_PROMPT,
                         runtime_config=runtime_config,
                     )
@@ -194,7 +194,7 @@ async def classify_semantic_content(
                 result = await request_structured_completion(
                     user_message=build_moderation_message(document),
                     response_type=ModerationAIResponse,
-                    max_tokens=24,
+                    max_tokens=128,
                     system_prompt=MODERATION_SYSTEM_PROMPT,
                     runtime_config=runtime_config,
                 )

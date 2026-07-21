@@ -116,10 +116,12 @@ async function requestFieldStream<T>(
     buffer = lines.pop() ?? "";
     for (const line of lines) {
       if (!line.trim()) continue;
-      let event: { type?: unknown; field?: unknown; data?: unknown };
+      let event: { type?: unknown; field?: unknown; data?: unknown; detail?: unknown };
       try { event = JSON.parse(line) as typeof event; }
       catch { throw new ApiError("AI_RESPONSE_INVALID"); }
-      if (event.type === "field" && event.field && typeof event.field === "object") {
+      if (event.type === "error" && typeof event.detail === "string") {
+        throw new AiRequestError(event.detail);
+      } else if (event.type === "field" && event.field && typeof event.field === "object") {
         const field = event.field as { key?: unknown; translation?: unknown };
         if (typeof field.key === "string" && typeof field.translation === "string") onField?.({ key: field.key, translation: field.translation });
       } else if (event.type === "result") result = event.data as T;

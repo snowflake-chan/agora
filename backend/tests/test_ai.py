@@ -71,6 +71,27 @@ def ai_app():
     return app
 
 
+
+
+def mock_deepseek_stream(monkeypatch, content: str):
+    real_async_client = httpx.AsyncClient
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        chunks = [content[:24], content[24:58], content[58:]]
+        events = [
+            "data: " + json.dumps({"choices": [{"delta": {"content": chunk}, "finish_reason": None}]})
+            for chunk in chunks
+        ]
+        events.append(
+            "data: " + json.dumps({"choices": [{"delta": {}, "finish_reason": "stop"}]})
+        )
+        events.append("data: [DONE]")
+        return httpx.Response(200, headers={"content-type": "text/event-stream"}, text="\n\n".join(events) + "\n\n")
+
+    def build_client():
+        return real_async_client(transport=httpx.MockTransport(handler))
+
+    monkeypatch.setattr(ai_client, "_build_http_client", build_client)
 @pytest.fixture(autouse=True)
 def configured_ai(monkeypatch):
     monkeypatch.setattr(settings, "APP_ENV", "test")
@@ -290,7 +311,7 @@ async def test_political_or_uncertain_content_is_never_returned(
     payload = json.loads(requests[0].content)
     assert requests[0].url == "https://api.deepseek.com/chat/completions"
     assert payload["model"] == "deepseek-v4-flash"
-    assert "thinking" not in payload
+    assert payload["thinking"] == {"type": "disabled"}
     assert payload["temperature"] == 0.0
     assert payload["response_format"] == {"type": "json_object"}
     assert payload["max_tokens"] == 1024
@@ -864,6 +885,35 @@ async def test_human_approved_revision_can_be_translated(ai_app, monkeypatch):
     assert user_payload["task"] == "translate_approved_fields"
 
 
+
+
+@pytest.mark.asyncio
+async def test_writing_stream_reads_provider_deltas(ai_app, monkeypatch):
+    mock_redis(monkeypatch, FakeRedis())
+    mock_deepseek_stream(
+        monkeypatch,
+        json.dumps({
+            "political_status": "non_political",
+            "output_political_status": "non_political",
+            "rewrites": ["Polished title", "Polished body"],
+        }),
+    )
+    response = await post(ai_app, "/api/v1/ai/writing/assist/stream", {
+        "fields": [
+            {"key": "title", "text": "A title"},
+            {"key": "body", "text": "A body"},
+        ],
+        "target_locale": "en",
+        "context": "composer",
+        "action": "polish",
+    })
+    assert response.status_code == 200, response.text
+    events = [json.loads(line) for line in response.text.splitlines()]
+    assert [event["type"] for event in events] == ["field", "field", "result"]
+    assert [event["field"]["translation"] for event in events[:2]] == [
+        "Polished title",
+        "Polished body",
+    ]
 @pytest.mark.asyncio
 async def test_release_candidate_translation_is_not_misclassified(
     ai_app,
@@ -1272,12 +1322,12 @@ async def test_provider_calls_share_one_client_semaphore(monkeypatch):
         ai_client.request_structured_completion(
             user_message="{}",
             response_type=political_classifier.ModerationAIResponse,
-            max_tokens=24,
+            max_tokens=128,
         ),
         ai_client.request_structured_completion(
             user_message="{}",
             response_type=political_classifier.ModerationAIResponse,
-            max_tokens=24,
+            max_tokens=128,
         ),
     )
 

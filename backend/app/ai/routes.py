@@ -26,6 +26,7 @@ from app.ai.service import (
     translate,
     translate_bundle,
     assist_writing,
+    stream_assist_writing,
 )
 from app.content_moderation import (
     content_href,
@@ -249,8 +250,25 @@ async def stream_improved_draft(
     request: Request,
     user: User = Depends(ai_eligible_user),
 ) -> StreamingResponse:
-    result = await improve_draft(data, request, user)
-    return _stream_fields_response(result)
+    async def events():
+        try:
+            async for event in stream_assist_writing(
+                data,
+                user_id=str(user.id),
+                client_identifier=client_ip(request),
+            ):
+                yield json.dumps(event, ensure_ascii=False) + "\n"
+        except AIServiceError as error:
+            yield json.dumps(
+                {"type": "error", "detail": error.code},
+                ensure_ascii=False,
+            ) + "\n"
+
+    return StreamingResponse(
+        events(),
+        media_type="application/x-ndjson",
+        headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post("/polls/generate", response_model=PollResponse)

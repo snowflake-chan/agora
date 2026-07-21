@@ -96,7 +96,7 @@ async def test_provider_fallback_judges_whole_document_without_word_rules(
 
     assert result.status == "published"
     assert len(calls) == 1
-    assert calls[0]["max_tokens"] == 24
+    assert calls[0]["max_tokens"] == 128
     assert len(calls[0]["system_prompt"]) < 1400
     assert json.loads(calls[0]["user_message"]) == {
         "content": "Fast window\n\nCandidate product policy and community vote"
@@ -326,6 +326,10 @@ async def test_enabled_moderation_without_a_semantic_engine_fails_closed(monkeyp
     monkeypatch.setattr(settings, "AI_POLITICAL_CLASSIFIER_URL", "")
     monkeypatch.setattr(settings, "AI_MODERATION_PROVIDER_FALLBACK_ENABLED", False)
 
+    async def environment_only_runtime(*, force_refresh=False):
+        return environment_ai_config()
+
+    monkeypatch.setattr(content_moderation, "get_ai_runtime_config", environment_only_runtime)
     result = await content_moderation.assess_content_moderation("Ordinary content")
 
     assert result.status == "pending_review"
