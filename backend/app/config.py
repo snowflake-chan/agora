@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     AI_MODEL: str = ""
     AI_FEATURES_ENABLED: bool = False
     AI_HTTP_TIMEOUT_SECONDS: float = 20.0
+    # Trusted in-network semantic gate, required before production AI egress.
+    AI_POLITICAL_CLASSIFIER_URL: str = ""
+    AI_POLITICAL_CLASSIFIER_TIMEOUT_SECONDS: float = 3.0
     AI_MAX_INPUT_CHARS: int = 12000
     AI_RATE_LIMIT_REQUESTS: int = 20
     AI_RATE_LIMIT_IP_REQUESTS: int = 60
@@ -82,6 +85,8 @@ class Settings(BaseSettings):
             raise ValueError("GOVERNANCE_POLL_SECONDS must be positive")
         if self.AI_HTTP_TIMEOUT_SECONDS <= 0:
             raise ValueError("AI_HTTP_TIMEOUT_SECONDS must be positive")
+        if self.AI_POLITICAL_CLASSIFIER_TIMEOUT_SECONDS <= 0:
+            raise ValueError("AI_POLITICAL_CLASSIFIER_TIMEOUT_SECONDS must be positive")
         if not 1 <= self.AI_MAX_INPUT_CHARS <= 12000:
             raise ValueError("AI_MAX_INPUT_CHARS must be between 1 and 12000")
         if self.AI_RATE_LIMIT_REQUESTS < 1:
@@ -113,6 +118,14 @@ class Settings(BaseSettings):
                 )
             if not self.AI_BASE_URL.startswith("https://"):
                 raise ValueError("AI_BASE_URL must use HTTPS in production")
+            if not self.AI_POLITICAL_CLASSIFIER_URL.strip():
+                raise ValueError(
+                    "AI_POLITICAL_CLASSIFIER_URL is required when production AI is enabled"
+                )
+            if not self.AI_POLITICAL_CLASSIFIER_URL.startswith(("http://", "https://")):
+                raise ValueError(
+                    "AI_POLITICAL_CLASSIFIER_URL must be an HTTP(S) endpoint"
+                )
         return self
 
 

@@ -1,4 +1,5 @@
 from app.ai.client import request_structured_completion
+from app.ai.classifier import require_trusted_local_classification
 from app.ai.errors import AIServiceError
 from app.ai.politics import contains_political_signals
 from app.ai.prompts import build_user_message
@@ -22,8 +23,13 @@ from app.config import settings
 
 
 def ai_is_enabled() -> bool:
+    classifier_ready = (
+        not settings.uses_production_ai_provider()
+        or bool(settings.AI_POLITICAL_CLASSIFIER_URL.strip())
+    )
     return (
         settings.AI_FEATURES_ENABLED
+        and classifier_ready
         and bool(settings.resolved_ai_api_key().strip())
         and bool(settings.resolved_ai_base_url().strip())
         and bool(settings.resolved_ai_model().strip())
@@ -33,6 +39,8 @@ def ai_is_enabled() -> bool:
 async def _prepare_request(
     *,
     text: str,
+    user_id: str,
+    client_identifier: str,
     additional_untrusted_text: list[str] | None = None,
 ) -> None:
     if not ai_is_enabled():
@@ -42,6 +50,9 @@ async def _prepare_request(
     values = [text, *(additional_untrusted_text or [])]
     if any(contains_political_signals(value) for value in values):
         raise AIServiceError(422, "POLITICAL_CONTENT_UNAVAILABLE")
+    await enforce_ai_rate_limit(user_id, client_identifier)
+    if settings.AI_POLITICAL_CLASSIFIER_URL.strip():
+        await require_trusted_local_classification(values)
 
 
 async def _request_completion(
@@ -51,10 +62,11 @@ async def _request_completion(
     max_tokens: int,
     user_id: str,
     client_identifier: str,
+    charge_rate_limit: bool = False,
 ):
-    # Charge each provider attempt. A duplicate poll retry is two paid calls,
-    # so it consumes two units from every configured budget.
-    await enforce_ai_rate_limit(user_id, client_identifier)
+    # Preflight charges the first attempt. Retries consume another unit.
+    if charge_rate_limit:
+        await enforce_ai_rate_limit(user_id, client_identifier)
     return await request_structured_completion(
         user_message=user_message,
         response_type=response_type,
@@ -67,10 +79,12 @@ def _reject_political(status: str) -> None:
         raise AIServiceError(422, "POLITICAL_CONTENT_UNAVAILABLE")
 
 
-def _reject_political_output(*values: str) -> None:
+async def _reject_political_output(*values: str) -> None:
     """Recheck provider output locally instead of trusting its classification."""
     if any(contains_political_signals(value) for value in values):
         raise AIServiceError(422, "POLITICAL_CONTENT_UNAVAILABLE")
+    if settings.AI_POLITICAL_CLASSIFIER_URL.strip():
+        await require_trusted_local_classification(list(values))
 
 
 async def summarize(
@@ -81,6 +95,8 @@ async def summarize(
 ) -> SummaryResponse:
     await _prepare_request(
         text=data.text,
+        user_id=user_id,
+        client_identifier=client_identifier,
     )
     result = await _request_completion(
         user_message=build_user_message(
@@ -96,7 +112,7 @@ async def summarize(
     _reject_political(result.political_status)
     if result.summary is None:
         raise AIServiceError(502, "AI_UPSTREAM_INVALID_RESPONSE")
-    _reject_political_output(result.summary)
+    await _reject_political_output(result.summary)
     return SummaryResponse(summary=result.summary)
 
 
@@ -108,6 +124,8 @@ async def translate(
 ) -> TranslationResponse:
     await _prepare_request(
         text=data.text,
+        user_id=user_id,
+        client_identifier=client_identifier,
     )
     result = await _request_completion(
         user_message=build_user_message(
@@ -123,7 +141,7 @@ async def translate(
     _reject_political(result.political_status)
     if result.translation is None:
         raise AIServiceError(502, "AI_UPSTREAM_INVALID_RESPONSE")
-    _reject_political_output(result.translation)
+    await _reject_political_output(result.translation)
     return TranslationResponse(translation=result.translation)
 
 
@@ -136,6 +154,8 @@ async def generate_poll(
 ) -> PollResponse:
     await _prepare_request(
         text=data.text,
+        user_id=user_id,
+        client_identifier=client_identifier,
         additional_untrusted_text=list(data.exclude_questions),
     )
     excluded_questions = list(data.exclude_questions)
@@ -155,13 +175,14 @@ async def generate_poll(
             max_tokens=1024,
             user_id=user_id,
             client_identifier=client_identifier,
+            charge_rate_limit=attempt > 0,
         )
         _reject_political(result.political_status)
         question = result.question
         options = result.options
         if question is None or options is None:
             raise AIServiceError(502, "AI_UPSTREAM_INVALID_RESPONSE")
-        _reject_political_output(question, *options)
+        await _reject_political_output(question, *options)
 
         digest = question_digest(question)
         duplicate = digest in excluded_digests or digest in published_digests
