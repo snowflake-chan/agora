@@ -6,11 +6,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from app.ai.classifier import (
-    classify_with_trusted_local_service,
-    combine_related_texts,
+    classify_semantic_content,
+    semantic_moderation_is_configured,
 )
 from app.ai.errors import AIServiceError
-from app.ai.politics import contains_political_signals
 from app.config import settings
 from app.db.models.content import Content, ContentRevision
 from app.db.models.patch import Patch
@@ -129,35 +128,48 @@ def moderation_metadata_for(
 
 
 async def assess_content_moderation(*texts: str) -> ModerationAssessment:
-    """Conservatively hold political, uncertain, or unclassified content locally."""
+    """Use whole-document semantic review and fail closed when it is configured."""
     values = [value.strip() for value in texts if value and value.strip()]
-    if any(contains_political_signals(value) for value in values):
+    if not values:
+        return ModerationAssessment(status="published")
+    if not semantic_moderation_is_configured():
+        # Production startup requires the semantic classifier. This fallback keeps
+        # explicitly AI-disabled local development usable without a hidden word list.
+        if settings.AI_FEATURES_ENABLED:
+            return ModerationAssessment(
+                status="pending_review",
+                reason="classifier_unavailable",
+            )
+        return ModerationAssessment(status="published")
+
+    try:
+        decision = await classify_semantic_content(values)
+    except AIServiceError:
+        # A configured safety dependency failing must not make content public.
+        return ModerationAssessment(
+            status="pending_review",
+            reason="classifier_unavailable",
+        )
+    if decision.status != "non_political":
         return ModerationAssessment(
             status="pending_review",
             reason="political_or_uncertain",
         )
 
-    if settings.AI_POLITICAL_CLASSIFIER_URL.strip():
-        try:
-            related_texts = combine_related_texts(values)
-            statuses = (
-                await classify_with_trusted_local_service(related_texts)
-                if related_texts
-                else []
-            )
-        except AIServiceError:
-            # A configured safety dependency failing must not make content public.
-            return ModerationAssessment(
-                status="pending_review",
-                reason="classifier_unavailable",
-            )
-        if any(status != "non_political" for status in statuses):
-            return ModerationAssessment(
-                status="pending_review",
-                reason="political_or_uncertain",
-            )
-
     return ModerationAssessment(status="published")
+
+
+async def assess_content_moderation_after_read(
+    session: AsyncSession,
+    *texts: str,
+) -> ModerationAssessment:
+    """Release a read transaction before waiting on semantic moderation.
+
+    Callers must recheck mutable permissions and revisions in the new write
+    transaction before persisting the returned decision.
+    """
+    await session.commit()
+    return await assess_content_moderation(*texts)
 
 
 async def _canonical_translation_fields(
@@ -242,15 +254,11 @@ async def hold_translation_source_for_review(
     ):
         return None
 
-    trusted_verdict = verdict_provenance in {
-        "local_guard",
-        "trusted_classifier",
-    }
-    if (
-        not trusted_verdict
-        and content.author_id != actor_id
-        and not actor_is_staff
-    ):
+    if verdict_provenance not in {"provider", "trusted_classifier"}:
+        return None
+    # Translation is a viewer-triggered action. Even a trusted classifier must
+    # not let an unrelated viewer hide someone else's canonical content.
+    if content.author_id != actor_id and not actor_is_staff:
         return None
 
     canonical_fields = await _canonical_translation_fields(

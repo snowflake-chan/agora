@@ -30,9 +30,23 @@ class Settings(BaseSettings):
     AI_MODEL: str = ""
     AI_FEATURES_ENABLED: bool = False
     AI_HTTP_TIMEOUT_SECONDS: float = 20.0
+    AI_TEMPERATURE: float = 0.0
+    AI_RESPONSE_FORMAT_ENABLED: bool = True
+    # Provider-specific reasoning controls are opt-in. An empty value keeps the
+    # OpenAI-compatible request portable across providers.
+    AI_THINKING_MODE: str = ""
     # Trusted in-network semantic gate, required before production AI egress.
     AI_POLITICAL_CLASSIFIER_URL: str = ""
     AI_POLITICAL_CLASSIFIER_TIMEOUT_SECONDS: float = 3.0
+    # A provider fallback is an explicit operational choice. The in-network
+    # classifier remains preferred whenever both paths are configured.
+    AI_MODERATION_PROVIDER_FALLBACK_ENABLED: bool = False
+    AI_MODERATION_POLICY_VERSION: str = "semantic-politics-v1"
+    AI_POLITICAL_CLASSIFIER_VERSION: str = "semantic-classifier-v1"
+    AI_MODERATION_CACHE_TTL_SECONDS: int = 604800
+    AI_MODERATION_RATE_LIMIT_GLOBAL_QPS: int = 12
+    AI_MODERATION_RATE_LIMIT_DAILY_GLOBAL_REQUESTS: int = 10000
+    AI_MODERATION_MAX_CONCURRENT_REQUESTS: int = 8
     AI_MAX_INPUT_CHARS: int = 12000
     AI_RATE_LIMIT_REQUESTS: int = 20
     AI_RATE_LIMIT_IP_REQUESTS: int = 60
@@ -75,6 +89,19 @@ class Settings(BaseSettings):
             else self.DEEPSEEK_MODEL
         )
 
+    def ai_provider_is_configured(self) -> bool:
+        return bool(
+            self.resolved_ai_api_key().strip()
+            and self.resolved_ai_base_url().strip()
+            and self.resolved_ai_model().strip()
+        )
+
+    def moderation_provider_fallback_is_configured(self) -> bool:
+        return bool(
+            self.AI_MODERATION_PROVIDER_FALLBACK_ENABLED
+            and self.ai_provider_is_configured()
+        )
+
     @model_validator(mode="after")
     def validate_runtime_security(self):
         production_signals = self.uses_production_ai_provider()
@@ -89,8 +116,28 @@ class Settings(BaseSettings):
             raise ValueError("GOVERNANCE_POLL_SECONDS must be positive")
         if self.AI_HTTP_TIMEOUT_SECONDS <= 0:
             raise ValueError("AI_HTTP_TIMEOUT_SECONDS must be positive")
+        if not 0 <= self.AI_TEMPERATURE <= 2:
+            raise ValueError("AI_TEMPERATURE must be between 0 and 2")
+        if self.AI_THINKING_MODE not in {"", "disabled", "enabled"}:
+            raise ValueError(
+                "AI_THINKING_MODE must be empty, disabled, or enabled"
+            )
         if self.AI_POLITICAL_CLASSIFIER_TIMEOUT_SECONDS <= 0:
             raise ValueError("AI_POLITICAL_CLASSIFIER_TIMEOUT_SECONDS must be positive")
+        if not self.AI_MODERATION_POLICY_VERSION.strip():
+            raise ValueError("AI_MODERATION_POLICY_VERSION must not be empty")
+        if not self.AI_POLITICAL_CLASSIFIER_VERSION.strip():
+            raise ValueError("AI_POLITICAL_CLASSIFIER_VERSION must not be empty")
+        if self.AI_MODERATION_CACHE_TTL_SECONDS < 1:
+            raise ValueError("AI_MODERATION_CACHE_TTL_SECONDS must be positive")
+        if self.AI_MODERATION_RATE_LIMIT_GLOBAL_QPS < 1:
+            raise ValueError("AI_MODERATION_RATE_LIMIT_GLOBAL_QPS must be positive")
+        if self.AI_MODERATION_RATE_LIMIT_DAILY_GLOBAL_REQUESTS < 1:
+            raise ValueError(
+                "AI_MODERATION_RATE_LIMIT_DAILY_GLOBAL_REQUESTS must be positive"
+            )
+        if self.AI_MODERATION_MAX_CONCURRENT_REQUESTS < 1:
+            raise ValueError("AI_MODERATION_MAX_CONCURRENT_REQUESTS must be positive")
         if not 1 <= self.AI_MAX_INPUT_CHARS <= 12000:
             raise ValueError("AI_MAX_INPUT_CHARS must be between 1 and 12000")
         if self.AI_RATE_LIMIT_REQUESTS < 1:
@@ -112,15 +159,22 @@ class Settings(BaseSettings):
         if self.AI_MAX_CONCURRENT_REQUESTS < 1:
             raise ValueError("AI_MAX_CONCURRENT_REQUESTS must be positive")
         if production_signals:
-            if not self.AI_POLITICAL_CLASSIFIER_URL.strip():
-                raise ValueError(
-                    "AI_POLITICAL_CLASSIFIER_URL is required for production content moderation"
-                )
-            if not self.AI_POLITICAL_CLASSIFIER_URL.startswith(("http://", "https://")):
+            local_classifier = self.AI_POLITICAL_CLASSIFIER_URL.strip()
+            if local_classifier and not local_classifier.startswith(
+                ("http://", "https://")
+            ):
                 raise ValueError(
                     "AI_POLITICAL_CLASSIFIER_URL must be an HTTP(S) endpoint"
                 )
-        if self.AI_FEATURES_ENABLED and production_signals:
+        local_classifier = self.AI_POLITICAL_CLASSIFIER_URL.strip()
+        production_provider_required = bool(
+            self.AI_FEATURES_ENABLED
+            or (
+                not local_classifier
+                and self.AI_MODERATION_PROVIDER_FALLBACK_ENABLED
+            )
+        )
+        if production_provider_required and production_signals:
             if self.DEEPSEEK_API_KEY:
                 raise ValueError(
                     "DEEPSEEK_API_KEY is test/development only; use AI_API_KEY in production"
@@ -137,6 +191,14 @@ class Settings(BaseSettings):
                 )
             if not self.AI_BASE_URL.startswith("https://"):
                 raise ValueError("AI_BASE_URL must use HTTPS in production")
+        if production_signals and not (
+            self.AI_POLITICAL_CLASSIFIER_URL.strip()
+            or self.moderation_provider_fallback_is_configured()
+        ):
+            raise ValueError(
+                "production content moderation requires AI_POLITICAL_CLASSIFIER_URL "
+                "or an explicitly enabled AI provider fallback"
+            )
         return self
 
 

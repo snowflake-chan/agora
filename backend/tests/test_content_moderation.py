@@ -140,10 +140,18 @@ def test_translation_verdict_holds_only_the_current_canonical_source():
     assert asyncio.run(
         hold_once(revision=1, body="Mismatched text", actor_id=author_id)
     ) is False
-    # Provider-only classification is untrusted for moderation when another
-    # viewer requested the translation.
+    # No viewer-triggered translation may hide another author's content,
+    # regardless of which semantic engine produced the verdict.
     assert asyncio.run(
         hold_once(revision=1, body="Fast window", actor_id=viewer_id)
+    ) is False
+    assert asyncio.run(
+        hold_once(
+            revision=1,
+            body="Fast window",
+            actor_id=viewer_id,
+            provenance="trusted_classifier",
+        )
     ) is False
 
     async def race_holds() -> list[bool]:
@@ -420,11 +428,11 @@ def test_flagged_post_is_author_only_until_atomic_approval():
         created = author.post(
             f"{BASE}/posts",
             json={
-                "title": "Government election policy discussion",
-                "content": "A political topic that requires a human review.",
+                "title": "[test:political] Government election policy discussion",
+                "content": "[test:political] A topic that requires a human review.",
                 "tags": ["public policy"],
                 "poll": {
-                    "question": "Which public policy should be reviewed?",
+                "question": "[test:political] Which policy should be reviewed?",
                     "options": ["First option", "Second option"],
                     "duration_hours": 24,
                 },
@@ -494,7 +502,7 @@ def test_flagged_post_is_author_only_until_atomic_approval():
         queued = next(item for item in queue if item["id"] == post_id)
         assert queued["content_type"] == "post"
         assert queued["moderation_reason"] == "political_or_uncertain"
-        assert queued["poll_question"] == "Which public policy should be reviewed?"
+        assert queued["poll_question"] == "[test:political] Which policy should be reviewed?"
         assert queued["poll_options"] == ["First option", "Second option"]
         pending_notification = next(
             item
@@ -605,7 +613,7 @@ def test_concurrent_review_preserves_the_first_decision_and_audit_fields():
         created = author.post(
             f"{BASE}/posts",
             json={
-                "title": "Government election review race",
+                "title": "[test:political] Government election review race",
                 "content": "Only one moderator decision may win.",
             },
         )
@@ -652,8 +660,8 @@ def test_review_rejects_a_revision_changed_after_the_queue_was_opened():
         created = author.post(
             f"{BASE}/posts",
             json={
-                "title": "Government election review v1",
-                "content": "The first held version.",
+                "title": "[test:political] Government election review v1",
+                "content": "[test:political] The first held version.",
             },
         )
         assert created.status_code == 201, created.text
@@ -668,7 +676,7 @@ def test_review_rejects_a_revision_changed_after_the_queue_was_opened():
         edited = author.patch(
             f"{BASE}/posts/{post_id}",
             json={
-                "content": "Government election review text changed after opening.",
+                "content": "[test:political] Government election review text changed after opening.",
                 "revision_number": 1,
             },
         )
@@ -719,7 +727,7 @@ def test_corrected_public_content_keeps_its_original_feed_position():
         held = author.patch(
             f"{BASE}/posts/{original_id}",
             json={
-                "content": "Government election text requires review.",
+                "content": "[test:political] Government election text requires review.",
                 "revision_number": 1,
             },
         )
@@ -776,7 +784,7 @@ def test_flagged_comment_has_no_public_count_trace_or_reply_notification():
 
         comment = commenter.post(
             f"{BASE}/posts/{post_id}/comments",
-            json={"content": "Government election politics need review."},
+            json={"content": "[test:political] Government election politics need review."},
         )
         assert comment.status_code == 201, comment.text
         comment_id = comment.json()["id"]
@@ -863,7 +871,7 @@ def test_patch_comments_and_guild_discussions_share_the_review_gate():
 
         draft_comment = patch_author.post(
             f"{BASE}/patches/{patch_id}/comments",
-            json={"content": "Government election draft review context."},
+            json={"content": "[test:political] Government election draft review context."},
         )
         assert draft_comment.status_code == 201, draft_comment.text
         draft_comment_id = draft_comment.json()["id"]
@@ -885,7 +893,7 @@ def test_patch_comments_and_guild_discussions_share_the_review_gate():
 
         patch_comment = commenter.post(
             f"{BASE}/patches/{patch_id}/comments",
-            json={"content": "Government election politics require review."},
+            json={"content": "[test:political] Government election politics require review."},
         )
         assert patch_comment.status_code == 201, patch_comment.text
         patch_comment_id = patch_comment.json()["id"]
@@ -935,8 +943,8 @@ def test_patch_comments_and_guild_discussions_share_the_review_gate():
         discussion = patch_author.post(
             f"{BASE}/guilds/{guild_id}/discussions",
             json={
-                "title": "Government election topic",
-                "content": "This internal discussion also waits for review.",
+                "title": "[test:political] Government election topic",
+                "content": "[test:political] This internal discussion also waits for review.",
             },
         )
         assert discussion.status_code == 200, discussion.text
@@ -1017,7 +1025,7 @@ def test_committed_review_effects_reconcile_without_duplicate_notifications():
         root_id = root.json()["id"]
         held_comment = commenter.post(
             f"{BASE}/posts/{root_id}/comments",
-            json={"content": "Government election reply held for review."},
+            json={"content": "[test:political] Government election reply held for review."},
         )
         assert held_comment.status_code == 201, held_comment.text
         comment_id = held_comment.json()["id"]

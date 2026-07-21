@@ -1,9 +1,9 @@
-import asyncio
-
 from app.ai.client import request_structured_completion
-from app.ai.classifier import require_trusted_local_classification
+from app.ai.classifier import (
+    require_semantic_classification,
+    semantic_moderation_is_configured,
+)
 from app.ai.errors import AIServiceError
-from app.ai.politics import contains_political_signals
 from app.ai.prompts import build_user_message
 from app.ai.schemas import (
     PollAIResponse,
@@ -24,6 +24,7 @@ from app.ai.schemas import (
 )
 from app.ai.storage import (
     cache_translations,
+    cache_fill_lock,
     enforce_ai_rate_limit,
     get_cached_translations,
     question_digest,
@@ -34,7 +35,6 @@ from app.ai.storage import (
 from app.config import settings
 
 
-_provider_semaphore = asyncio.Semaphore(settings.AI_MAX_CONCURRENT_REQUESTS)
 _POLITICAL_MODERATION_REASON = "political_or_uncertain"
 
 
@@ -48,13 +48,9 @@ def _political_source_error(provenance: str) -> AIServiceError:
 
 
 def ai_is_enabled() -> bool:
-    classifier_ready = (
-        not settings.uses_production_ai_provider()
-        or bool(settings.AI_POLITICAL_CLASSIFIER_URL.strip())
-    )
     return (
         settings.AI_FEATURES_ENABLED
-        and classifier_ready
+        and semantic_moderation_is_configured()
         and bool(settings.resolved_ai_api_key().strip())
         and bool(settings.resolved_ai_base_url().strip())
         and bool(settings.resolved_ai_model().strip())
@@ -71,8 +67,6 @@ def _validate_request(
     values = [text, *(additional_untrusted_text or [])]
     if sum(len(value) for value in values) > settings.AI_MAX_INPUT_CHARS:
         raise AIServiceError(422, "AI_INPUT_TOO_LONG")
-    if any(contains_political_signals(value) for value in values):
-        raise _political_source_error("local_guard")
     return values
 
 
@@ -89,10 +83,9 @@ async def _prepare_request(
     )
     await enforce_ai_rate_limit(user_id, client_identifier)
     if settings.AI_POLITICAL_CLASSIFIER_URL.strip():
-        await require_trusted_local_classification(
+        await require_semantic_classification(
             values,
             source_moderation_reason=_POLITICAL_MODERATION_REASON,
-            source_moderation_provenance="trusted_classifier",
         )
 
 
@@ -108,12 +101,11 @@ async def _request_completion(
     # Preflight charges the first attempt. Retries consume another unit.
     if charge_rate_limit:
         await enforce_ai_rate_limit(user_id, client_identifier)
-    async with _provider_semaphore:
-        return await request_structured_completion(
-            user_message=user_message,
-            response_type=response_type,
-            max_tokens=max_tokens,
-        )
+    return await request_structured_completion(
+        user_message=user_message,
+        response_type=response_type,
+        max_tokens=max_tokens,
+    )
 
 
 def _reject_political(status: str) -> None:
@@ -121,15 +113,18 @@ def _reject_political(status: str) -> None:
         raise _political_source_error("provider")
 
 
-async def _reject_political_output(*values: str) -> None:
-    """Recheck provider output locally instead of trusting its classification."""
-    if any(contains_political_signals(value) for value in values):
+def _reject_political_output_status(status: str | None) -> None:
+    if status != "non_political":
         raise AIServiceError(422, "AI_OUTPUT_BLOCKED")
-    if settings.AI_POLITICAL_CLASSIFIER_URL.strip():
+
+
+async def _recheck_political_output(*values: str, force: bool = False) -> None:
+    """Recheck generated output with the trusted local AI in production."""
+    if settings.AI_POLITICAL_CLASSIFIER_URL.strip() or (
+        force and semantic_moderation_is_configured()
+    ):
         try:
-            await require_trusted_local_classification(
-                list(values),
-            )
+            await require_semantic_classification(list(values))
         except AIServiceError as error:
             if error.code == "POLITICAL_CONTENT_UNAVAILABLE":
                 raise AIServiceError(422, "AI_OUTPUT_BLOCKED") from error
@@ -159,9 +154,10 @@ async def summarize(
         client_identifier=client_identifier,
     )
     _reject_political(result.political_status)
+    _reject_political_output_status(result.output_political_status)
     if result.summary is None:
         raise AIServiceError(502, "AI_UPSTREAM_INVALID_RESPONSE")
-    await _reject_political_output(result.summary)
+    await _recheck_political_output(result.summary)
     return SummaryResponse(summary=result.summary)
 
 
@@ -188,9 +184,10 @@ async def translate(
         client_identifier=client_identifier,
     )
     _reject_political(result.political_status)
+    _reject_political_output_status(result.output_political_status)
     if result.translation is None:
         raise AIServiceError(502, "AI_UPSTREAM_INVALID_RESPONSE")
-    await _reject_political_output(result.translation)
+    await _recheck_political_output(result.translation)
     return TranslationResponse(translation=result.translation)
 
 
@@ -202,26 +199,35 @@ async def translate_bundle(
 ) -> TranslationBundleResponse:
     source_fields = [(field.key, field.text) for field in data.fields]
     source_values = [field.text for field in data.fields]
-    _validate_request(text="", additional_untrusted_text=source_values)
-    if settings.AI_POLITICAL_CLASSIFIER_URL.strip():
-        # Cache hits still pass the current trusted classifier. A result cached in a
-        # development environment must never bypass production's semantic gate.
-        await require_trusted_local_classification(
-            source_values,
-            source_moderation_reason=_POLITICAL_MODERATION_REASON,
-            source_moderation_provenance="trusted_classifier",
-        )
+    await _prepare_request(
+        text="",
+        additional_untrusted_text=source_values,
+        user_id=user_id,
+        client_identifier=client_identifier,
+    )
+
+    user_message = build_user_message(
+        task="translate_fields",
+        target_locale=data.target_locale,
+        source_items=[
+            {"key": field.key, "text": field.text} for field in data.fields
+        ],
+        content_context=data.context,
+    )
 
     cache_key = translation_cache_key(
         fields=source_fields,
         target_locale=data.target_locale,
         context=data.context,
+        user_prompt=user_message,
     )
     cached = await get_cached_translations(
         cache_key,
         expected_count=len(data.fields),
     )
     if cached is not None:
+        if settings.uses_production_ai_provider():
+            await _recheck_political_output(*cached, force=True)
         return TranslationBundleResponse(
             fields=[
                 TranslationFieldResponse(key=field.key, translation=translation)
@@ -230,35 +236,43 @@ async def translate_bundle(
             cached=True,
         )
 
-    await enforce_ai_rate_limit(user_id, client_identifier)
+    async with cache_fill_lock(cache_key):
+        cached = await get_cached_translations(
+            cache_key,
+            expected_count=len(data.fields),
+        )
+        if cached is not None:
+            if settings.uses_production_ai_provider():
+                await _recheck_political_output(*cached, force=True)
+            return TranslationBundleResponse(
+                fields=[
+                    TranslationFieldResponse(key=field.key, translation=translation)
+                    for field, translation in zip(data.fields, cached, strict=True)
+                ],
+                cached=True,
+            )
 
-    result = await _request_completion(
-        user_message=build_user_message(
-            task="translate_fields",
-            target_locale=data.target_locale,
-            source_items=[
-                {"key": field.key, "text": field.text} for field in data.fields
+        result = await _request_completion(
+            user_message=user_message,
+            response_type=TranslationBundleAIResponse,
+            max_tokens=16384,
+            user_id=user_id,
+            client_identifier=client_identifier,
+        )
+        _reject_political(result.political_status)
+        _reject_political_output_status(result.output_political_status)
+        translations = result.translations
+        if translations is None or len(translations) != len(data.fields):
+            raise AIServiceError(502, "AI_UPSTREAM_INVALID_RESPONSE")
+        await _recheck_political_output(*translations)
+        await cache_translations(cache_key, translations)
+        return TranslationBundleResponse(
+            fields=[
+                TranslationFieldResponse(key=field.key, translation=translation)
+                for field, translation in zip(data.fields, translations, strict=True)
             ],
-            content_context=data.context,
-        ),
-        response_type=TranslationBundleAIResponse,
-        max_tokens=16384,
-        user_id=user_id,
-        client_identifier=client_identifier,
-    )
-    _reject_political(result.political_status)
-    translations = result.translations
-    if translations is None or len(translations) != len(data.fields):
-        raise AIServiceError(502, "AI_UPSTREAM_INVALID_RESPONSE")
-    await _reject_political_output(*translations)
-    await cache_translations(cache_key, translations)
-    return TranslationBundleResponse(
-        fields=[
-            TranslationFieldResponse(key=field.key, translation=translation)
-            for field, translation in zip(data.fields, translations, strict=True)
-        ],
-        cached=False,
-    )
+            cached=False,
+        )
 
 
 async def assist_writing(
@@ -290,10 +304,11 @@ async def assist_writing(
         client_identifier=client_identifier,
     )
     _reject_political(result.political_status)
+    _reject_political_output_status(result.output_political_status)
     rewrites = result.rewrites
     if rewrites is None or len(rewrites) != len(data.fields):
         raise AIServiceError(502, "AI_UPSTREAM_INVALID_RESPONSE")
-    await _reject_political_output(*rewrites)
+    await _recheck_political_output(*rewrites)
     return WritingAssistResponse(
         fields=[
             TranslationFieldResponse(key=field.key, translation=rewrite)
@@ -335,11 +350,12 @@ async def generate_poll(
             charge_rate_limit=attempt > 0,
         )
         _reject_political(result.political_status)
+        _reject_political_output_status(result.output_political_status)
         question = result.question
         options = result.options
         if question is None or options is None:
             raise AIServiceError(502, "AI_UPSTREAM_INVALID_RESPONSE")
-        await _reject_political_output(question, *options)
+        await _recheck_political_output(question, *options)
 
         digest = question_digest(question)
         duplicate = digest in excluded_digests or digest in published_digests

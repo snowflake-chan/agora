@@ -1,6 +1,7 @@
 <script lang="ts">
   import { HeartIcon, MessageCircleIcon } from "@lucide/svelte";
   import type { Post } from "../../lib/posts";
+  import type { DisplayTranslation } from "../../lib/ai";
   import { translator } from "../../lib/i18n";
   import { stripMarkdown } from "../../lib/utils";
   import AuthorMeta from "../AuthorMeta.svelte";
@@ -11,13 +12,21 @@
 
   let { post }: { post: Post } = $props();
 
-  let snippet = $derived(stripMarkdown(post.content));
+  let displayTranslation = $state<DisplayTranslation | null>(null);
+  let displayTitle = $derived(displayTranslation?.title ?? post.title);
+  let snippet = $derived(stripMarkdown(displayTranslation?.body ?? post.content));
   let moderationQueued = $state(false);
   let effectiveModerationStatus = $derived(
     moderationQueued ? "pending_review" : post.moderation_status,
   );
   let moderationRestricted = $derived(isModerationRestricted(effectiveModerationStatus));
   let moderationVisible = $derived(hasModerationNotice(effectiveModerationStatus));
+
+  $effect(() => {
+    post.id;
+    post.revision_number;
+    displayTranslation = null;
+  });
 
   $effect(() => {
     const nextStatus = post.moderation_status;
@@ -40,7 +49,7 @@
   {/if}
   <h2 class="text-base font-semibold">
     <a class="card-link" href={`/posts/${post.id}`} style="color: var(--vercel-text);">
-      {post.title}
+      {displayTitle}
     </a>
   </h2>
 
@@ -60,6 +69,7 @@
         sourceRevisionNumber={post.revision_number}
         moderationTargetHref={`/posts/${post.id}`}
         onModerationQueued={() => (moderationQueued = true)}
+        onTranslationChange={(translation) => (displayTranslation = translation)}
       />
     </div>
   {/if}

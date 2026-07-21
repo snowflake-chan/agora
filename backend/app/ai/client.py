@@ -1,5 +1,7 @@
+import asyncio
 import logging
 from typing import TypeVar
+from urllib.parse import urlparse
 
 import httpx
 from pydantic import BaseModel, ValidationError
@@ -12,10 +14,21 @@ from app.config import settings
 
 ResponseModel = TypeVar("ResponseModel", bound=BaseModel)
 logger = logging.getLogger(__name__)
+_provider_semaphore = asyncio.Semaphore(
+    min(
+        settings.AI_MAX_CONCURRENT_REQUESTS,
+        settings.AI_MODERATION_MAX_CONCURRENT_REQUESTS,
+    )
+)
 
 
 def _build_http_client() -> httpx.AsyncClient:
     return httpx.AsyncClient(timeout=httpx.Timeout(settings.AI_HTTP_TIMEOUT_SECONDS))
+
+
+def _is_deepseek_provider(base_url: str) -> bool:
+    hostname = (urlparse(base_url).hostname or "").casefold()
+    return hostname == "deepseek.com" or hostname.endswith(".deepseek.com")
 
 
 async def request_structured_completion(
@@ -23,29 +36,36 @@ async def request_structured_completion(
     user_message: str,
     response_type: type[ResponseModel],
     max_tokens: int,
+    system_prompt: str = SYSTEM_PROMPT,
 ) -> ResponseModel:
-    """Call DeepSeek without logging credentials, source text, or provider details."""
+    """Call an OpenAI-compatible provider without logging sensitive request data."""
     url = f"{settings.resolved_ai_base_url().rstrip('/')}/chat/completions"
     payload = {
         "model": settings.resolved_ai_model(),
         "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message},
         ],
-        "thinking": {"type": "disabled"},
-        "response_format": {"type": "json_object"},
+        "temperature": settings.AI_TEMPERATURE,
         "max_tokens": max_tokens,
         "stream": False,
     }
+    if settings.AI_RESPONSE_FORMAT_ENABLED:
+        payload["response_format"] = {"type": "json_object"}
+    if settings.AI_THINKING_MODE and _is_deepseek_provider(
+        settings.resolved_ai_base_url()
+    ):
+        payload["thinking"] = {"type": settings.AI_THINKING_MODE}
     headers = {
         "Authorization": f"Bearer {settings.resolved_ai_api_key()}",
         "Content-Type": "application/json",
     }
 
     try:
-        async with _build_http_client() as client:
-            response = await client.post(url, headers=headers, json=payload)
-            response.raise_for_status()
+        async with _provider_semaphore:
+            async with _build_http_client() as client:
+                response = await client.post(url, headers=headers, json=payload)
+                response.raise_for_status()
     except httpx.HTTPStatusError as exc:
         logger.warning(
             "AI upstream HTTP failure status=%s",
@@ -57,14 +77,22 @@ async def request_structured_completion(
         raise AIServiceError(502, "AI_UPSTREAM_UNAVAILABLE") from exc
 
     try:
-        envelope = CompletionEnvelope.model_validate(response.json(), strict=True)
-        choice = envelope.choices[0]
-        if choice.finish_reason == "content_filter":
-            # The provider does not say whether it filtered the source or its own
-            # generated output. Do not mutate the source content on this signal.
+        raw_envelope = response.json()
+        choices = raw_envelope.get("choices") if isinstance(raw_envelope, dict) else None
+        first_choice = choices[0] if isinstance(choices, list) and choices else None
+        finish_reason = (
+            first_choice.get("finish_reason")
+            if isinstance(first_choice, dict)
+            else None
+        )
+        # Inspect the finish reason before validating message.content. Providers
+        # commonly return content=null for a filtered completion.
+        if finish_reason == "content_filter":
             raise AIServiceError(422, "AI_PROVIDER_FILTERED")
-        if choice.finish_reason != "stop":
+        if finish_reason != "stop":
             raise AIServiceError(502, "AI_UPSTREAM_INVALID_RESPONSE")
+        envelope = CompletionEnvelope.model_validate(raw_envelope, strict=True)
+        choice = envelope.choices[0]
         return response_type.model_validate_json(
             choice.message.content,
             strict=True,

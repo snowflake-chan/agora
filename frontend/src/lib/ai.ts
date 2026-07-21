@@ -2,6 +2,8 @@ import { ApiError } from "./auth";
 import { parseAiError, type AiModerationUpdate } from "./ai-errors";
 import { API_BASE } from "./config";
 import type { Locale } from "./i18n";
+import { shouldRequestTranslation } from "./language";
+import { createRetryableCache, withAbortTimeout } from "./retryable-cache";
 
 export interface AiStatus {
   enabled: boolean;
@@ -23,6 +25,14 @@ export interface TranslationField {
 export interface TranslationBundle {
   fields: Array<{ key: string; translation: string }>;
   cached: boolean;
+  skipped: boolean;
+}
+
+export interface DisplayTranslation {
+  locale: Locale;
+  title: string | null;
+  body: string;
+  cached: boolean;
 }
 
 export interface AiContentSource {
@@ -40,7 +50,17 @@ export class AiRequestError extends ApiError {
   }
 }
 
-let statusRequest: Promise<AiStatus> | null = null;
+const AI_STATUS_TTL_MS = 30_000;
+const AI_STATUS_TIMEOUT_MS = 5_000;
+const aiStatusCache = createRetryableCache(async () => {
+  const response = await withAbortTimeout(
+    (signal) => fetch(`${API_BASE}/ai/status`, { credentials: "include", signal }),
+    AI_STATUS_TIMEOUT_MS,
+  );
+  if (!response.ok) throw new ApiError("AI_FEATURE_UNAVAILABLE");
+  const payload = await response.json();
+  return { enabled: payload?.enabled === true };
+}, AI_STATUS_TTL_MS);
 
 async function requestError(response: Response): Promise<AiRequestError> {
   let payload: unknown = null;
@@ -64,15 +84,12 @@ async function request<T>(path: string, body: Record<string, unknown>): Promise<
   return response.json() as Promise<T>;
 }
 
-export function getAiStatus(): Promise<AiStatus> {
-  statusRequest ??= fetch(`${API_BASE}/ai/status`, { credentials: "include" })
-    .then(async (response) => {
-      if (!response.ok) return { enabled: false };
-      const payload = await response.json();
-      return { enabled: payload?.enabled === true };
-    })
-    .catch(() => ({ enabled: false }));
-  return statusRequest;
+export function getAiStatus(forceRefresh = false): Promise<AiStatus> {
+  return aiStatusCache.get(forceRefresh);
+}
+
+export function refreshAiStatus(): Promise<AiStatus> {
+  return getAiStatus(true);
 }
 
 export async function summarizeText(text: string, targetLocale: Locale): Promise<string> {
@@ -103,6 +120,13 @@ export async function translateFields(
   context: TranslationContext,
   source: AiContentSource | null = null,
 ): Promise<TranslationBundle> {
+  if (!shouldRequestTranslation(fields, targetLocale)) {
+    return {
+      fields: fields.map((field) => ({ key: field.key, translation: field.text.trim() })),
+      cached: true,
+      skipped: true,
+    };
+  }
   const result = await request<{ fields?: unknown; cached?: unknown }>("/ai/translate/fields", {
     fields,
     target_locale: targetLocale,
@@ -129,7 +153,7 @@ export async function translateFields(
     }
     return { key: item.key, translation: item.translation.trim() };
   });
-  return { fields: translated, cached: result.cached === true };
+  return { fields: translated, cached: result.cached === true, skipped: false };
 }
 
 export async function assistWriting(

@@ -3,12 +3,14 @@
   import { onMount } from "svelte";
   import { getVotingCountdown, type VotingCountdown } from "../lib/governance";
   import type { FeedItem } from "../lib/posts";
+  import type { DisplayTranslation } from "../lib/ai";
   import { translator } from "../lib/i18n";
   import { stripMarkdown } from "../lib/utils";
   import AuthorMeta from "./AuthorMeta.svelte";
   import PollCard from "./posts/PollCard.svelte";
   import ModerationNotice from "./posts/ModerationNotice.svelte";
   import PostAiTools from "./posts/PostAiTools.svelte";
+  import VoteSummary from "./patches/VoteSummary.svelte";
   import { hasModerationNotice, isModerationRestricted } from "../lib/moderation";
 
   let {
@@ -30,7 +32,9 @@
     failed: "badge-danger",
   };
 
-  let snippet = $derived(stripMarkdown(item.content));
+  let displayTranslation = $state<DisplayTranslation | null>(null);
+  let displayTitle = $derived(displayTranslation?.title ?? item.title);
+  let snippet = $derived(stripMarkdown(displayTranslation?.body ?? item.content));
   let href = $derived(item.type === "post" ? `/posts/${item.id}` : `/patches/${item.id}`);
   let statusInfo = $derived(
     item.type === "patch" && item.status
@@ -58,6 +62,12 @@
     Boolean(item.voting_ends_at) &&
       new Date(item.voting_ends_at as string).getTime() - now < 2 * 60 * 60 * 1000,
   );
+
+  $effect(() => {
+    item.id;
+    item.type === "post" ? item.revision_number : item.updated_at;
+    displayTranslation = null;
+  });
 
   $effect(() => {
     const nextStatus = item.moderation_status;
@@ -156,7 +166,7 @@
       style="color: var(--vercel-text);"
       onclick={handleOpen}
     >
-      {item.title}
+      {displayTitle}
     </a>
   </h2>
 
@@ -176,6 +186,7 @@
         sourceRevisionNumber={item.type === "post" ? item.revision_number : null}
         moderationTargetHref={item.type === "post" ? `/posts/${item.id}` : null}
         onModerationQueued={() => (moderationQueued = true)}
+        onTranslationChange={(translation) => (displayTranslation = translation)}
       />
     </div>
   {/if}
@@ -195,7 +206,11 @@
   <div class="stream-footer">
     <div class="stream-stats" style="color: var(--vercel-text-tertiary);">
       {#if item.type === "patch"}
-        <span>{$translator("patch.for")} {item.for_count} · {$translator("patch.against")} {item.against_count}</span>
+        <VoteSummary
+          forCount={item.for_count}
+          againstCount={item.against_count}
+          abstainCount={item.abstain_count}
+        />
         {#if countdown}
           <span class:urgent={countdownUrgent} class="vote-countdown">
             <Clock3Icon size={14} strokeWidth={1.8} aria-hidden="true" />

@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { BarChart3Icon, PlusIcon, SparklesIcon, Trash2Icon, XIcon } from "@lucide/svelte";
+  import { BarChart3Icon, CheckIcon, LoaderCircleIcon, PlusIcon, SparklesIcon, Trash2Icon, XIcon } from "@lucide/svelte";
   import { createEventDispatcher, onMount } from "svelte";
-  import { generatePoll, getAiStatus } from "../../lib/ai";
+  import { generatePoll, getAiStatus, refreshAiStatus, type GeneratedPoll } from "../../lib/ai";
+  import { createAiInputSignature, getPollAiReadiness, isCurrentAiResult } from "../../lib/ai-ui";
   import { ApiError } from "../../lib/auth";
   import { translator, locale, translateError } from "../../lib/i18n";
   import { renderMarkdown } from "../../lib/markdown";
@@ -19,7 +20,8 @@
     { hours: 720, key: "poll.duration30Days" },
   ];
 
-  type AiGenerationState = "idle" | "generating" | "success" | "political" | "error";
+  type AiGenerationState = "idle" | "generating" | "preview" | "success" | "stale" | "needsContext" | "political" | "error";
+  type AiAvailability = "checking" | "enabled" | "unavailable";
 
   let title = "";
   let content = "";
@@ -31,17 +33,54 @@
   let pollDurationHours = 72;
   let pollTouched = false;
   let pollValidation: string | null = null;
-  let aiEnabled = false;
+  let aiAvailability: AiAvailability = "checking";
   let aiGenerationState: AiGenerationState = "idle";
   let aiGenerationError = "";
   let generatedQuestions: string[] = [];
+  let pendingGeneratedPoll: GeneratedPoll | null = null;
+  let pendingPollSignature = "";
+  let aiAvailabilitySequence = 0;
+  let aiRequestSequence = 0;
+  let pollAiReadiness = getPollAiReadiness(title, content);
+  let pollAiInputSignature = "";
 
   $: pollValidation = validatePoll();
-  $: canGeneratePoll = title.trim().length >= 8 && content.trim().length >= 40;
+  $: pollAiReadiness = getPollAiReadiness(title, content);
+  $: canGeneratePoll = pollAiReadiness.ready;
+  $: pollAiInputSignature = createAiInputSignature([
+    title.trim(),
+    content.trim(),
+    pollQuestion.trim(),
+    ...pollOptions.map((option) => option.trim()),
+    $locale,
+  ]);
+  $: if (canGeneratePoll && aiGenerationState === "needsContext") aiGenerationState = "idle";
+  $: if (
+    pendingGeneratedPoll
+    && pendingPollSignature
+    && pendingPollSignature !== pollAiInputSignature
+  ) {
+    pendingGeneratedPoll = null;
+    pendingPollSignature = "";
+    aiGenerationState = "stale";
+  }
 
-  onMount(async () => {
-    aiEnabled = (await getAiStatus()).enabled;
+  onMount(() => {
+    void loadAiAvailability();
   });
+
+  async function loadAiAvailability(forceRefresh = false) {
+    const sequence = ++aiAvailabilitySequence;
+    aiAvailability = "checking";
+    try {
+      const status = await (forceRefresh ? refreshAiStatus() : getAiStatus());
+      if (sequence === aiAvailabilitySequence) {
+        aiAvailability = status.enabled ? "enabled" : "unavailable";
+      }
+    } catch {
+      if (sequence === aiAvailabilitySequence) aiAvailability = "unavailable";
+    }
+  }
 
   function close() {
     dispatch("close");
@@ -86,7 +125,10 @@
     pollOptions = ["", ""];
     pollDurationHours = 72;
     pollTouched = false;
+    aiRequestSequence += 1;
     aiGenerationState = "idle";
+    pendingGeneratedPoll = null;
+    pendingPollSignature = "";
   }
 
   function addOption() {
@@ -106,9 +148,22 @@
   }
 
   async function generatePollFromPost() {
-    if (!canGeneratePoll || aiGenerationState === "generating") return;
+    if (aiGenerationState === "generating") return;
+    if (aiAvailability !== "enabled") {
+      void loadAiAvailability(true);
+      return;
+    }
+    if (!canGeneratePoll) {
+      aiGenerationState = "needsContext";
+      aiGenerationError = "";
+      return;
+    }
+    const sequence = ++aiRequestSequence;
+    const requestedSignature = pollAiInputSignature;
     aiGenerationState = "generating";
     aiGenerationError = "";
+    pendingGeneratedPoll = null;
+    pendingPollSignature = "";
     try {
       const exclude = [...generatedQuestions, pollQuestion.trim()].filter(Boolean);
       const generated = await generatePoll(
@@ -116,12 +171,19 @@
         $locale,
         exclude,
       );
-      pollQuestion = generated.question;
-      pollOptions = generated.options;
+      if (!isCurrentAiResult(sequence, aiRequestSequence, requestedSignature, pollAiInputSignature)) {
+        aiGenerationState = "stale";
+        return;
+      }
+      pendingGeneratedPoll = generated;
+      pendingPollSignature = requestedSignature;
       generatedQuestions = [...generatedQuestions, generated.question].slice(-12);
-      pollTouched = true;
-      aiGenerationState = "success";
+      aiGenerationState = "preview";
     } catch (error) {
+      if (!isCurrentAiResult(sequence, aiRequestSequence, requestedSignature, pollAiInputSignature)) {
+        aiGenerationState = "stale";
+        return;
+      }
       aiGenerationState = error instanceof ApiError && error.code === "POLITICAL_CONTENT_UNAVAILABLE"
         ? "political"
         : "error";
@@ -129,6 +191,31 @@
         aiGenerationError = translateError(error, $translator, "poll.generateFailed");
       }
     }
+  }
+
+  function applyGeneratedPoll() {
+    if (
+      !pendingGeneratedPoll
+      || pendingPollSignature !== pollAiInputSignature
+    ) {
+      pendingGeneratedPoll = null;
+      pendingPollSignature = "";
+      aiGenerationState = "stale";
+      return;
+    }
+    const generated = pendingGeneratedPoll;
+    pendingGeneratedPoll = null;
+    pendingPollSignature = "";
+    pollQuestion = generated.question;
+    pollOptions = generated.options;
+    pollTouched = true;
+    aiGenerationState = "success";
+  }
+
+  function discardGeneratedPoll() {
+    pendingGeneratedPoll = null;
+    pendingPollSignature = "";
+    aiGenerationState = "idle";
   }
 
   async function handleSubmit() {
@@ -226,7 +313,7 @@
       />
     </div>
 
-    {#if pollEnabled}
+    {#snippet pollEditor()}
       <section class="poll-editor" aria-labelledby="poll-editor-title">
         <div class="poll-editor-header">
           <div>
@@ -234,18 +321,35 @@
             <p>{$translator("poll.editorHint")}</p>
           </div>
           <div class="poll-editor-actions">
-            {#if aiEnabled}
-              <button
-                type="button"
-                class="btn btn-ghost btn-xs ai-generate"
-                disabled={!canGeneratePoll || aiGenerationState === "generating"}
-                title={!canGeneratePoll ? $translator("poll.needsContext") : $translator("poll.generate")}
-                onclick={() => void generatePollFromPost()}
-              >
+            <button
+              type="button"
+              class="btn btn-ghost btn-xs ai-generate"
+              disabled={aiAvailability === "checking" || aiGenerationState === "generating"}
+              aria-describedby={aiGenerationState === "needsContext" ? "poll-ai-requirement" : undefined}
+              title={aiAvailability === "checking"
+                ? $translator("common.processing")
+                : aiAvailability === "unavailable"
+                  ? $translator("ai.retry")
+                  : !canGeneratePoll
+                    ? $translator("poll.needsContext")
+                    : $translator("poll.generate")}
+              onclick={() => void generatePollFromPost()}
+            >
+              {#if aiAvailability === "checking" || aiGenerationState === "generating"}
+                <LoaderCircleIcon class="poll-ai-loading" size={14} strokeWidth={1.8} aria-hidden="true" />
+              {:else}
                 <SparklesIcon size={14} strokeWidth={1.8} aria-hidden="true" />
-                {$translator(aiGenerationState === "generating" ? "poll.generating" : "poll.generate")}
-              </button>
-            {/if}
+              {/if}
+              {$translator(
+                aiAvailability === "checking"
+                  ? "common.processing"
+                  : aiGenerationState === "generating"
+                    ? "poll.generating"
+                    : aiAvailability === "unavailable"
+                      ? "ai.retry"
+                    : "poll.generate",
+              )}
+            </button>
             <button
               type="button"
               class="btn-icon remove-poll"
@@ -258,16 +362,44 @@
           </div>
         </div>
 
-        {#if aiEnabled}
+        {#if aiAvailability === "enabled"}
           <p class="poll-ai-disclosure">{$translator("ai.externalProcessing")}</p>
         {/if}
 
         {#if aiGenerationState === "success"}
           <p class="poll-ai-state success" role="status">{$translator("poll.generated")}</p>
+        {:else if aiGenerationState === "stale"}
+          <p class="poll-ai-state warning" role="status">{$translator("ai.resultOutdated")}</p>
+        {:else if aiGenerationState === "needsContext"}
+          <p id="poll-ai-requirement" class="poll-ai-state" role="status">{$translator("poll.needsContext")}</p>
         {:else if aiGenerationState === "political"}
           <p class="poll-ai-state warning" role="status">{$translator("ai.politicalUnavailable")}</p>
         {:else if aiGenerationState === "error"}
           <p class="poll-ai-state warning" role="status">{aiGenerationError || $translator("poll.generateFailed")}</p>
+        {/if}
+
+        {#if aiGenerationState === "preview" && pendingGeneratedPoll}
+          <section class="poll-ai-preview" aria-label={$translator("poll.aiPreviewTitle")}>
+            <div class="poll-ai-preview-heading">
+              <strong>{$translator("poll.aiPreviewTitle")}</strong>
+              <div class="poll-ai-preview-actions">
+                <button type="button" class="btn btn-primary btn-xs" onclick={applyGeneratedPoll}>
+                  <CheckIcon size={14} strokeWidth={1.9} aria-hidden="true" />
+                  {$translator("poll.applyGenerated")}
+                </button>
+                <button type="button" class="btn btn-ghost btn-xs" onclick={discardGeneratedPoll}>
+                  <XIcon size={14} strokeWidth={1.9} aria-hidden="true" />
+                  {$translator("poll.discardGenerated")}
+                </button>
+              </div>
+            </div>
+            <p>{pendingGeneratedPoll.question}</p>
+            <ul>
+              {#each pendingGeneratedPoll.options as option}
+                <li>{option}</li>
+              {/each}
+            </ul>
+          </section>
         {/if}
 
         <label class="poll-field">
@@ -335,7 +467,7 @@
           <p class="poll-validation" role="alert">{$translator(pollValidation)}</p>
         {/if}
       </section>
-    {/if}
+    {/snippet}
 
     <div class="composer-tabs" role="tablist" aria-label={$translator("editor.view")}>
       <button type="button" class:active={mobilePane === "edit"} onclick={() => mobilePane = "edit"} role="tab" aria-selected={mobilePane === "edit"}>{$translator("common.edit")}</button>
@@ -368,6 +500,10 @@
         </div>
       </div>
     </div>
+
+    {#if pollEnabled}
+      {@render pollEditor()}
+    {/if}
   </div>
 </div>
 
@@ -381,7 +517,7 @@
   .composer-tool:hover, .composer-tool:focus-visible { color:var(--vercel-text); background:var(--vercel-hover); }
   .composer-tool:focus-visible { outline:2px solid var(--vercel-ring); outline-offset:2px; }
   .composer-tool-active { color:var(--vercel-text); background:var(--vercel-hover); }
-  .poll-editor { max-height:min(20rem,34dvh); overflow-y:auto; padding:.8rem 1.25rem 1rem; border-bottom:1px solid var(--vercel-border); background:color-mix(in srgb,var(--vercel-surface-muted) 50%,transparent); }
+  .poll-editor { max-height:min(20rem,34dvh); overflow-y:auto; padding:.8rem 1.25rem 1rem; border-top:1px solid var(--vercel-border); background:color-mix(in srgb,var(--vercel-surface-muted) 50%,transparent); }
   .poll-editor-header, .poll-editor-actions, .poll-bottom-row { display:flex; align-items:center; }
   .poll-editor-header { justify-content:space-between; gap:1rem; }
   .poll-editor-header h3 { margin:0; color:var(--vercel-text); font-size:.875rem; font-weight:650; }
@@ -393,6 +529,14 @@
   .poll-ai-disclosure { margin:.55rem 0 0; color:var(--vercel-text-tertiary); font-size:.6875rem; line-height:1.45; }
   .poll-ai-state.success { color:var(--vercel-success); }
   .poll-ai-state.warning, .poll-validation { color:var(--vercel-danger); }
+  .poll-ai-loading { animation:poll-ai-spin 800ms linear infinite; }
+  .poll-ai-preview { margin-top:.65rem; padding:.65rem 0; border-top:1px solid var(--vercel-border); border-bottom:1px solid var(--vercel-border); }
+  .poll-ai-preview-heading, .poll-ai-preview-actions { display:flex; align-items:center; }
+  .poll-ai-preview-heading { justify-content:space-between; gap:.75rem; }
+  .poll-ai-preview-heading > strong { color:var(--vercel-text); font-size:.75rem; font-weight:650; }
+  .poll-ai-preview-actions { gap:.25rem; }
+  .poll-ai-preview > p { margin:.5rem 0 0; color:var(--vercel-text); font-size:.8rem; line-height:1.45; }
+  .poll-ai-preview ul { display:grid; gap:.2rem; margin:.4rem 0 0; padding-left:1.1rem; color:var(--vercel-text-secondary); font-size:.72rem; line-height:1.4; }
   .poll-field, .poll-option-fields { display:block; margin-top:.7rem; }
   .poll-field > span, .poll-field-label, .poll-duration > span { display:block; margin-bottom:.3rem; color:var(--vercel-text-secondary); font-size:.6875rem; font-weight:650; }
   .poll-editor .input[aria-invalid="true"] { border-color:color-mix(in srgb,var(--vercel-danger) 65%,var(--vercel-border)); }
@@ -408,6 +552,7 @@
   .composer-pane { display:flex; flex:1; min-width:0; flex-direction:column; }
   .editor-pane { border-right:1px solid var(--vercel-border); }
   .composer-tabs { display:none; }
+  @keyframes poll-ai-spin { to { transform:rotate(360deg); } }
   @media (max-width: 48rem) {
     .composer-backdrop { padding:.5rem; }
     .composer-dialog { height:calc(100dvh - 1rem); border-radius:.875rem; }
@@ -425,5 +570,10 @@
   @media (max-width: 25rem) {
     .poll-editor-header { align-items:flex-start; }
     .poll-bottom-row { align-items:flex-start; flex-direction:column; gap:.55rem; }
+    .poll-ai-preview-heading { align-items:flex-start; flex-direction:column; }
   }
+  @media (prefers-reduced-motion: reduce) {
+    .poll-ai-loading { animation:none; }
+  }
+  :global(html[data-motion="reduced"]) .poll-ai-loading { animation:none; }
 </style>

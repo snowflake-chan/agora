@@ -174,7 +174,7 @@ def test_private_revisions_never_leak_through_public_history():
         held = author.patch(
             f"{BASE}/posts/{post_id}",
             json={
-                "content": "Government election policy details require review.",
+                "content": "[test:political] Government election policy details require review.",
                 "revision_number": 1,
             },
         )

@@ -20,7 +20,7 @@ from app.notifications.service import create_notification, notify_followers
 from app.posts.realtime import publish_feed_event
 from app.content_moderation import (
     announce_content_published,
-    assess_content_moderation,
+    assess_content_moderation_after_read,
     content_tree_visibility_clause,
     content_visibility_clause,
     moderation_metadata_for,
@@ -1000,7 +1000,55 @@ async def create_patch_comment(
                 ) from error
             raise
 
-    moderation = await assess_content_moderation(data.content)
+    moderation = await assess_content_moderation_after_read(
+        session,
+        data.content,
+    )
+
+    # A draft can become inaccessible, or a reply can disappear, while the
+    # external semantic review runs. Recheck both under short row locks.
+    await check_not_banned(user.id, session, "mute_patch")
+    locked_patch_id = await session.scalar(
+        select(PatchModel.id)
+        .where(PatchModel.id == patch_id)
+        .with_for_update()
+    )
+    if locked_patch_id is None:
+        raise HTTPException(status_code=404, detail="PATCH_NOT_FOUND")
+    patch = await session.scalar(
+        select(PatchModel)
+        .options(lazyload(PatchModel.author))
+        .where(PatchModel.id == locked_patch_id)
+        .execution_options(populate_existing=True)
+    )
+    patch = require_patch_visible(patch, user)
+
+    if data.replying_id:
+        locked_reply_id = await session.scalar(
+            select(ContentModel.id)
+            .where(
+                ContentModel.id == data.replying_id,
+                ContentModel.patch_id == patch.id,
+                ContentModel.type == "comment",
+            )
+            .with_for_update()
+        )
+        if locked_reply_id is None:
+            raise HTTPException(status_code=404, detail="REPLY_TARGET_NOT_FOUND")
+        target = await session.scalar(
+            select(ContentModel)
+            .where(ContentModel.id == locked_reply_id)
+            .execution_options(populate_existing=True)
+        )
+        try:
+            await require_content_interactable(target, user, session)
+        except HTTPException as error:
+            if error.detail == "CONTENT_NOT_FOUND":
+                raise HTTPException(
+                    status_code=404,
+                    detail="REPLY_TARGET_NOT_FOUND",
+                ) from error
+            raise
 
     comment = ContentModel(
         type="comment",

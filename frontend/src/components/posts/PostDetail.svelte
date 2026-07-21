@@ -14,7 +14,7 @@
   import { currentUser } from "../../stores/auth";
   import TimelineItem from "./TimelineItem.svelte";
   import ConfirmDialog from "../ConfirmDialog.svelte";
-  import GlassModal from "../GlassModal.svelte";
+  import ReportDialog from "../moderation/ReportDialog.svelte";
   import ContentEditModal from "../content/ContentEditModal.svelte";
   import RevisionHistoryModal, { type RevisionSnapshot } from "../content/RevisionHistoryModal.svelte";
 
@@ -40,6 +40,7 @@
   let editTarget: Post | Comment | null = null;
   let editKind: "post" | "comment" = "post";
   let historyTarget: Post | Comment | null = null;
+  let translatedPostTitle: string | null = null;
 
   async function loadPostDetail(showError = true) {
     try {
@@ -232,11 +233,11 @@
     reportOpen = true;
   }
 
-  async function submitReport() {
-    if (!reportReason.trim() || reporting) return;
+  async function submitReport(reason: string) {
+    if (!reason.trim() || reporting) return;
     reporting = true;
     try {
-      await createReport(reportTarget, reportReason.trim());
+      await createReport(reportTarget, reason.trim());
       reportOpen = false;
       toaster.success(
         $translator("moderation.reportSuccessTitle"),
@@ -384,7 +385,7 @@
   </button>{/if}
 
   <div class="mb-6 ml-7">
-    <h1 class="text-xl font-bold" style="color: var(--vercel-text);">{postTitle}</h1>
+    <h1 class="text-xl font-bold" style="color: var(--vercel-text);">{translatedPostTitle ?? postTitle}</h1>
     {#if postTags && postTags.length > 0}
       <div class="mt-2 flex flex-wrap gap-2">
         {#each postTags as tag}
@@ -440,6 +441,9 @@
           moderationReason={item.moderationReason}
           moderationReviewNote={item.moderationReviewNote}
           moderationTargetHref={`/posts/${postId}`}
+          onTranslationChange={i === 0
+            ? (translation) => (translatedPostTitle = translation?.title ?? null)
+            : null}
         />
       {/each}
     </div>
@@ -488,32 +492,12 @@
   onConfirm={confirmDelete}
 />
 
-<GlassModal
-  show={reportOpen}
-  title={$translator("moderation.reportTitle")}
-  onclose={() => (reportOpen = false)}
->
-  <textarea
-    class="input report-reason"
-    rows="4"
-    bind:value={reportReason}
-    maxlength="500"
-    aria-label={$translator("moderation.reportReasonPlaceholder")}
-    placeholder={$translator("moderation.reportReasonPlaceholder")}
-  ></textarea>
-  <div class="report-actions">
-    <button class="btn btn-ghost btn-sm" onclick={() => (reportOpen = false)}>
-      {$translator("common.cancel")}
-    </button>
-    <button
-      class="btn btn-primary btn-sm"
-      disabled={reporting || !reportReason.trim()}
-      onclick={submitReport}
-    >
-      {$translator(reporting ? "moderation.reporting" : "moderation.reportSubmit")}
-    </button>
-  </div>
-</GlassModal>
+<ReportDialog
+  bind:open={reportOpen}
+  bind:reason={reportReason}
+  {reporting}
+  onsubmit={submitReport}
+/>
 
 <ContentEditModal
   show={editTarget !== null}
@@ -534,18 +518,6 @@
 />
 
 <style>
-  .report-reason {
-    width: 100%;
-    resize: vertical;
-  }
-
-  .report-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 0.5rem;
-    margin-top: 1rem;
-  }
-
   .back-btn {
     margin-bottom: 1rem;
   }

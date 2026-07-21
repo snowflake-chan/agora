@@ -1,9 +1,10 @@
 <script lang="ts">
-  import { BarChart3Icon, CheckIcon, Clock3Icon, LanguagesIcon } from "@lucide/svelte";
+  import { BarChart3Icon, CheckIcon, Clock3Icon, LanguagesIcon, RefreshCwIcon } from "@lucide/svelte";
   import { onMount } from "svelte";
-  import { AiRequestError, getAiStatus, translateFields } from "../../lib/ai";
+  import { AiRequestError, getAiStatus, refreshAiStatus, translateFields } from "../../lib/ai";
   import { ApiError } from "../../lib/auth";
   import { locale, translateError, translator } from "../../lib/i18n";
+  import { shouldRequestTranslation } from "../../lib/language";
   import { requestLogin } from "../../lib/login";
   import { dispatchModerationUpdate } from "../../lib/moderation";
   import { autoTranslate, initPreferences } from "../../lib/preferences";
@@ -35,10 +36,13 @@
   let currentPoll = $state<Poll>(poll);
   let selectedOptionId = $state<string | null>(poll.selected_option_id ?? null);
   let submitting = $state(false);
-  let aiEnabled = $state(false);
+  let aiAvailability = $state<"checking" | "enabled" | "unavailable">("checking");
+  let aiAvailabilitySequence = 0;
   let translationLoading = $state(false);
   let translatedQuestion = $state("");
   let translatedOptions = $state<string[]>([]);
+  let translationVisible = $state(false);
+  let sourceSignature = $state("");
   let visible = $state(false);
   let autoSignature = $state("");
   let cachedLocale = $state($locale);
@@ -53,8 +57,23 @@
       selectedOptionId !== currentPoll.selected_option_id &&
       !submitting,
   );
+  let translationFields = $derived([
+    { key: "question", text: currentPoll.question },
+    ...currentPoll.options.map((option, index) => ({
+      key: `option_${index + 1}`,
+      text: option.text,
+    })),
+  ]);
+  let translationNeeded = $derived(shouldRequestTranslation(translationFields, $locale));
 
   $effect(() => {
+    const nextSourceSignature = `${poll.question}:${poll.options.map((option) => option.text).join("\u0000")}`;
+    if (sourceSignature && sourceSignature !== nextSourceSignature) {
+      translatedQuestion = "";
+      translatedOptions = [];
+      translationVisible = false;
+    }
+    sourceSignature = nextSourceSignature;
     currentPoll = poll;
     selectedOptionId = poll.selected_option_id ?? null;
   });
@@ -65,10 +84,17 @@
     cachedLocale = nextLocale;
     translatedQuestion = "";
     translatedOptions = [];
+    translationVisible = false;
   });
 
   $effect(() => {
-    if (!aiEnabled || !visible || !$autoTranslate || !$currentUser) return;
+    if (
+      aiAvailability !== "enabled"
+      || !visible
+      || !$autoTranslate
+      || !$currentUser
+      || !translationNeeded
+    ) return;
     const signature = `${$locale}:${currentPoll.question}:${currentPoll.options.map((option) => option.text).join("\u0000")}`;
     if (autoSignature === signature) return;
     autoSignature = signature;
@@ -77,8 +103,21 @@
 
   onMount(async () => {
     initPreferences();
-    aiEnabled = (await getAiStatus()).enabled;
+    await loadAiAvailability();
   });
+
+  async function loadAiAvailability(forceRefresh = false) {
+    const sequence = ++aiAvailabilitySequence;
+    aiAvailability = "checking";
+    try {
+      const status = await (forceRefresh ? refreshAiStatus() : getAiStatus());
+      if (sequence === aiAvailabilitySequence) {
+        aiAvailability = status.enabled ? "enabled" : "unavailable";
+      }
+    } catch {
+      if (sequence === aiAvailabilitySequence) aiAvailability = "unavailable";
+    }
+  }
 
   function trackVisibility(node: HTMLElement) {
     if (typeof IntersectionObserver === "undefined") {
@@ -94,30 +133,25 @@
   }
 
   async function translatePoll() {
-    if (translationLoading || readOnly) return;
+    if (translationLoading || readOnly || !translationNeeded) return;
     if (!$currentUser) {
       requestLogin(undefined, () => void translatePoll());
       return;
     }
     translationLoading = true;
     try {
-      const fields = [
-        { key: "question", text: currentPoll.question },
-        ...currentPoll.options.map((option, index) => ({
-          key: `option_${index + 1}`,
-          text: option.text,
-        })),
-      ];
       const result = await translateFields(
-        fields,
+        translationFields,
         $locale,
         "poll",
         sourceRevisionNumber
           ? { contentId: postId, revisionNumber: sourceRevisionNumber }
           : null,
       );
+      if (result.skipped) return;
       translatedQuestion = result.fields[0]?.translation ?? "";
       translatedOptions = result.fields.slice(1).map((field) => field.translation);
+      translationVisible = true;
     } catch (error) {
       const moderationUpdate = error instanceof AiRequestError
         ? error.moderationUpdate
@@ -151,6 +185,11 @@
     } finally {
       translationLoading = false;
     }
+  }
+
+  function toggleTranslation() {
+    if (!translatedQuestion) return;
+    translationVisible = !translationVisible;
   }
 
   function percentage(voteCount: number): number {
@@ -208,7 +247,7 @@
       {$translator("poll.label")}
     </span>
     <div class="poll-heading-actions">
-      {#if aiEnabled && !readOnly}
+      {#if aiAvailability === "enabled" && !readOnly && translationNeeded && !translatedQuestion}
         <button
           type="button"
           class="poll-translate"
@@ -218,6 +257,16 @@
           onclick={(event) => { containInteraction(event); void translatePoll(); }}
         >
           <LanguagesIcon size={14} strokeWidth={1.8} aria-hidden="true" />
+        </button>
+      {:else if aiAvailability === "unavailable" && !readOnly}
+        <button
+          type="button"
+          class="poll-translate"
+          title={$translator("ai.retry")}
+          aria-label={$translator("ai.retry")}
+          onclick={(event) => { containInteraction(event); void loadAiAvailability(true); }}
+        >
+          <RefreshCwIcon size={14} strokeWidth={1.8} aria-hidden="true" />
         </button>
       {/if}
       {#if isClosed}
@@ -231,12 +280,27 @@
     </div>
   </div>
 
-  <h3 class="poll-question">
-    {currentPoll.question}
-    {#if translatedQuestion}<small lang={$locale}>{translatedQuestion}</small>{/if}
+  <h3 class="poll-question" lang={translationVisible && translatedQuestion ? $locale : undefined}>
+    {translationVisible && translatedQuestion ? translatedQuestion : currentPoll.question}
   </h3>
 
-  <div class="poll-options" role="group" aria-label={currentPoll.question}>
+  {#if translatedQuestion}
+    <div class="poll-translation-status" aria-live="polite">
+      <span>
+        <LanguagesIcon size={12} strokeWidth={1.8} aria-hidden="true" />
+        {$translator("ai.translatedByAi")}
+      </span>
+      <button type="button" onclick={toggleTranslation}>
+        {$translator(translationVisible ? "ai.viewOriginal" : "ai.viewTranslation")}
+      </button>
+    </div>
+  {/if}
+
+  <div
+    class="poll-options"
+    role="group"
+    aria-label={translationVisible && translatedQuestion ? translatedQuestion : currentPoll.question}
+  >
     {#each currentPoll.options as option, index (option.id)}
       {@const selected = selectedOptionId === option.id}
       {@const resultPercent = percentage(option.vote_count)}
@@ -259,9 +323,8 @@
         <span class="poll-option-marker" aria-hidden="true">
           {#if selected}<CheckIcon size={13} strokeWidth={2.3} />{/if}
         </span>
-        <span class="poll-option-text">
-          {option.text}
-          {#if translatedOptions[index]}<small lang={$locale}>{translatedOptions[index]}</small>{/if}
+        <span class="poll-option-text" lang={translationVisible && translatedOptions[index] ? $locale : undefined}>
+          {translationVisible && translatedOptions[index] ? translatedOptions[index] : option.text}
         </span>
         {#if showingResults}
           <span class="poll-option-result">{option.vote_count} <span>{resultPercent}%</span></span>
@@ -315,6 +378,8 @@
 
   .poll-heading,
   .poll-heading-actions,
+  .poll-translation-status,
+  .poll-translation-status > span,
   .poll-footer,
   .poll-kicker,
   .poll-state,
@@ -380,14 +445,37 @@
     line-height: 1.45;
   }
 
-  .poll-question small,
-  .poll-option-text small {
-    display: block;
-    margin-top: 0.18rem;
+  .poll-translation-status {
+    min-height: 1.5rem;
+    gap: 0.4rem;
+    margin: -0.35rem 0 0.55rem;
+    color: var(--vercel-text-tertiary);
+    font-size: 0.6875rem;
+  }
+
+  .poll-translation-status > span {
+    gap: 0.3rem;
+  }
+
+  .poll-translation-status button {
+    min-height: 1.5rem;
+    padding: 0 0.2rem;
+    border-radius: var(--vercel-radius-sm);
     color: var(--vercel-text-secondary);
-    font-size: 0.72rem;
-    font-weight: 500;
-    line-height: 1.4;
+    background: transparent;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .poll-translation-status button:hover {
+    color: var(--vercel-text);
+    background: var(--vercel-hover);
+  }
+
+  .poll-translation-status button:focus-visible {
+    outline: 2px solid var(--vercel-ring);
+    outline-offset: 1px;
   }
 
   .poll-option-text {

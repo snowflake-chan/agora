@@ -1,17 +1,35 @@
+import asyncio
 import hashlib
 import json
 import logging
 import re
 import unicodedata
+from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from difflib import SequenceMatcher
+from typing import AsyncIterator
 
 from app.ai.errors import AIServiceError
+from app.ai.prompts import MODERATION_SYSTEM_PROMPT, SYSTEM_PROMPT
+from app.ai.schemas import ModerationAIResponse, TranslationBundleAIResponse
 from app.config import settings
 from app.notifications.redis import get_redis
 
 
 logger = logging.getLogger(__name__)
 _TRANSLATION_CACHE_VERSION = 1
+_MODERATION_CACHE_VERSION = 1
+_MODERATION_STATUSES = {"non_political", "political", "uncertain"}
+_MODERATION_PROVENANCES = {"trusted_classifier", "provider"}
+
+
+@dataclass(slots=True)
+class _CacheFillEntry:
+    lock: asyncio.Lock
+    users: int = 0
+
+
+_cache_fill_entries: dict[tuple[int, str], _CacheFillEntry] = {}
 
 _INCREMENT_SCRIPT = """
 local current = redis.call("INCR", KEYS[1])
@@ -43,12 +61,24 @@ def translation_cache_key(
     fields: list[tuple[str, str]],
     target_locale: str,
     context: str,
+    user_prompt: str,
 ) -> str:
     """Build a non-reversible cache key without exposing forum text in Redis keys."""
     payload = json.dumps(
         {
             "version": _TRANSLATION_CACHE_VERSION,
+            "moderation_policy": settings.AI_MODERATION_POLICY_VERSION,
+            "classifier_version": settings.AI_POLITICAL_CLASSIFIER_VERSION,
+            "base_url": settings.resolved_ai_base_url().rstrip("/"),
             "model": settings.resolved_ai_model(),
+            "system_prompt": SYSTEM_PROMPT,
+            "user_prompt": user_prompt,
+            "response_schema": TranslationBundleAIResponse.model_json_schema(),
+            "sampling": {
+                "temperature": settings.AI_TEMPERATURE,
+                "thinking_mode": settings.AI_THINKING_MODE,
+                "response_format_enabled": settings.AI_RESPONSE_FORMAT_ENABLED,
+            },
             "target_locale": target_locale,
             "context": context,
             "fields": fields,
@@ -57,6 +87,96 @@ def translation_cache_key(
         separators=(",", ":"),
     )
     return f"ai:translation:{_digest(payload)}"
+
+
+def moderation_cache_key(*, text: str, engine: str) -> str:
+    """Address an exact semantic verdict without exposing source text in Redis."""
+    payload = json.dumps(
+        {
+            "version": _MODERATION_CACHE_VERSION,
+            "policy": settings.AI_MODERATION_POLICY_VERSION,
+            "classifier_version": settings.AI_POLITICAL_CLASSIFIER_VERSION,
+            "engine": engine,
+            "base_url": (
+                engine.removeprefix("trusted-local:")
+                if engine.startswith("trusted-local:")
+                else settings.resolved_ai_base_url().rstrip("/")
+            ),
+            "model": settings.resolved_ai_model(),
+            "system_prompt": MODERATION_SYSTEM_PROMPT,
+            "response_schema": ModerationAIResponse.model_json_schema(),
+            "sampling": {
+                "temperature": settings.AI_TEMPERATURE,
+                "thinking_mode": settings.AI_THINKING_MODE,
+                "response_format_enabled": settings.AI_RESPONSE_FORMAT_ENABLED,
+            },
+            "text": text,
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    return f"ai:moderation:{_digest(payload)}"
+
+
+@asynccontextmanager
+async def cache_fill_lock(key: str) -> AsyncIterator[None]:
+    """Serialize same-process cache fills while allowing a second cache read."""
+    registry_key = (id(asyncio.get_running_loop()), key)
+    entry = _cache_fill_entries.get(registry_key)
+    if entry is None:
+        entry = _CacheFillEntry(lock=asyncio.Lock())
+        _cache_fill_entries[registry_key] = entry
+    entry.users += 1
+    try:
+        async with entry.lock:
+            yield
+    finally:
+        entry.users -= 1
+        if entry.users == 0 and _cache_fill_entries.get(registry_key) is entry:
+            _cache_fill_entries.pop(registry_key, None)
+
+
+async def get_cached_moderation(key: str) -> tuple[str, str] | None:
+    """Read a source verdict; cache outages fail closed before paid classification."""
+    try:
+        redis = await get_redis()
+        raw = await redis.get(key)
+    except Exception as exc:
+        raise AIServiceError(503, "AI_POLITICAL_GUARD_UNAVAILABLE") from exc
+    if raw is None:
+        return None
+    try:
+        if isinstance(raw, bytes):
+            raw = raw.decode("utf-8")
+        value = json.loads(raw)
+        status = value.get("status")
+        provenance = value.get("provenance")
+        if (
+            not isinstance(value, dict)
+            or status not in _MODERATION_STATUSES
+            or provenance not in _MODERATION_PROVENANCES
+        ):
+            raise ValueError("invalid moderation cache entry")
+        return status, provenance
+    except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError, AttributeError):
+        # A malformed decision must never be interpreted as an approval.
+        return None
+
+
+async def cache_moderation(key: str, *, status: str, provenance: str) -> None:
+    try:
+        redis = await get_redis()
+        await redis.set(
+            key,
+            json.dumps(
+                {"status": status, "provenance": provenance},
+                separators=(",", ":"),
+            ),
+            ex=settings.AI_MODERATION_CACHE_TTL_SECONDS,
+        )
+    except Exception as exc:
+        # A completed semantic verdict remains valid; later calls may simply pay again.
+        logger.warning("AI moderation cache write failed type=%s", type(exc).__name__)
 
 
 async def get_cached_translations(
@@ -178,6 +298,35 @@ async def enforce_ai_rate_limit(user_id: str, client_identifier: str) -> None:
         limit=settings.AI_RATE_LIMIT_DAILY_GLOBAL_REQUESTS,
         window_seconds=86400,
     )
+
+
+async def enforce_ai_moderation_rate_limit(*, provider_fallback: bool) -> None:
+    """Protect review capacity; provider fallback shares provider-wide budgets."""
+    try:
+        if provider_fallback:
+            await _increment_limit(
+                key="ai:rate:global:qps",
+                limit=settings.AI_RATE_LIMIT_GLOBAL_QPS,
+                window_seconds=1,
+            )
+            await _increment_limit(
+                key="ai:rate:global:day",
+                limit=settings.AI_RATE_LIMIT_DAILY_GLOBAL_REQUESTS,
+                window_seconds=86400,
+            )
+            await _increment_limit(
+                key="ai:moderation:global:day",
+                limit=settings.AI_MODERATION_RATE_LIMIT_DAILY_GLOBAL_REQUESTS,
+                window_seconds=86400,
+            )
+        else:
+            await _increment_limit(
+                key="ai:moderation:local:qps",
+                limit=settings.AI_MODERATION_RATE_LIMIT_GLOBAL_QPS,
+                window_seconds=1,
+            )
+    except AIServiceError as exc:
+        raise AIServiceError(503, "AI_POLITICAL_GUARD_UNAVAILABLE") from exc
 
 
 async def reserve_poll_question(question: str) -> bool:

@@ -12,7 +12,7 @@
   } from "@lucide/svelte";
   import { onMount } from "svelte";
   import { getUserGuild, type UserGuildBadge } from "../../lib/guilds";
-  import type { TranslationContext } from "../../lib/ai";
+  import type { DisplayTranslation, TranslationContext } from "../../lib/ai";
   import { translator } from "../../lib/i18n";
   import { renderMarkdown } from "../../lib/markdown";
   import { isModerationRestricted, type ModerationStatus } from "../../lib/moderation";
@@ -56,6 +56,7 @@
     moderationReviewNote = null,
     revisionNumber = 1,
     moderationTargetHref = null,
+    onTranslationChange = null,
   }: {
     username: string;
     userId: string | null;
@@ -89,12 +90,15 @@
     moderationReviewNote?: string | null;
     revisionNumber?: number;
     moderationTargetHref?: string | null;
+    onTranslationChange?: ((translation: DisplayTranslation | null) => void) | null;
   } = $props();
 
   let menuOpen = $state(false);
   let menuButton = $state<HTMLButtonElement | null>(null);
   let guild = $state<UserGuildBadge | null>(null);
   let moderationQueued = $state(false);
+  let displayTranslation = $state<DisplayTranslation | null>(null);
+  let displayedContent = $derived(displayTranslation?.body ?? content);
   let profileHref = $derived(userId ? `/users/${userId}` : "#");
   let menuId = $derived(
     `timeline-actions-${(contentId ?? `${userId ?? "anonymous"}-${createdAt}`).replace(/[^a-zA-Z0-9_-]/g, "-")}`,
@@ -103,6 +107,14 @@
     moderationQueued ? "pending_review" : moderationStatus,
   );
   let moderationRestricted = $derived(isModerationRestricted(effectiveModerationStatus));
+
+  $effect(() => {
+    content;
+    title;
+    revisionNumber;
+    displayTranslation = null;
+    onTranslationChange?.(null);
+  });
 
   $effect(() => {
     const nextStatus = moderationStatus;
@@ -135,6 +147,11 @@
   function runMenuAction(action: () => void) {
     menuOpen = false;
     action();
+  }
+
+  function handleTranslationChange(translation: DisplayTranslation | null) {
+    displayTranslation = translation;
+    onTranslationChange?.(translation);
   }
 </script>
 
@@ -254,7 +271,7 @@
         </a>
       {/if}
       <div class="markdown-body">
-        {@html renderMarkdown(content)}
+        {@html renderMarkdown(displayedContent)}
       </div>
       {#if tags && tags.length > 0}
         <div class="mt-3 flex flex-wrap gap-2">
@@ -284,6 +301,7 @@
           sourceRevisionNumber={revisionNumber}
           {moderationTargetHref}
           onModerationQueued={() => (moderationQueued = true)}
+          onTranslationChange={handleTranslationChange}
         />
       {/if}
     </div>
@@ -411,6 +429,7 @@
 
   .content-node {
     scroll-margin-top: 5rem;
+    container-type: inline-size;
   }
 
   .reply-trace {
@@ -438,6 +457,7 @@
 
   .post-action {
     display: inline-flex;
+    min-width: 0;
     min-height: 2.5rem;
     align-items: center;
     justify-content: center;
@@ -475,6 +495,16 @@
 
   .action-count {
     font-variant-numeric: tabular-nums;
+  }
+
+  @container (max-width: 22rem) {
+    .post-action > span:not(.action-count) {
+      display: none;
+    }
+
+    .post-action {
+      gap: 0.25rem;
+    }
   }
 
   @media (max-width: 30rem) {

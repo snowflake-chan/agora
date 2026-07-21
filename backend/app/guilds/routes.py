@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.deps import check_not_banned, require_content_visible
 from app.content_moderation import (
-    assess_content_moderation,
+    assess_content_moderation_after_read,
     content_visibility_clause,
     moderation_metadata_for,
     notify_content_pending,
@@ -692,10 +692,26 @@ async def create_discussion(
     _guild_forbidden(member)
     await check_not_banned(user.id, session, "mute_post")
 
-    moderation = await assess_content_moderation(
+    moderation = await assess_content_moderation_after_read(
+        session,
         body.title or "",
         body.content,
     )
+
+    # Membership can change while semantic review is in flight. Lock and
+    # recheck it, plus posting restrictions, in the write transaction.
+    member = (
+        await session.execute(
+            select(GuildMember.id, GuildMember.status)
+            .where(
+                GuildMember.guild_id == guild_id,
+                GuildMember.user_id == user.id,
+            )
+            .with_for_update()
+        )
+    ).one_or_none()
+    _guild_forbidden(member)
+    await check_not_banned(user.id, session, "mute_post")
 
     c = ContentModel(
         type="guild_post",

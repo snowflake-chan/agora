@@ -24,13 +24,14 @@ from app.deps import (
 from app.content_moderation import (
     PUBLIC_MODERATION_STATUSES,
     announce_content_published,
-    assess_content_moderation,
+    assess_content_moderation_after_read,
     content_is_public,
     content_tree_visibility_clause,
     content_visibility_clause,
     moderation_metadata_for,
     notify_content_pending,
 )
+from app.schemas.content_input import validate_moderation_input_size
 from app.notifications.redis import get_redis
 from app.post_polls import create_post_poll, load_post_polls
 from app.posts.feed import FeedMode, rank_feed_items
@@ -215,7 +216,14 @@ async def create_post(
         moderation_texts.extend(
             [data.poll.question, *data.poll.options]
         )
-    moderation = await assess_content_moderation(*moderation_texts)
+    moderation = await assess_content_moderation_after_read(
+        session,
+        *moderation_texts,
+    )
+
+    # The read transaction was released during semantic review. Recheck the
+    # mutable restriction in the short write transaction.
+    await check_not_banned(user.id, session, "mute_post")
 
     post = ContentModel(
         type="post",
@@ -330,8 +338,18 @@ async def update_content(
         raise HTTPException(status_code=422, detail="CONTENT_NO_CHANGES")
 
     base_revision = data.revision_number
-    moderation = await assess_content_moderation(
-        new_title or "", new_content, *(new_tags or [])
+    try:
+        validate_moderation_input_size(
+            [new_title or "", new_content, *(new_tags or [])]
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail="AI_INPUT_TOO_LONG") from error
+
+    moderation = await assess_content_moderation_after_read(
+        session,
+        new_title or "",
+        new_content,
+        *(new_tags or []),
     )
 
     # Only lock the scalar ID. Content's eager author/parent joins include
@@ -1136,7 +1154,59 @@ async def create_comment(
                 ) from error
             raise
 
-    moderation = await assess_content_moderation(data.content)
+    moderation = await assess_content_moderation_after_read(
+        session,
+        data.content,
+    )
+
+    # Recheck the target tree after the external call, holding the relevant
+    # rows until the new comment is committed.
+    await check_not_banned(user.id, session, "mute_post")
+    locked_post_id = await session.scalar(
+        select(ContentModel.id)
+        .where(ContentModel.id == post_id, ContentModel.type == "post")
+        .with_for_update()
+    )
+    if locked_post_id is None:
+        raise HTTPException(status_code=404, detail="POST_NOT_FOUND")
+    post = await session.scalar(
+        select(ContentModel)
+        .where(ContentModel.id == locked_post_id)
+        .execution_options(populate_existing=True)
+    )
+    try:
+        post = await require_content_interactable(post, user, session)
+    except HTTPException as error:
+        if error.detail == "CONTENT_NOT_FOUND":
+            raise HTTPException(status_code=404, detail="POST_NOT_FOUND") from error
+        raise
+
+    if data.replying_id:
+        locked_reply_id = await session.scalar(
+            select(ContentModel.id)
+            .where(
+                ContentModel.id == data.replying_id,
+                ContentModel.type == "comment",
+                ContentModel.parent_id == post.id,
+            )
+            .with_for_update()
+        )
+        if locked_reply_id is None:
+            raise HTTPException(status_code=404, detail="REPLY_TARGET_NOT_FOUND")
+        reply_target = await session.scalar(
+            select(ContentModel)
+            .where(ContentModel.id == locked_reply_id)
+            .execution_options(populate_existing=True)
+        )
+        try:
+            await require_content_interactable(reply_target, user, session)
+        except HTTPException as error:
+            if error.detail == "CONTENT_NOT_FOUND":
+                raise HTTPException(
+                    status_code=404,
+                    detail="REPLY_TARGET_NOT_FOUND",
+                ) from error
+            raise
 
     comment = ContentModel(
         type="comment",

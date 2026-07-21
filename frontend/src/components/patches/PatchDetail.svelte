@@ -20,6 +20,7 @@
     type VotingCountdown,
   } from "../../lib/governance";
   import { locale, translateError, translator } from "../../lib/i18n";
+  import type { DisplayTranslation } from "../../lib/ai";
   import { requestLogin } from "../../lib/login";
   import { onModerationUpdateForPath } from "../../lib/moderation";
   import { renderMarkdown } from "../../lib/markdown";
@@ -30,7 +31,7 @@
   import { GITHUB_REPO } from "../../lib/config";
   import AuthorMeta from "../AuthorMeta.svelte";
   import ConfirmDialog from "../ConfirmDialog.svelte";
-  import GlassModal from "../GlassModal.svelte";
+  import ReportDialog from "../moderation/ReportDialog.svelte";
   import TimelineItem from "../posts/TimelineItem.svelte";
   import VotingWindowMeta from "./VotingWindowMeta.svelte";
   import PostAiTools from "../posts/PostAiTools.svelte";
@@ -49,10 +50,12 @@
   let submittingReply = $state(false);
   let submittingPatch = $state(false);
   let likingId = $state<string | null>(null);
+  let displayTranslation = $state<DisplayTranslation | null>(null);
 
   let showSubmitDialog = $state(false);
   let showVoteDialog = $state(false);
   let pendingChoice = $state("");
+  let submittingVote = $state(false);
   let showDeleteDialog = $state(false);
   let pendingCommentDelete = $state<Comment | null>(null);
   let reportOpen = $state(false);
@@ -201,16 +204,17 @@
   }
 
   function promptVote(choice: string) {
-    if (!votingIsOpen) return;
+    if (!votingIsOpen || submittingVote) return;
     pendingChoice = choice;
     showVoteDialog = true;
   }
 
   async function confirmVote() {
-    if (!votingIsOpen) {
+    if (!votingIsOpen || submittingVote) {
       toaster.error($translator("patch.closed"), $translator("patch.awaitingTally"));
       return;
     }
+    submittingVote = true;
     try {
       const v = await votePatch(patchId, pendingChoice);
       currentUserVote = v;
@@ -219,6 +223,8 @@
       toaster.success($translator("patch.voteSuccess"));
     } catch (e: any) {
       toaster.error($translator("patch.voteFailed"), $translator("common.tryAgain"));
+    } finally {
+      submittingVote = false;
     }
   }
 
@@ -327,11 +333,11 @@
     reportOpen = true;
   }
 
-  async function submitReport() {
-    if (!reportReason.trim() || reporting) return;
+  async function submitReport(reason: string) {
+    if (!reason.trim() || reporting) return;
     reporting = true;
     try {
-      await createReport(reportTarget, reportReason.trim(), reportTargetType);
+      await createReport(reportTarget, reason.trim(), reportTargetType);
       reportOpen = false;
       toaster.success(
         $translator("moderation.reportSuccessTitle"),
@@ -478,7 +484,7 @@
         </button>
       {/if}
     </div>
-    <h1 class="mt-2 text-xl font-bold" style="color: var(--vercel-text);">{patch.title}</h1>
+    <h1 class="mt-2 text-xl font-bold" style="color: var(--vercel-text);">{displayTranslation?.title ?? patch.title}</h1>
     <div class="patch-author-row mt-1">
       <AuthorMeta username={patch.author_username ?? $translator("common.anonymous")} userId={patch.author_id} createdAt={patch.created_at} />
       {#if $currentUser?.id !== patch.author_id}
@@ -496,8 +502,13 @@
 
   <!-- Content (rendered markdown) -->
   <div class="card p-4 mb-8">
-    <div class="markdown-body">{@html renderMarkdown(patch.content)}</div>
-    <PostAiTools text={patch.content} title={patch.title} context="patch" />
+    <div class="markdown-body">{@html renderMarkdown(displayTranslation?.body ?? patch.content)}</div>
+    <PostAiTools
+      text={patch.content}
+      title={patch.title}
+      context="patch"
+      onTranslationChange={(translation) => (displayTranslation = translation)}
+    />
   </div>
 
   <!-- Vote panel -->
@@ -535,12 +546,15 @@
       </div>
 
       {#if votingIsOpen && $currentUser}
-        <div class="vote-actions">
+        <div class="vote-actions" role="group" aria-label={$translator("patch.governance")}>
           <button
+            type="button"
             class="vote-choice"
             class:is-for={currentUserVote?.choice === "for"}
             class:is-other={Boolean(currentUserVote && currentUserVote.choice !== "for")}
             aria-pressed={currentUserVote?.choice === "for"}
+            disabled={submittingVote}
+            aria-busy={submittingVote}
             onclick={() => promptVote("for")}
           >
             <ThumbsUpIcon size={16} strokeWidth={1.8} />
@@ -550,10 +564,13 @@
             {/if}
           </button>
           <button
+            type="button"
             class="vote-choice"
             class:is-against={currentUserVote?.choice === "against"}
             class:is-other={Boolean(currentUserVote && currentUserVote.choice !== "against")}
             aria-pressed={currentUserVote?.choice === "against"}
+            disabled={submittingVote}
+            aria-busy={submittingVote}
             onclick={() => promptVote("against")}
           >
             <ThumbsDownIcon size={16} strokeWidth={1.8} />
@@ -563,10 +580,13 @@
             {/if}
           </button>
           <button
+            type="button"
             class="vote-choice"
             class:is-abstain={currentUserVote?.choice === "abstain"}
             class:is-other={Boolean(currentUserVote && currentUserVote.choice !== "abstain")}
             aria-pressed={currentUserVote?.choice === "abstain"}
+            disabled={submittingVote}
+            aria-busy={submittingVote}
             onclick={() => promptVote("abstain")}
           >
             <CircleMinusIcon size={16} strokeWidth={1.8} />
@@ -739,35 +759,16 @@
   title={$translator("patch.castVoteTitle", { choice: voteLabel(pendingChoice) })}
   description={$translator("patch.castVoteDescription", { choice: voteLabel(pendingChoice) })}
   confirmText={$translator("common.confirm")}
+  tone="primary"
   onConfirm={confirmVote}
 />
 
-<GlassModal
-  show={reportOpen}
-  title={$translator("moderation.reportTitle")}
-  onclose={() => (reportOpen = false)}
->
-  <textarea
-    class="input report-reason"
-    rows="4"
-    bind:value={reportReason}
-    maxlength="500"
-    aria-label={$translator("moderation.reportReasonPlaceholder")}
-    placeholder={$translator("moderation.reportReasonPlaceholder")}
-  ></textarea>
-  <div class="report-actions">
-    <button class="btn btn-ghost btn-sm" onclick={() => (reportOpen = false)}>
-      {$translator("common.cancel")}
-    </button>
-    <button
-      class="btn btn-primary btn-sm"
-      disabled={reporting || !reportReason.trim()}
-      onclick={submitReport}
-    >
-      {$translator(reporting ? "moderation.reporting" : "moderation.reportSubmit")}
-    </button>
-  </div>
-</GlassModal>
+<ReportDialog
+  bind:open={reportOpen}
+  bind:reason={reportReason}
+  {reporting}
+  onsubmit={submitReport}
+/>
 
 <ContentEditModal
   show={editTarget !== null}
@@ -996,18 +997,6 @@
 
   .vote-check {
     margin-left: auto;
-  }
-
-  .report-reason {
-    width: 100%;
-    resize: vertical;
-  }
-
-  .report-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 0.5rem;
-    margin-top: 1rem;
   }
 
   .discussion-section {

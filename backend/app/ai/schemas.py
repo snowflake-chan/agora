@@ -134,8 +134,25 @@ class PollResponse(StrictModel):
     options: list[str]
 
 
-class SummaryAIResponse(StrictModel):
+class ModerationAIResponse(StrictModel):
     political_status: PoliticalStatus
+
+
+class TaskAIResponse(StrictModel):
+    political_status: PoliticalStatus
+    output_political_status: PoliticalStatus | None = None
+
+    @model_validator(mode="after")
+    def validate_status_sequence(self):
+        if self.political_status == "non_political":
+            if self.output_political_status is None:
+                raise ValueError("output political status is required")
+        elif self.output_political_status is not None:
+            raise ValueError("blocked source must not have an output status")
+        return self
+
+
+class SummaryAIResponse(TaskAIResponse):
     summary: str | None = None
 
     @field_validator("summary")
@@ -150,13 +167,14 @@ class SummaryAIResponse(StrictModel):
 
     @model_validator(mode="after")
     def require_non_political_result(self):
-        if self.political_status == "non_political" and self.summary is None:
+        if self.output_political_status == "non_political" and self.summary is None:
             raise ValueError("summary is required for non-political content")
+        if self.output_political_status != "non_political" and self.summary is not None:
+            raise ValueError("blocked output must be null")
         return self
 
 
-class TranslationAIResponse(StrictModel):
-    political_status: PoliticalStatus
+class TranslationAIResponse(TaskAIResponse):
     translation: str | None = None
 
     @field_validator("translation")
@@ -171,13 +189,14 @@ class TranslationAIResponse(StrictModel):
 
     @model_validator(mode="after")
     def require_non_political_result(self):
-        if self.political_status == "non_political" and self.translation is None:
+        if self.output_political_status == "non_political" and self.translation is None:
             raise ValueError("translation is required for non-political content")
+        if self.output_political_status != "non_political" and self.translation is not None:
+            raise ValueError("blocked output must be null")
         return self
 
 
-class TranslationBundleAIResponse(StrictModel):
-    political_status: PoliticalStatus
+class TranslationBundleAIResponse(TaskAIResponse):
     translations: list[str] | None = None
 
     @field_validator("translations")
@@ -194,13 +213,14 @@ class TranslationBundleAIResponse(StrictModel):
 
     @model_validator(mode="after")
     def require_non_political_result(self):
-        if self.political_status == "non_political" and self.translations is None:
+        if self.output_political_status == "non_political" and self.translations is None:
             raise ValueError("translations are required for non-political content")
+        if self.output_political_status != "non_political" and self.translations is not None:
+            raise ValueError("blocked output must be null")
         return self
 
 
-class WritingAssistAIResponse(StrictModel):
-    political_status: PoliticalStatus
+class WritingAssistAIResponse(TaskAIResponse):
     rewrites: list[str] | None = None
 
     @field_validator("rewrites")
@@ -217,13 +237,14 @@ class WritingAssistAIResponse(StrictModel):
 
     @model_validator(mode="after")
     def require_non_political_result(self):
-        if self.political_status == "non_political" and self.rewrites is None:
+        if self.output_political_status == "non_political" and self.rewrites is None:
             raise ValueError("rewrites are required for non-political content")
+        if self.output_political_status != "non_political" and self.rewrites is not None:
+            raise ValueError("blocked output must be null")
         return self
 
 
-class PollAIResponse(StrictModel):
-    political_status: PoliticalStatus
+class PollAIResponse(TaskAIResponse):
     question: str | None = None
     options: list[str] | None = None
 
@@ -255,10 +276,14 @@ class PollAIResponse(StrictModel):
 
     @model_validator(mode="after")
     def require_non_political_result(self):
-        if self.political_status == "non_political" and (
+        if self.output_political_status == "non_political" and (
             self.question is None or self.options is None
         ):
             raise ValueError("poll is required for non-political content")
+        if self.output_political_status != "non_political" and (
+            self.question is not None or self.options is not None
+        ):
+            raise ValueError("blocked output must be null")
         return self
 
 

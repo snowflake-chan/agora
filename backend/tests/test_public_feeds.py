@@ -46,7 +46,7 @@ def test_public_rss_and_json_feed_hide_private_workflow_states():
             f"{BASE}/posts",
             json={
                 "title": "Government election marker",
-                "content": "This political discussion must wait for review.",
+                "content": "[test:political] This discussion must wait for review.",
             },
         )
         assert pending_post.status_code == 201, pending_post.text

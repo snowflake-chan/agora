@@ -1,15 +1,18 @@
 <script lang="ts">
-  import { FileTextIcon, LanguagesIcon, SparklesIcon } from "@lucide/svelte";
+  import { FileTextIcon, LanguagesIcon, LoaderCircleIcon, SparklesIcon } from "@lucide/svelte";
   import { onMount } from "svelte";
   import {
     AiRequestError,
     getAiStatus,
+    refreshAiStatus,
     summarizeText,
     translateFields,
+    type DisplayTranslation,
     type TranslationContext,
   } from "../../lib/ai";
   import { ApiError } from "../../lib/auth";
   import { locale, translateError, translator, type Locale } from "../../lib/i18n";
+  import { shouldRequestTranslation } from "../../lib/language";
   import { requestLogin } from "../../lib/login";
   import { dispatchModerationUpdate } from "../../lib/moderation";
   import { autoTranslate, initPreferences } from "../../lib/preferences";
@@ -26,6 +29,7 @@
     sourceRevisionNumber = null,
     moderationTargetHref = null,
     onModerationQueued = null,
+    onTranslationChange = null,
   }: {
     text: string;
     title?: string | null;
@@ -36,29 +40,31 @@
     sourceRevisionNumber?: number | null;
     moderationTargetHref?: string | null;
     onModerationQueued?: (() => void) | null;
+    onTranslationChange?: ((translation: DisplayTranslation | null) => void) | null;
   } = $props();
 
   type Tool = "summary" | "translation";
+  type Availability = "checking" | "enabled" | "unavailable";
   type Notice = "political" | "outputBlocked" | "reviewPending" | "error" | null;
   type LocalizedOutput = { locale: Locale; text: string };
-  type LocalizedTranslation = {
-    locale: Locale;
-    title: string | null;
-    body: string;
-    cached: boolean;
-  };
-
-  let enabled = $state(false);
+  let availability = $state<Availability>("checking");
+  let availabilitySequence = 0;
   let loading = $state<Tool | null>(null);
   let active = $state<Tool | null>(null);
   let summary = $state<LocalizedOutput | null>(null);
-  let translation = $state<LocalizedTranslation | null>(null);
+  let translation = $state<DisplayTranslation | null>(null);
+  let translationVisible = $state(false);
   let notice = $state<Notice>(null);
   let errorMessage = $state<string | null>(null);
   let cachedLocale = $state<Locale>($locale);
   let visible = $state(false);
   let autoSignature = $state("");
   let sourceText = $derived(title?.trim() ? `${title.trim()}\n\n${text}` : text);
+  let translationFields = $derived([
+    ...(title?.trim() ? [{ key: "title", text: title.trim() }] : []),
+    { key: "body", text },
+  ]);
+  let translationNeeded = $derived(shouldRequestTranslation(translationFields, $locale));
   let sourceReference = $derived(
     sourceContentId && sourceRevisionNumber && sourceRevisionNumber > 0
       ? { contentId: sourceContentId, revisionNumber: sourceRevisionNumber }
@@ -71,13 +77,21 @@
     cachedLocale = nextLocale;
     summary = null;
     translation = null;
+    translationVisible = false;
     active = null;
     notice = null;
     errorMessage = null;
+    onTranslationChange?.(null);
   });
 
   $effect(() => {
-    if (!enabled || !visible || !$autoTranslate || !$currentUser) return;
+    if (
+      availability !== "enabled"
+      || !visible
+      || !$autoTranslate
+      || !$currentUser
+      || !translationNeeded
+    ) return;
     const signature = `${$locale}:${context}:${title ?? ""}:${text}`;
     if (autoSignature === signature) return;
     autoSignature = signature;
@@ -86,8 +100,21 @@
 
   onMount(async () => {
     initPreferences();
-    enabled = (await getAiStatus()).enabled;
+    await loadAvailability();
   });
+
+  async function loadAvailability(forceRefresh = false) {
+    const sequence = ++availabilitySequence;
+    availability = "checking";
+    try {
+      const status = await (forceRefresh ? refreshAiStatus() : getAiStatus());
+      if (sequence === availabilitySequence) {
+        availability = status.enabled ? "enabled" : "unavailable";
+      }
+    } catch {
+      if (sequence === availabilitySequence) availability = "unavailable";
+    }
+  }
 
   function trackVisibility(node: HTMLElement) {
     if (typeof IntersectionObserver === "undefined") {
@@ -166,12 +193,14 @@
   }
 
   async function runTranslation() {
+    if (!translationNeeded) return;
     if (!$currentUser) {
       requestLogin(undefined, () => void runTranslation());
       return;
     }
-    if (active === "translation" && translation?.locale === $locale) {
-      active = null;
+    if (translation?.locale === $locale) {
+      translationVisible = true;
+      onTranslationChange?.(translation);
       return;
     }
     notice = null;
@@ -181,21 +210,24 @@
     if (translation?.locale === targetLocale) return;
     loading = "translation";
     try {
-      const fields = [
-        ...(title?.trim() ? [{ key: "title", text: title.trim() }] : []),
-        { key: "body", text },
-      ];
-      const output = await translateFields(fields, targetLocale, context, sourceReference);
+      const output = await translateFields(translationFields, targetLocale, context, sourceReference);
+      if (output.skipped) {
+        active = null;
+        return;
+      }
       const translatedTitle = output.fields.find((field) => field.key === "title")?.translation ?? null;
       const translatedBody = output.fields.find((field) => field.key === "body")?.translation;
       if (!translatedBody) throw new ApiError("AI_RESPONSE_INVALID");
       if ($locale === targetLocale) {
-        translation = {
+        const nextTranslation: DisplayTranslation = {
           locale: targetLocale,
           title: translatedTitle,
           body: translatedBody,
           cached: output.cached,
         };
+        translation = nextTranslation;
+        translationVisible = true;
+        onTranslationChange?.(nextTranslation);
       }
     } catch (error) {
       handleError(error);
@@ -203,83 +235,125 @@
       loading = null;
     }
   }
+
+  function toggleTranslation() {
+    if (!translation) return;
+    translationVisible = !translationVisible;
+    onTranslationChange?.(translationVisible ? translation : null);
+  }
 </script>
 
-{#if enabled}
+{#if availability === "enabled" && (!translationOnly || translationNeeded || translation)}
   <section use:trackVisibility class:compact class="ai-tools" aria-label={$translator("ai.tools")}>
-    <div class="ai-toolbar">
-      <span class="ai-toolbar-label" class:visually-compact={compact || translationOnly}>
-        <SparklesIcon size={14} strokeWidth={1.8} aria-hidden="true" />
-        {$translator("ai.tools")}
-      </span>
-      <div class="ai-toolbar-actions">
-        {#if !translationOnly}
-          <button
-            type="button"
-            class:active={active === "summary"}
-            class="ai-tool"
-            disabled={loading !== null}
-            aria-pressed={active === "summary"}
-            aria-expanded={active === "summary" && summary?.locale === $locale}
-            onclick={runSummary}
-          >
-            <FileTextIcon size={14} strokeWidth={1.8} aria-hidden="true" />
-            {$translator(active === "summary" && summary?.locale === $locale ? "ai.hideResult" : "ai.summarize")}
-          </button>
-        {/if}
-        <button
-          type="button"
-          class:active={active === "translation"}
-          class="ai-tool"
-          disabled={loading !== null}
-          aria-pressed={active === "translation"}
-          aria-expanded={active === "translation" && translation?.locale === $locale}
-          onclick={runTranslation}
-        >
-          <LanguagesIcon size={14} strokeWidth={1.8} aria-hidden="true" />
-          {$translator(active === "translation" && translation?.locale === $locale ? "ai.hideResult" : "ai.translate")}
-        </button>
+    {#if !translationOnly || (translationNeeded && !translation)}
+      <div class="ai-toolbar">
+        <span class="ai-toolbar-label" class:visually-compact={compact || translationOnly}>
+          <SparklesIcon size={14} strokeWidth={1.8} aria-hidden="true" />
+          {$translator("ai.label")}
+        </span>
+        <div class="ai-toolbar-actions">
+          {#if !translationOnly}
+            <button
+              type="button"
+              class:active={active === "summary"}
+              class="ai-tool"
+              disabled={loading !== null}
+              aria-pressed={active === "summary"}
+              aria-expanded={active === "summary" && summary?.locale === $locale}
+              aria-busy={loading === "summary"}
+              title={$translator("ai.summarize")}
+              onclick={runSummary}
+            >
+              {#if loading === "summary"}
+                <LoaderCircleIcon class="loading-icon" size={14} strokeWidth={1.8} aria-hidden="true" />
+              {:else}
+                <FileTextIcon size={14} strokeWidth={1.8} aria-hidden="true" />
+              {/if}
+              {$translator(
+                loading === "summary"
+                  ? "common.processing"
+                  : active === "summary" && summary?.locale === $locale
+                    ? "ai.hideResult"
+                    : "ai.summarize",
+              )}
+            </button>
+          {/if}
+          {#if translationNeeded && !translation}
+            <button
+              type="button"
+              class="ai-tool"
+              disabled={loading !== null}
+              aria-busy={loading === "translation"}
+              title={$translator("ai.translate")}
+              onclick={runTranslation}
+            >
+              {#if loading === "translation"}
+                <LoaderCircleIcon class="loading-icon" size={14} strokeWidth={1.8} aria-hidden="true" />
+              {:else}
+                <LanguagesIcon size={14} strokeWidth={1.8} aria-hidden="true" />
+              {/if}
+              {$translator(loading === "translation" ? "common.processing" : "ai.translate")}
+            </button>
+          {/if}
+        </div>
       </div>
-    </div>
-    {#if !compact}
-      <p class="ai-disclosure">{$translator("ai.externalProcessing")}</p>
     {/if}
 
-    {#if loading}
-      <p class="ai-status" aria-live="polite">{$translator("common.processing")}</p>
-    {:else if notice === "political"}
-      <p class="ai-notice" role="status">{$translator("ai.politicalUnavailable")}</p>
+    {#if notice === "political"}
+      <p class="ai-feedback warning" role="status">{$translator("ai.politicalUnavailable")}</p>
     {:else if notice === "outputBlocked"}
-      <p class="ai-notice" role="status">{$translator("ai.outputBlocked")}</p>
+      <p class="ai-feedback warning" role="status">{$translator("ai.outputBlocked")}</p>
     {:else if notice === "reviewPending"}
-      <p class="ai-notice" role="status">{$translator("ai.reviewPendingDescription")}</p>
+      <p class="ai-feedback warning" role="status">{$translator("ai.reviewPendingDescription")}</p>
     {:else if notice === "error"}
-      <p class="ai-notice" role="status">{errorMessage ?? $translator("ai.failed")}</p>
-    {:else if active === "summary" && summary?.locale === $locale}
-      <section class="ai-output" aria-label={$translator("ai.summary")} aria-live="polite">
-        <p>{summary.text}</p>
-        {#if !compact}<small>{$translator("ai.outputNote")}</small>{/if}
-      </section>
-    {:else if active === "translation" && translation?.locale === $locale}
-      <section class="ai-output" aria-label={$translator("ai.translation")} aria-live="polite">
-        {#if translation.title}<h4>{translation.title}</h4>{/if}
-        <p>{translation.body}</p>
+      <p class="ai-feedback warning" role="status">{errorMessage ?? $translator("ai.failed")}</p>
+    {/if}
+
+    {#if active === "summary" && summary?.locale === $locale}
+      <section class="ai-result" aria-label={$translator("ai.summary")} aria-live="polite">
+        <div class="ai-result-heading">
+          <FileTextIcon size={13} strokeWidth={1.8} aria-hidden="true" />
+          <span>{$translator("ai.summary")}</span>
+        </div>
+        <div class="ai-result-copy"><p>{summary.text}</p></div>
         {#if !compact}<small>{$translator("ai.outputNote")}</small>{/if}
       </section>
     {/if}
+
+    {#if translation?.locale === $locale}
+      <div class="translation-status" aria-live="polite">
+        <span>
+          <LanguagesIcon size={12} strokeWidth={1.8} aria-hidden="true" />
+          {$translator("ai.translatedByAi")}
+        </span>
+        <button
+          type="button"
+          class="translation-toggle"
+          aria-pressed={!translationVisible}
+          onclick={toggleTranslation}
+        >
+          {$translator(translationVisible ? "ai.viewOriginal" : "ai.viewTranslation")}
+        </button>
+      </div>
+    {/if}
   </section>
+{:else if availability === "unavailable" && !compact && (!translationOnly || translationNeeded)}
+  <div class="ai-retry-row">
+    <button type="button" class="ai-retry" onclick={() => void loadAvailability(true)}>
+      <SparklesIcon size={14} strokeWidth={1.8} aria-hidden="true" />
+      {$translator("ai.retry")}
+    </button>
+  </div>
 {/if}
 
 <style>
   .ai-tools {
-    margin-top: 1rem;
-    padding-top: 0.8rem;
-    border-top: 1px solid var(--vercel-border);
+    min-width: 0;
+    margin-top: 0.65rem;
   }
 
   .ai-tools.compact {
-    margin-top: 0.7rem;
-    padding-top: 0.55rem;
+    margin-top: 0.45rem;
   }
 
   .ai-toolbar-label.visually-compact {
@@ -300,15 +374,16 @@
   }
 
   .ai-toolbar {
-    justify-content: space-between;
-    gap: 0.75rem;
+    min-height: 2rem;
+    gap: 0.35rem;
   }
 
   .ai-toolbar-label {
     gap: 0.35rem;
+    padding-right: 0.35rem;
     color: var(--vercel-text-tertiary);
     font-size: 0.6875rem;
-    font-weight: 700;
+    font-weight: 650;
     letter-spacing: 0;
   }
 
@@ -317,9 +392,9 @@
   }
 
   .ai-tool {
-    min-height: 2rem;
+    min-height: 1.9rem;
     gap: 0.35rem;
-    padding: 0.35rem 0.55rem;
+    padding: 0.3rem 0.48rem;
     border-radius: var(--vercel-radius-sm);
     color: var(--vercel-text-secondary);
     background: transparent;
@@ -343,71 +418,149 @@
 
   .ai-tool:disabled {
     cursor: wait;
-    opacity: 0.55;
+    opacity: 0.6;
   }
 
-  .ai-status,
-  .ai-notice,
-  .ai-output {
-    margin: 0.7rem 0 0;
-    color: var(--vercel-text-secondary);
-    font-size: 0.8125rem;
-    line-height: 1.55;
-  }
-
-  .ai-disclosure {
-    margin: 0.45rem 0 0;
+  .ai-feedback {
+    max-width: 46rem;
+    margin: 0.4rem 0 0;
     color: var(--vercel-text-tertiary);
-    font-size: 0.6875rem;
-    line-height: 1.45;
+    font-size: 0.72rem;
+    line-height: 1.5;
   }
 
-  .ai-notice {
+  .ai-feedback.warning {
     color: var(--vercel-warning);
   }
 
-  .ai-output {
-    padding-left: 0.8rem;
-    border-left: 2px solid var(--vercel-border-hover);
-    animation: ai-output-in 180ms ease-out;
+  .ai-result {
+    max-width: 46rem;
+    margin-top: 0.45rem;
+    padding-left: 0.65rem;
+    border-left: 1px solid var(--vercel-border-hover);
   }
 
-  .ai-output p {
+  .ai-result-heading {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    color: var(--vercel-text-tertiary);
+    font-size: 0.65rem;
+    font-weight: 600;
+  }
+
+  .ai-result-copy {
+    margin-top: 0.3rem;
+    color: var(--vercel-text-secondary);
+    font-size: 0.775rem;
+    line-height: 1.55;
+  }
+
+  .ai-result-copy p {
     margin: 0;
     white-space: pre-wrap;
   }
 
-  .ai-output h4 {
-    margin: 0 0 0.55rem;
+  .ai-result-copy h4 {
+    margin: 0 0 0.4rem;
     color: var(--vercel-text);
-    font-size: 0.875rem;
+    font-size: 0.8125rem;
     font-weight: 650;
   }
 
-  .ai-output small {
+  .ai-result small {
     display: block;
-    margin-top: 0.55rem;
+    margin-top: 0.35rem;
+    color: var(--vercel-text-tertiary);
+    font-size: 0.65rem;
+    line-height: 1.4;
+  }
+
+  .translation-status,
+  .translation-status > span,
+  .translation-toggle {
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .translation-status {
+    min-height: 1.75rem;
+    gap: 0.45rem;
+    margin-top: 0.3rem;
     color: var(--vercel-text-tertiary);
     font-size: 0.6875rem;
   }
 
-  @keyframes ai-output-in {
-    from { opacity: 0; transform: translateY(-0.2rem); }
-    to { opacity: 1; transform: translateY(0); }
+  .translation-status > span {
+    gap: 0.3rem;
+  }
+
+  .translation-toggle {
+    min-height: 1.75rem;
+    padding: 0 0.25rem;
+    border-radius: var(--vercel-radius-sm);
+    color: var(--vercel-text-secondary);
+    background: transparent;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .translation-toggle:hover {
+    color: var(--vercel-text);
+    background: var(--vercel-hover);
+  }
+
+  .translation-toggle:focus-visible {
+    outline: 2px solid var(--vercel-ring);
+    outline-offset: 1px;
+  }
+
+  .loading-icon {
+    animation: ai-spin 800ms linear infinite;
+  }
+
+  .ai-retry-row {
+    margin-top: 0.65rem;
+  }
+
+  .ai-retry {
+    display: inline-flex;
+    min-height: 1.9rem;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.3rem 0.48rem;
+    border-radius: var(--vercel-radius-sm);
+    color: var(--vercel-text-tertiary);
+    background: transparent;
+    font-size: 0.72rem;
+    font-weight: 600;
+  }
+
+  .ai-retry:hover,
+  .ai-retry:focus-visible {
+    color: var(--vercel-text);
+    background: var(--vercel-hover);
+  }
+
+  .ai-retry:focus-visible {
+    outline: 2px solid var(--vercel-ring);
+    outline-offset: 2px;
+  }
+
+  @keyframes ai-spin {
+    to { transform: rotate(360deg); }
   }
 
   @media (max-width: 24rem) {
-    .ai-toolbar {
-      align-items: flex-start;
-      flex-direction: column;
-    }
+    .ai-toolbar-actions { min-width: 0; flex-wrap: wrap; }
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .ai-output { animation: none; }
+    .loading-icon { animation: none; }
   }
 
-  :global(html[data-motion="reduced"]) .ai-output {
+  :global(html[data-motion="reduced"]) .loading-icon {
     animation: none;
   }
 </style>

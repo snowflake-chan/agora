@@ -8,16 +8,18 @@
   } from "../../lib/guilds";
   import { createReport } from "../../lib/admin";
   import { translator, translateError } from "../../lib/i18n";
+  import type { DisplayTranslation } from "../../lib/ai";
   import { requestLogin } from "../../lib/login";
   import { guildLevelColor, guildLevelKey, isGuildLogoImage } from "../../lib/guildPresentation";
   import { onModerationUpdateForPath } from "../../lib/moderation";
   import type { Patch } from "../../lib/patches";
+  import VoteSummary from "../patches/VoteSummary.svelte";
   import { currentUser, initAuth } from "../../stores/auth";
   import { toaster } from "../../stores/toaster";
   import { avatarInitial } from "../../lib/utils";
   import { Flag, LockKeyhole, RefreshCw, Trash2 } from "@lucide/svelte";
   import ConfirmDialog from "../ConfirmDialog.svelte";
-  import GlassModal from "../GlassModal.svelte";
+  import ReportDialog from "../moderation/ReportDialog.svelte";
   import VotingWindowMeta from "../patches/VotingWindowMeta.svelte";
   import GuildMemberCard from "./GuildMemberCard.svelte";
   import ModerationNotice from "../posts/ModerationNotice.svelte";
@@ -33,6 +35,7 @@
   let patchesError = $state(false);
   let discussionsError = $state(false);
   let discussionsLoading = $state(false);
+  let discussionTranslations = $state<Record<string, DisplayTranslation | null>>({});
   let loading = $state(true);
   let loadError = $state<string | null>(null);
   let actionError = $state<string | null>(null);
@@ -198,11 +201,11 @@
     reportOpen = true;
   }
 
-  async function submitReport() {
-    if (!reportTarget || !reportReason.trim() || reporting) return;
+  async function submitReport(reason: string) {
+    if (!reportTarget || !reason.trim() || reporting) return;
     reporting = true;
     try {
-      await createReport(reportTarget.id, reportReason.trim(), "content");
+      await createReport(reportTarget.id, reason.trim(), "content");
       reportOpen = false;
       toaster.success(
         $translator("moderation.reportSuccessTitle"),
@@ -324,8 +327,11 @@
           <a href="/patches/{p.id}" class="patch-card card p-4 block no-underline">
             <h3 class="font-semibold text-sm" style="color: var(--vercel-text);">{p.title}</h3>
             <div class="flex flex-wrap items-center gap-2 mt-2 text-xs" style="color: var(--vercel-text-tertiary);">
-              <span>{$translator("guild.voteSummary", { for: p.for_count, against: p.against_count })}</span>
-              <span>·</span>
+              <VoteSummary
+                forCount={p.for_count}
+                againstCount={p.against_count}
+                abstainCount={p.abstain_count}
+              />
               <RelativeTime value={p.created_at} />
               <VotingWindowMeta
                 status={p.status}
@@ -393,6 +399,7 @@
         <div class="empty-state"><p>{$translator("guild.noDiscussions")}</p></div>
       {:else}
         {#each discussions as d (d.id)}
+          {@const displayTranslation = discussionTranslations[d.id] ?? null}
           <div id={d.id} class="card discussion-card p-4 mb-2">
             <ModerationNotice
               status={d.moderation_status}
@@ -432,9 +439,9 @@
               </div>
             </div>
             {#if d.title}
-              <h4 class="font-semibold text-sm mb-1" style="color: var(--vercel-text);">{d.title}</h4>
+              <h4 class="font-semibold text-sm mb-1" style="color: var(--vercel-text);">{displayTranslation?.title ?? d.title}</h4>
             {/if}
-            <p class="text-sm" style="color: var(--vercel-text-secondary);">{d.content}</p>
+            <p class="text-sm" style="color: var(--vercel-text-secondary);">{displayTranslation?.body ?? d.content}</p>
             {#if d.moderation_status !== "pending_review" && d.moderation_status !== "rejected"}
               <PostAiTools
                 text={d.content}
@@ -454,6 +461,12 @@
                       }
                     : item);
                 }}
+                onTranslationChange={(translation) => {
+                  discussionTranslations = {
+                    ...discussionTranslations,
+                    [d.id]: translation,
+                  };
+                }}
               />
             {/if}
           </div>
@@ -471,28 +484,12 @@
   onConfirm={confirmAction}
 />
 
-<GlassModal
-  show={reportOpen}
-  title={$translator("moderation.reportTitle")}
-  onclose={() => (reportOpen = false)}
->
-  <textarea
-    class="input report-reason"
-    rows="4"
-    bind:value={reportReason}
-    maxlength="500"
-    aria-label={$translator("moderation.reportReasonPlaceholder")}
-    placeholder={$translator("moderation.reportReasonPlaceholder")}
-  ></textarea>
-  <div class="report-actions">
-    <button class="btn btn-ghost btn-sm" type="button" onclick={() => (reportOpen = false)}>
-      {$translator("common.cancel")}
-    </button>
-    <button class="btn btn-primary btn-sm" type="button" disabled={reporting || !reportReason.trim()} onclick={submitReport}>
-      {$translator(reporting ? "moderation.reporting" : "moderation.reportSubmit")}
-    </button>
-  </div>
-</GlassModal>
+<ReportDialog
+  bind:open={reportOpen}
+  bind:reason={reportReason}
+  {reporting}
+  onsubmit={submitReport}
+/>
 
 <style>
   .guild-header {
@@ -585,18 +582,6 @@
 
   .inline-error .btn {
     flex-shrink: 0;
-  }
-
-  .report-reason {
-    width: 100%;
-    resize: vertical;
-  }
-
-  .report-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 0.5rem;
-    margin-top: 1rem;
   }
 
   @media (max-width: 40rem) {

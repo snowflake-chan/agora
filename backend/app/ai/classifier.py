@@ -1,15 +1,30 @@
+import asyncio
 import logging
+from dataclasses import dataclass
 from typing import Literal
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.ai.errors import AIServiceError
+from app.ai.client import request_structured_completion
+from app.ai.prompts import MODERATION_SYSTEM_PROMPT, build_moderation_message
+from app.ai.schemas import ModerationAIResponse
 from app.config import settings
 
 
 PoliticalStatus = Literal["non_political", "political", "uncertain"]
 logger = logging.getLogger(__name__)
+_local_classifier_semaphore = asyncio.Semaphore(
+    settings.AI_MODERATION_MAX_CONCURRENT_REQUESTS
+)
+
+
+@dataclass(frozen=True, slots=True)
+class SemanticModerationDecision:
+    status: PoliticalStatus
+    provenance: str
+    cached: bool = False
 
 
 class ClassificationEnvelope(BaseModel):
@@ -63,26 +78,120 @@ def combine_related_texts(texts: list[str]) -> list[str]:
     return ["\n\n".join(values)] if values else []
 
 
-async def require_trusted_local_classification(
+def _provider_fallback_is_available() -> bool:
+    return settings.moderation_provider_fallback_is_configured()
+
+
+def semantic_moderation_is_configured() -> bool:
+    return bool(
+        settings.AI_POLITICAL_CLASSIFIER_URL.strip()
+        or _provider_fallback_is_available()
+    )
+
+
+def _moderation_engine() -> tuple[str, str]:
+    classifier_url = settings.AI_POLITICAL_CLASSIFIER_URL.strip()
+    if classifier_url:
+        return f"trusted-local:{classifier_url}", "trusted_classifier"
+    if _provider_fallback_is_available():
+        return f"provider:{settings.resolved_ai_model()}", "provider"
+    raise AIServiceError(503, "AI_POLITICAL_GUARD_UNAVAILABLE")
+
+
+async def classify_semantic_content(
+    texts: list[str],
+) -> SemanticModerationDecision:
+    """Classify related fields as one semantic document with a hashed verdict cache."""
+    # Import lazily: notifications package initialization reaches content moderation.
+    from app.ai.storage import (
+        cache_moderation,
+        cache_fill_lock,
+        enforce_ai_moderation_rate_limit,
+        get_cached_moderation,
+        moderation_cache_key,
+    )
+
+    related_texts = combine_related_texts(texts)
+    if not related_texts:
+        return SemanticModerationDecision(
+            status="non_political",
+            provenance="trusted_classifier",
+            cached=True,
+        )
+
+    document = related_texts[0]
+    engine, provenance = _moderation_engine()
+    cache_key = moderation_cache_key(text=document, engine=engine)
+    cached = await get_cached_moderation(cache_key)
+    if cached is not None:
+        status, cached_provenance = cached
+        return SemanticModerationDecision(
+            status=status,
+            provenance=cached_provenance,
+            cached=True,
+        )
+
+    async with cache_fill_lock(cache_key):
+        # Another coroutine or process may have filled the cache after our first
+        # read. Recheck before consuming review capacity or provider budget.
+        cached = await get_cached_moderation(cache_key)
+        if cached is not None:
+            status, cached_provenance = cached
+            return SemanticModerationDecision(
+                status=status,
+                provenance=cached_provenance,
+                cached=True,
+            )
+
+        await enforce_ai_moderation_rate_limit(
+            provider_fallback=provenance == "provider"
+        )
+        if provenance == "trusted_classifier":
+            async with _local_classifier_semaphore:
+                statuses = await classify_with_trusted_local_service([document])
+            status = statuses[0]
+        else:
+            try:
+                result = await request_structured_completion(
+                    user_message=build_moderation_message(document),
+                    response_type=ModerationAIResponse,
+                    max_tokens=24,
+                    system_prompt=MODERATION_SYSTEM_PROMPT,
+                )
+            except AIServiceError as exc:
+                raise AIServiceError(
+                    503,
+                    "AI_POLITICAL_GUARD_UNAVAILABLE",
+                ) from exc
+            status = result.political_status
+
+        await cache_moderation(
+            cache_key,
+            status=status,
+            provenance=provenance,
+        )
+    return SemanticModerationDecision(
+        status=status,
+        provenance=provenance,
+    )
+
+
+async def require_semantic_classification(
     texts: list[str],
     *,
     block_uncertain: bool = True,
     source_moderation_reason: str | None = None,
-    source_moderation_provenance: str | None = None,
-) -> None:
-    """Fail closed unless the trusted pre-egress classifier clears every value."""
-    related_texts = combine_related_texts(texts)
-    if not related_texts:
-        return
-    statuses = await classify_with_trusted_local_service(related_texts)
-    blocked = any(
-        status == "political" or (block_uncertain and status == "uncertain")
-        for status in statuses
+) -> SemanticModerationDecision:
+    """Fail closed on semantic political or uncertain content."""
+    decision = await classify_semantic_content(texts)
+    blocked = decision.status == "political" or (
+        block_uncertain and decision.status == "uncertain"
     )
     if blocked:
         raise AIServiceError(
             422,
             "POLITICAL_CONTENT_UNAVAILABLE",
             source_moderation_reason=source_moderation_reason,
-            source_moderation_provenance=source_moderation_provenance,
+            source_moderation_provenance=decision.provenance,
         )
+    return decision

@@ -4,6 +4,7 @@
   import { stripMarkdown } from "../../lib/utils";
   import AuthorMeta from "../AuthorMeta.svelte";
   import VotingWindowMeta from "./VotingWindowMeta.svelte";
+  import VoteSummary from "./VoteSummary.svelte";
 
   let {
     patch,
@@ -68,7 +69,11 @@
   <div class="patch-footer">
     <div class="patch-stats" style="color: var(--vercel-text-tertiary);">
       {#if patch.status !== "draft"}
-        <span>{$translator("patch.for")} {patch.for_count} · {$translator("patch.against")} {patch.against_count}</span>
+        <VoteSummary
+          forCount={patch.for_count}
+          againstCount={patch.against_count}
+          abstainCount={patch.abstain_count}
+        />
       {/if}
     </div>
     <AuthorMeta username={patch.author_username ?? $translator("common.anonymous")} userId={patch.author_id} createdAt={patch.created_at} />

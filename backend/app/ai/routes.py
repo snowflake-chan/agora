@@ -48,6 +48,9 @@ async def ai_eligible_user(
 ) -> User:
     """Require a signed-in account that is not globally restricted."""
     await check_not_banned(user.id, session)
+    # expire_on_commit=False keeps the authenticated scalar fields available,
+    # while ending the read transaction before a potentially slow provider call.
+    await session.commit()
     return user
 
 
@@ -55,7 +58,9 @@ async def published_poll_questions(
     session: AsyncSession = Depends(get_session),
 ) -> list[str]:
     """Use durable published polls as the long-lived duplicate source."""
-    return list((await session.scalars(select(PostPoll.question))).all())
+    questions = list((await session.scalars(select(PostPoll.question))).all())
+    await session.commit()
+    return questions
 
 
 def _http_error(error: AIServiceError) -> HTTPException:

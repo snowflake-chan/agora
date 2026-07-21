@@ -3,7 +3,9 @@ import hashlib
 import unicodedata
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+from app.schemas.content_input import validate_moderation_input_size
 
 
 def normalize_poll_option(value: str) -> str:
@@ -88,17 +90,52 @@ class PostRead(BaseModel):
 
 
 class PostCreate(BaseModel):
-    title: str
+    title: str = Field(max_length=200)
     content: str
-    tags: list[str] | None = None
+    tags: list[str] | None = Field(default=None, max_length=20)
     poll: PollCreate | None = None
+
+    @field_validator("tags")
+    @classmethod
+    def validate_tags(cls, values: list[str] | None) -> list[str] | None:
+        if values is None:
+            return None
+        normalized = [value.strip() for value in values]
+        if any(len(value) > 50 for value in normalized):
+            raise ValueError("TAG_TOO_LONG")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_ai_input_size(self):
+        texts = [self.title, self.content, *(self.tags or [])]
+        if self.poll is not None:
+            texts.extend([self.poll.question, *self.poll.options])
+        validate_moderation_input_size(texts)
+        return self
 
 
 class PostUpdate(BaseModel):
     revision_number: int = Field(ge=1)
-    title: str | None = None
+    title: str | None = Field(default=None, max_length=200)
     content: str | None = None
-    tags: list[str] | None = None
+    tags: list[str] | None = Field(default=None, max_length=20)
+
+    @field_validator("tags")
+    @classmethod
+    def validate_tags(cls, values: list[str] | None) -> list[str] | None:
+        if values is None:
+            return None
+        normalized = [value.strip() for value in values]
+        if any(len(value) > 50 for value in normalized):
+            raise ValueError("TAG_TOO_LONG")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_ai_input_size(self):
+        validate_moderation_input_size(
+            [self.title, self.content, *(self.tags or [])]
+        )
+        return self
 
 
 class ContentEditRead(BaseModel):
@@ -164,6 +201,11 @@ class CommentRead(BaseModel):
 class CommentCreate(BaseModel):
     content: str
     replying_id: UUID | None = None
+
+    @model_validator(mode="after")
+    def validate_ai_input_size(self):
+        validate_moderation_input_size([self.content])
+        return self
 
 
 # ── Feed (unified timeline) ──
