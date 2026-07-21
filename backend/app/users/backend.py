@@ -14,6 +14,8 @@ def get_strategy():
 transport = CookieTransport(
     cookie_name="Authorization",
     cookie_max_age=3600,
+    cookie_secure=settings.COOKIE_SECURE,
+    cookie_samesite=settings.COOKIE_SAMESITE.lower(),
 )
 
 

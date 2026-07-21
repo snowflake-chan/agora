@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     GITHUB_REPO: str = ""
     SUPER_ADMIN_EMAIL: str = ""
     CORS_ORIGIN: str = ""
+    COOKIE_SECURE: bool = True
+    COOKIE_SAMESITE: str = "lax"
     DEPLOY_ENABLED: bool = False
     GOVERNANCE_POLL_SECONDS: float = 60.0
     REPO_DIR: str = "/repo"
@@ -37,6 +39,13 @@ class Settings(BaseSettings):
             )
         if self.GOVERNANCE_POLL_SECONDS <= 0:
             raise ValueError("GOVERNANCE_POLL_SECONDS must be positive")
+        samesite = self.COOKIE_SAMESITE.lower()
+        if samesite not in {"lax", "strict", "none"}:
+            raise ValueError(
+                "COOKIE_SAMESITE must be one of 'lax', 'strict', or 'none'"
+            )
+        if samesite == "none" and not self.COOKIE_SECURE:
+            raise ValueError("COOKIE_SAMESITE='none' requires COOKIE_SECURE=true")
         return self
 
 

@@ -1,10 +1,17 @@
 import asyncio
+import logging
 from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
+
+if not logging.getLogger().handlers:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
 from app.patches.reconcile import reconcile as reconcile_patches
 from app.patches.reconcile import run_scheduler
 from app.users import auth_router, users_router

@@ -33,3 +33,26 @@ def test_production_accepts_strong_jwt_secret():
     )
 
     assert settings.APP_ENV == "production"
+
+
+def test_cookie_defaults_are_secure_and_lax():
+    settings = Settings(_env_file=None)
+
+    assert settings.COOKIE_SECURE is True
+    assert settings.COOKIE_SAMESITE == "lax"
+
+
+def test_cookie_samesite_rejects_unknown_value():
+    with pytest.raises(ValidationError, match="COOKIE_SAMESITE"):
+        Settings(_env_file=None, COOKIE_SAMESITE="invalid")
+
+
+def test_cross_origin_samesite_none_requires_secure():
+    with pytest.raises(ValidationError, match="COOKIE_SECURE"):
+        Settings(_env_file=None, COOKIE_SAMESITE="none", COOKIE_SECURE=False)
+
+
+def test_cross_origin_samesite_none_allowed_when_secure():
+    settings = Settings(_env_file=None, COOKIE_SAMESITE="none", COOKIE_SECURE=True)
+
+    assert settings.COOKIE_SAMESITE == "none"
