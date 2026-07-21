@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     AUTH_LOGIN_WINDOW_SECONDS: int = 300
     AUTH_REGISTER_ATTEMPTS: int = 30
     AUTH_REGISTER_WINDOW_SECONDS: int = 3600
+    AUTH_SESSION_MAX_AGE_SECONDS: int = 2592000
+    AUTH_MAX_SESSIONS_PER_USER: int = 3
     DEEPSEEK_API_KEY: str = ""
     DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
     DEEPSEEK_MODEL: str = "deepseek-v4-flash"
@@ -114,6 +116,10 @@ class Settings(BaseSettings):
             )
         if self.GOVERNANCE_POLL_SECONDS <= 0:
             raise ValueError("GOVERNANCE_POLL_SECONDS must be positive")
+        if self.AUTH_SESSION_MAX_AGE_SECONDS < 1:
+            raise ValueError("AUTH_SESSION_MAX_AGE_SECONDS must be positive")
+        if self.AUTH_MAX_SESSIONS_PER_USER < 1:
+            raise ValueError("AUTH_MAX_SESSIONS_PER_USER must be positive")
         if self.AI_HTTP_TIMEOUT_SECONDS <= 0:
             raise ValueError("AI_HTTP_TIMEOUT_SECONDS must be positive")
         if not 0 <= self.AI_TEMPERATURE <= 2:
@@ -191,7 +197,7 @@ class Settings(BaseSettings):
                 )
             if not self.AI_BASE_URL.startswith("https://"):
                 raise ValueError("AI_BASE_URL must use HTTPS in production")
-        if production_signals and not (
+        if production_signals and self.AI_FEATURES_ENABLED and not (
             self.AI_POLITICAL_CLASSIFIER_URL.strip()
             or self.moderation_provider_fallback_is_configured()
         ):

@@ -221,3 +221,38 @@ export async function checkAdmin(): Promise<boolean> {
     return false;
   }
 }
+
+
+export interface AdminAISettings {
+  enabled: boolean;
+  base_url: string;
+  model: string;
+  api_key_configured: boolean;
+  moderation_provider_fallback_enabled: boolean;
+  trusted_classifier_configured: boolean;
+  source: "database" | "environment";
+}
+
+export interface AdminAISettingsUpdate {
+  enabled: boolean;
+  base_url: string;
+  model: string;
+  api_key?: string;
+  moderation_provider_fallback_enabled: boolean;
+}
+
+export async function getAISettings(): Promise<AdminAISettings> {
+  return req("/ai-settings");
+}
+
+export async function updateAISettings(data: AdminAISettingsUpdate): Promise<AdminAISettings> {
+  return req("/ai-settings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function resetAISettings(): Promise<void> {
+  await req("/ai-settings", { method: "DELETE" });
+}

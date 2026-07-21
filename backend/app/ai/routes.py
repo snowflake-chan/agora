@@ -86,7 +86,7 @@ async def _deliver_translation_moderation_hold(content) -> None:
 @router.get("/status", response_model=AIStatusResponse)
 async def get_ai_status() -> AIStatusResponse:
     """Report local readiness without probing or identifying the provider."""
-    return AIStatusResponse(enabled=ai_is_enabled())
+    return AIStatusResponse(enabled=await ai_is_enabled())
 
 
 @router.post("/summarize", response_model=SummaryResponse)

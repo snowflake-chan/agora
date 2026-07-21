@@ -7,7 +7,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import lazyload, selectinload
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 
+from app.ai.runtime_config import (
+    AI_PROVIDER_SETTING_KEY,
+    AIRuntimeConfig,
+    get_ai_runtime_config,
+    invalidate_ai_runtime_config,
+    serialize_database_config,
+)
 from app.config import settings
 from app.content_moderation import (
     REVIEWABLE_MODERATION_STATUSES,
@@ -25,6 +33,7 @@ from app.db.models.guild import Guild, GuildMember
 from app.db.models.moderation import BanRecord, Report
 from app.db.models.patch import Patch as PatchModel
 from app.db.models.post_poll import PostPoll
+from app.db.models.settings import SiteSetting
 from app.db.models.user import User
 from app.moderation_delivery import deliver_moderation_effects
 from app.posts.realtime import publish_feed_event
@@ -766,6 +775,83 @@ async def seed_super_admin(
     )
     await session.commit()
     return {"ok": True}
+
+
+# ── AI provider settings ──
+
+class AdminAISettingsUpdate(BaseModel):
+    enabled: bool = False
+    base_url: str = Field(default="", max_length=500)
+    model: str = Field(default="", max_length=200)
+    api_key: str | None = Field(default=None, max_length=1000)
+    moderation_provider_fallback_enabled: bool = False
+
+
+def _admin_ai_settings_response(config: AIRuntimeConfig) -> dict:
+    return {
+        "enabled": config.enabled,
+        "base_url": config.base_url,
+        "model": config.model,
+        "api_key_configured": bool(config.api_key),
+        "moderation_provider_fallback_enabled": config.moderation_provider_fallback_enabled,
+        "trusted_classifier_configured": bool(settings.AI_POLITICAL_CLASSIFIER_URL.strip()),
+        "source": config.source,
+    }
+
+
+@router.get("/ai-settings")
+async def get_admin_ai_settings(_user: User = Depends(super_admin_required)):
+    config = await get_ai_runtime_config(force_refresh=True)
+    return _admin_ai_settings_response(config)
+
+
+@router.put("/ai-settings")
+async def set_admin_ai_settings(
+    data: AdminAISettingsUpdate,
+    _user: User = Depends(super_admin_required),
+    session: AsyncSession = Depends(get_session),
+):
+    current = await get_ai_runtime_config(force_refresh=True)
+    base_url = data.base_url.strip().rstrip("/")
+    model = data.model.strip()
+    api_key = current.api_key if data.api_key is None else data.api_key.strip()
+    if base_url and not base_url.startswith(("http://", "https://")):
+        raise HTTPException(422, detail="AI_BASE_URL_INVALID")
+    if settings.is_production() and base_url and not base_url.startswith("https://"):
+        raise HTTPException(422, detail="AI_BASE_URL_HTTPS_REQUIRED")
+    if data.enabled and not (api_key and base_url and model):
+        raise HTTPException(422, detail="AI_PROVIDER_CONFIG_INCOMPLETE")
+    if data.enabled and not settings.AI_POLITICAL_CLASSIFIER_URL.strip() and not data.moderation_provider_fallback_enabled:
+        raise HTTPException(422, detail="AI_MODERATION_PATH_REQUIRED")
+
+    config = AIRuntimeConfig(
+        enabled=data.enabled,
+        api_key=api_key,
+        base_url=base_url,
+        model=model,
+        moderation_provider_fallback_enabled=data.moderation_provider_fallback_enabled,
+        source="database",
+    )
+    row = (await session.execute(select(SiteSetting).where(SiteSetting.key == AI_PROVIDER_SETTING_KEY))).scalar_one_or_none()
+    if row is None:
+        row = SiteSetting(key=AI_PROVIDER_SETTING_KEY)
+        session.add(row)
+    row.value = serialize_database_config(config)
+    await session.commit()
+    invalidate_ai_runtime_config()
+    return _admin_ai_settings_response(await get_ai_runtime_config(force_refresh=True))
+
+
+@router.delete("/ai-settings", status_code=204)
+async def reset_admin_ai_settings(
+    _user: User = Depends(super_admin_required),
+    session: AsyncSession = Depends(get_session),
+) -> None:
+    row = (await session.execute(select(SiteSetting).where(SiteSetting.key == AI_PROVIDER_SETTING_KEY))).scalar_one_or_none()
+    if row is not None:
+        await session.delete(row)
+        await session.commit()
+    invalidate_ai_runtime_config()
 
 
 # ── Level Names ──

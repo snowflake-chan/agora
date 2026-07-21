@@ -5,6 +5,7 @@ from sqlalchemy import and_, exists, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
+from app.ai.runtime_config import get_ai_runtime_config
 from app.ai.classifier import (
     classify_semantic_content,
     semantic_moderation_is_configured,
@@ -132,10 +133,11 @@ async def assess_content_moderation(*texts: str) -> ModerationAssessment:
     values = [value.strip() for value in texts if value and value.strip()]
     if not values:
         return ModerationAssessment(status="published")
-    if not semantic_moderation_is_configured():
+    runtime_config = await get_ai_runtime_config()
+    if not semantic_moderation_is_configured(runtime_config):
         # Production startup requires the semantic classifier. This fallback keeps
         # explicitly AI-disabled local development usable without a hidden word list.
-        if settings.AI_FEATURES_ENABLED:
+        if settings.is_production() or runtime_config.enabled:
             return ModerationAssessment(
                 status="pending_review",
                 reason="classifier_unavailable",

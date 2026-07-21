@@ -117,9 +117,13 @@
   }
 
   .moderation-notice.rejected {
+    padding: 0.9rem 1rem;
     color: var(--vercel-danger);
-    background: var(--vercel-danger-bg);
-    border-left-color: var(--vercel-danger);
+    background: color-mix(in srgb, var(--vercel-danger) 12%, var(--vercel-card));
+    border: 1px solid color-mix(in srgb, var(--vercel-danger) 42%, var(--vercel-border));
+    border-left: 4px solid var(--vercel-danger);
+    border-radius: var(--vercel-radius-sm);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--vercel-danger) 8%, transparent);
   }
 
   .moderation-notice.approved {
@@ -200,9 +204,12 @@
   }
 
   .moderation-compact.rejected {
+    min-height: 1.75rem;
+    padding-inline: 0.6rem;
     color: var(--vercel-danger);
-    background: var(--vercel-danger-bg);
-    border-color: color-mix(in srgb, var(--vercel-danger) 22%, transparent);
+    background: color-mix(in srgb, var(--vercel-danger) 12%, var(--vercel-card));
+    border-color: color-mix(in srgb, var(--vercel-danger) 45%, transparent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--vercel-danger) 7%, transparent);
   }
 
   .moderation-compact.approved {

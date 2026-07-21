@@ -8,6 +8,7 @@ from pydantic import BaseModel, ValidationError
 
 from app.ai.errors import AIServiceError
 from app.ai.prompts import SYSTEM_PROMPT
+from app.ai.runtime_config import AIRuntimeConfig, get_ai_runtime_config
 from app.ai.schemas import CompletionEnvelope
 from app.config import settings
 
@@ -37,11 +38,13 @@ async def request_structured_completion(
     response_type: type[ResponseModel],
     max_tokens: int,
     system_prompt: str = SYSTEM_PROMPT,
+    runtime_config: AIRuntimeConfig | None = None,
 ) -> ResponseModel:
     """Call an OpenAI-compatible provider without logging sensitive request data."""
-    url = f"{settings.resolved_ai_base_url().rstrip('/')}/chat/completions"
+    runtime_config = runtime_config or await get_ai_runtime_config()
+    url = f"{runtime_config.base_url.rstrip('/')}/chat/completions"
     payload = {
-        "model": settings.resolved_ai_model(),
+        "model": runtime_config.model,
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message},
@@ -53,11 +56,11 @@ async def request_structured_completion(
     if settings.AI_RESPONSE_FORMAT_ENABLED:
         payload["response_format"] = {"type": "json_object"}
     if settings.AI_THINKING_MODE and _is_deepseek_provider(
-        settings.resolved_ai_base_url()
+        runtime_config.base_url
     ):
         payload["thinking"] = {"type": settings.AI_THINKING_MODE}
     headers = {
-        "Authorization": f"Bearer {settings.resolved_ai_api_key()}",
+        "Authorization": f"Bearer {runtime_config.api_key}",
         "Content-Type": "application/json",
     }
 

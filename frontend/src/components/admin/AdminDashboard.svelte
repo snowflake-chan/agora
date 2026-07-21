@@ -2,12 +2,14 @@
   import { onMount } from "svelte";
   import {
     Ban,
+    Bot,
     Check,
     ChevronDown,
     ChevronUp,
     Eye,
     ShieldAlert,
     Trash2,
+    RotateCcw,
     UnlockKeyhole,
     X,
   } from "@lucide/svelte";
@@ -20,6 +22,7 @@
     checkAdmin,
     deletePatchAdmin,
     deletePostAdmin,
+    getAISettings,
     getBanStatus,
     listAdminGuildDiscussions,
     listAdminPatches,
@@ -27,10 +30,13 @@
     listModerationReviews,
     listReports,
     listUsers,
+    resetAISettings,
     resolveReport,
     reviewModerationItem,
     setUserRole,
     unbanUser,
+    updateAISettings,
+    type AdminAISettings,
     type AdminGuildDiscussion,
     type AdminPatch,
     type AdminPost,
@@ -49,7 +55,7 @@
   import ConfirmDialog from "../ConfirmDialog.svelte";
   import GlassModal from "../GlassModal.svelte";
 
-  type Tab = "reports" | "moderation" | "posts" | "patches" | "users" | "guilds";
+  type Tab = "reports" | "moderation" | "posts" | "patches" | "ai" | "users" | "guilds";
   type BanStatus = {
     id: string;
     type: string;
@@ -72,6 +78,9 @@
   let guilds = $state<Guild[]>([]);
   let notice = $state("");
   let noticeKind = $state<"success" | "error">("success");
+  let aiSettings = $state<AdminAISettings | null>(null);
+  let aiApiKey = $state("");
+  let aiSaving = $state(false);
 
   let expandedGuild = $state<string | null>(null);
   let guildMembers = $state<GuildMember[]>([]);
@@ -136,7 +145,11 @@
       ]);
       await loadModerationReviews();
       if (isSuperAdmin) {
-        [users, guilds] = await Promise.all([listUsers(), listGuilds()]);
+        [users, guilds, aiSettings] = await Promise.all([
+          listUsers(),
+          listGuilds(),
+          getAISettings(),
+        ]);
       }
     } catch (error) {
       showNotice(
@@ -155,11 +168,48 @@
     ];
     if (isSuperAdmin) {
       shared.push(
+        { value: "ai", key: "admin.tabs.ai" },
         { value: "users", key: "admin.tabs.users" },
         { value: "guilds", key: "admin.tabs.guilds" },
       );
     }
     return shared;
+  }
+
+  async function saveAISettings() {
+    if (!aiSettings || aiSaving) return;
+    aiSaving = true;
+    try {
+      aiSettings = await updateAISettings({
+        enabled: aiSettings.enabled,
+        base_url: aiSettings.base_url,
+        model: aiSettings.model,
+        ...(aiApiKey.trim() ? { api_key: aiApiKey.trim() } : {}),
+        moderation_provider_fallback_enabled:
+          aiSettings.moderation_provider_fallback_enabled,
+      });
+      aiApiKey = "";
+      showNotice($translator("admin.ai.saved"));
+    } catch (error) {
+      showNotice(translateError(error, $translator, "admin.ai.saveFailed"), "error");
+    } finally {
+      aiSaving = false;
+    }
+  }
+
+  async function resetAIProviderSettings() {
+    if (aiSaving) return;
+    aiSaving = true;
+    try {
+      await resetAISettings();
+      aiSettings = await getAISettings();
+      aiApiKey = "";
+      showNotice($translator("admin.ai.resetDone"));
+    } catch (error) {
+      showNotice(translateError(error, $translator, "admin.ai.resetFailed"), "error");
+    } finally {
+      aiSaving = false;
+    }
   }
 
   function formatDate(value: string | null | undefined) {
@@ -730,6 +780,80 @@
       {/if}
     </section>
 
+  {:else if tab === "ai"}
+    <section class="settings-panel" aria-label={$translator("admin.tabs.ai")}>
+      {#if aiSettings}
+        <div class="settings-heading">
+          <div>
+            <p class="admin-eyebrow">{$translator("admin.ai.eyebrow")}</p>
+            <h2><Bot size={19} /> {$translator("admin.ai.title")}</h2>
+          </div>
+          <span class="source-badge">
+            {$translator(aiSettings.source === "database" ? "admin.ai.sourceDatabase" : "admin.ai.sourceEnvironment")}
+          </span>
+        </div>
+
+        <p class="settings-description">{$translator("admin.ai.description")}</p>
+
+        <label class="toggle-row">
+          <span>
+            <strong>{$translator("admin.ai.enabled")}</strong>
+            <small>{$translator("admin.ai.enabledDescription")}</small>
+          </span>
+          <input type="checkbox" bind:checked={aiSettings.enabled} />
+        </label>
+
+        <div class="settings-grid">
+          <label>
+            <span>{$translator("admin.ai.baseUrl")}</span>
+            <input class="input" type="url" bind:value={aiSettings.base_url} placeholder="https://provider.example/v1" />
+          </label>
+          <label>
+            <span>{$translator("admin.ai.model")}</span>
+            <input class="input" bind:value={aiSettings.model} placeholder="model-name" />
+          </label>
+          <label class="settings-wide">
+            <span>{$translator("admin.ai.apiKey")}</span>
+            <input
+              class="input"
+              type="password"
+              bind:value={aiApiKey}
+              autocomplete="new-password"
+              placeholder={aiSettings.api_key_configured
+                ? $translator("admin.ai.apiKeyConfigured")
+                : $translator("admin.ai.apiKeyPlaceholder")}
+            />
+            <small>{$translator("admin.ai.apiKeyDescription")}</small>
+          </label>
+        </div>
+
+        <label class="toggle-row">
+          <span>
+            <strong>{$translator("admin.ai.moderationFallback")}</strong>
+            <small>{$translator("admin.ai.moderationFallbackDescription")}</small>
+          </span>
+          <input type="checkbox" bind:checked={aiSettings.moderation_provider_fallback_enabled} />
+        </label>
+
+        <div class:configured={aiSettings.trusted_classifier_configured} class="classifier-status">
+          {$translator(aiSettings.trusted_classifier_configured
+            ? "admin.ai.classifierConfigured"
+            : "admin.ai.classifierMissing")}
+        </div>
+
+        <div class="settings-actions">
+          <button class="btn btn-secondary" onclick={resetAIProviderSettings} disabled={aiSaving}>
+            <RotateCcw size={15} /> {$translator("admin.ai.useEnvironment")}
+          </button>
+          <button class="btn btn-primary" onclick={saveAISettings} disabled={aiSaving}>
+            {$translator(aiSaving ? "common.processing" : "common.save")}
+          </button>
+        </div>
+      {:else}
+        <div class="empty-state"><div class="spinner"></div></div>
+      {/if}
+    </section>
+
   {:else if tab === "users"}
     <section class="admin-list" aria-label={$translator("admin.tabs.users")}>
       {#each users as user (user.id)}
@@ -1063,6 +1187,90 @@
     color: var(--vercel-danger);
     background: color-mix(in srgb, var(--vercel-danger) 9%, transparent);
     border-left-color: var(--vercel-danger);
+  }
+
+  .settings-panel {
+    display: grid;
+    gap: 1rem;
+    padding: 1.25rem;
+    border: 1px solid var(--vercel-border);
+    border-radius: var(--vercel-radius-lg);
+    background: var(--vercel-card);
+  }
+
+  .settings-heading,
+  .settings-actions,
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .settings-heading h2 {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--vercel-text);
+    font-size: 1.05rem;
+  }
+
+  .source-badge,
+  .classifier-status {
+    width: fit-content;
+    padding: 0.35rem 0.55rem;
+    border: 1px solid var(--vercel-border);
+    border-radius: var(--vercel-radius-sm);
+    color: var(--vercel-text-tertiary);
+    background: var(--vercel-surface-muted);
+    font-size: 0.72rem;
+    font-weight: 650;
+  }
+
+  .classifier-status.configured {
+    color: var(--vercel-success);
+    border-color: color-mix(in srgb, var(--vercel-success) 35%, var(--vercel-border));
+  }
+
+  .settings-description,
+  .toggle-row small,
+  .settings-grid small {
+    color: var(--vercel-text-tertiary);
+    font-size: 0.75rem;
+    line-height: 1.5;
+  }
+
+  .settings-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.9rem;
+  }
+
+  .settings-grid label {
+    display: grid;
+    gap: 0.4rem;
+    color: var(--vercel-text-secondary);
+    font-size: 0.78rem;
+    font-weight: 600;
+  }
+
+  .settings-wide { grid-column: 1 / -1; }
+
+  .toggle-row {
+    padding: 0.85rem;
+    border: 1px solid var(--vercel-border);
+    border-radius: var(--vercel-radius-sm);
+  }
+
+  .toggle-row span { display: grid; gap: 0.2rem; }
+  .toggle-row strong { color: var(--vercel-text); font-size: 0.82rem; }
+  .toggle-row input { width: 1.1rem; height: 1.1rem; accent-color: var(--vercel-accent); }
+  .settings-actions { justify-content: flex-end; }
+
+  @media (max-width: 40rem) {
+    .settings-grid { grid-template-columns: 1fr; }
+    .settings-wide { grid-column: auto; }
+    .settings-heading { align-items: flex-start; flex-direction: column; }
   }
 
   .admin-tabs {

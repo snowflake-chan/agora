@@ -533,8 +533,8 @@
       <!-- Vote bar -->
       {#if totalVotes > 0}
         <div class="vote-bar flex h-2 mb-4 rounded-full overflow-hidden">
-          <div style="width: {forPct}%; background: var(--vercel-success); transition: width 0.3s;"></div>
-          <div style="width: {againstPct}%; background: var(--vercel-danger); transition: width 0.3s;"></div>
+          <div class="vote-bar-for" style="width: {forPct}%;"></div>
+          <div class="vote-bar-against" style="width: {againstPct}%;"></div>
           <div class="vote-bar-abstain" style="width: {abstainPct}%;"></div>
         </div>
       {/if}
@@ -728,7 +728,7 @@
       {#each votes as v (v.id)}
         <div class="flex items-center justify-between px-4 py-2 text-sm border-b last:border-0" style="border-color: var(--vercel-border);">
           <span style="color: var(--vercel-text-secondary);">{v.voter_username ?? $translator("common.anonymous")}</span>
-          <span class="text-xs" style="color: {v.choice === 'for' ? 'var(--vercel-success)' : v.choice === 'against' ? 'var(--vercel-danger)' : 'var(--vercel-text-tertiary)'};">
+          <span class="vote-record-choice" class:is-abstain={v.choice === "abstain"}>
             {voteLabel(v.choice)}
           </span>
         </div>
@@ -862,8 +862,16 @@
     transition: width 0.3s ease;
   }
 
+  .vote-bar-for {
+    background: var(--vercel-accent);
+  }
+
+  .vote-bar-against {
+    background: color-mix(in srgb, var(--vercel-accent) 58%, var(--vercel-surface-muted));
+  }
+
   .vote-bar-abstain {
-    background: var(--vercel-neutral-bg);
+    background: color-mix(in srgb, var(--vercel-accent) 22%, var(--vercel-surface-muted));
   }
 
   .vote-heading,
@@ -922,8 +930,18 @@
     font-size: 0.7rem;
   }
 
-  .vote-total.is-for strong { color: var(--vercel-success); }
-  .vote-total.is-against strong { color: var(--vercel-danger); }
+  .vote-total.is-for strong,
+  .vote-total.is-against strong { color: var(--vercel-accent); }
+
+  .vote-record-choice {
+    color: var(--vercel-accent);
+    font-size: 0.75rem;
+    font-weight: 650;
+  }
+
+  .vote-record-choice.is-abstain {
+    color: var(--vercel-text-tertiary);
+  }
 
   .vote-actions {
     display: grid;
@@ -954,22 +972,12 @@
     transform: translateY(-1px);
   }
 
-  .vote-choice.is-for {
-    border-color: color-mix(in srgb, var(--vercel-success) 55%, transparent);
-    color: var(--vercel-success);
-    background: color-mix(in srgb, var(--vercel-success) 12%, transparent);
-  }
-
-  .vote-choice.is-against {
-    border-color: color-mix(in srgb, var(--vercel-danger) 55%, transparent);
-    color: var(--vercel-danger);
-    background: color-mix(in srgb, var(--vercel-danger) 12%, transparent);
-  }
-
+  .vote-choice.is-for,
+  .vote-choice.is-against,
   .vote-choice.is-abstain {
-    border-color: var(--vercel-text-tertiary);
-    color: var(--vercel-text);
-    background: var(--vercel-hover-strong);
+    border-color: color-mix(in srgb, var(--vercel-accent) 55%, transparent);
+    color: var(--vercel-accent);
+    background: color-mix(in srgb, var(--vercel-accent) 12%, transparent);
   }
 
   .vote-choice.is-other {

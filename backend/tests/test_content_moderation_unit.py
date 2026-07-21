@@ -5,6 +5,7 @@ import pytest
 
 from app import content_moderation
 from app.ai import classifier, storage
+from app.ai.runtime_config import environment_ai_config
 from app.ai.errors import AIServiceError
 from app.ai.schemas import ModerationAIResponse
 from app.config import settings
@@ -55,6 +56,16 @@ def semantic_provider(monkeypatch):
     monkeypatch.setattr(settings, "DEEPSEEK_API_KEY", "test-key")
     monkeypatch.setattr(settings, "DEEPSEEK_BASE_URL", "https://api.example")
     monkeypatch.setattr(settings, "DEEPSEEK_MODEL", "semantic-test-model")
+
+    async def runtime_from_environment(*, force_refresh=False):
+        return environment_ai_config()
+
+    monkeypatch.setattr(classifier, "get_ai_runtime_config", runtime_from_environment)
+    monkeypatch.setattr(
+        content_moderation,
+        "get_ai_runtime_config",
+        runtime_from_environment,
+    )
 
     fake = FakeRedis()
 
@@ -277,7 +288,7 @@ def test_local_classifier_remains_preferred_over_provider_fallback(
         "http://politics-classifier:8080/classify",
     )
 
-    assert classifier._moderation_engine() == (
+    assert classifier._moderation_engine(environment_ai_config()) == (
         "trusted-local:http://politics-classifier:8080/classify",
         "trusted_classifier",
     )

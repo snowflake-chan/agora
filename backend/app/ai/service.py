@@ -5,6 +5,7 @@ from app.ai.classifier import (
 )
 from app.ai.errors import AIServiceError
 from app.ai.prompts import build_user_message
+from app.ai.runtime_config import AIRuntimeConfig, get_ai_runtime_config
 from app.ai.schemas import (
     PollAIResponse,
     PollGenerateRequest,
@@ -47,22 +48,21 @@ def _political_source_error(provenance: str) -> AIServiceError:
     )
 
 
-def ai_is_enabled() -> bool:
+async def ai_is_enabled() -> bool:
+    runtime_config = await get_ai_runtime_config()
     return (
-        settings.AI_FEATURES_ENABLED
-        and semantic_moderation_is_configured()
-        and bool(settings.resolved_ai_api_key().strip())
-        and bool(settings.resolved_ai_base_url().strip())
-        and bool(settings.resolved_ai_model().strip())
+        runtime_config.enabled
+        and semantic_moderation_is_configured(runtime_config)
+        and runtime_config.provider_is_configured()
     )
 
 
-def _validate_request(
+async def _validate_request(
     *,
     text: str,
     additional_untrusted_text: list[str] | None = None,
 ) -> list[str]:
-    if not ai_is_enabled():
+    if not await ai_is_enabled():
         raise AIServiceError(503, "AI_FEATURE_UNAVAILABLE")
     values = [text, *(additional_untrusted_text or [])]
     if sum(len(value) for value in values) > settings.AI_MAX_INPUT_CHARS:
@@ -77,7 +77,7 @@ async def _prepare_request(
     client_identifier: str,
     additional_untrusted_text: list[str] | None = None,
 ) -> None:
-    values = _validate_request(
+    values = await _validate_request(
         text=text,
         additional_untrusted_text=additional_untrusted_text,
     )
@@ -120,8 +120,9 @@ def _reject_political_output_status(status: str | None) -> None:
 
 async def _recheck_political_output(*values: str, force: bool = False) -> None:
     """Recheck generated output with the trusted local AI in production."""
+    runtime_config = await get_ai_runtime_config()
     if settings.AI_POLITICAL_CLASSIFIER_URL.strip() or (
-        force and semantic_moderation_is_configured()
+        force and semantic_moderation_is_configured(runtime_config)
     ):
         try:
             await require_semantic_classification(list(values))

@@ -12,6 +12,7 @@ from app.ai import classifier as political_classifier
 from app.ai import service as ai_service
 from app.ai import storage
 from app.ai import routes as ai_routes
+from app.ai.runtime_config import environment_ai_config
 from app.ai.errors import AIServiceError
 from app.ai.routes import (
     ai_eligible_user,
@@ -73,6 +74,8 @@ def ai_app():
 @pytest.fixture(autouse=True)
 def configured_ai(monkeypatch):
     monkeypatch.setattr(settings, "APP_ENV", "test")
+    monkeypatch.setattr(settings, "GITHUB_REPO", "")
+    monkeypatch.setattr(settings, "DEPLOY_ENABLED", False)
     monkeypatch.setattr(settings, "AI_FEATURES_ENABLED", True)
     monkeypatch.setattr(settings, "DEEPSEEK_API_KEY", "test-key")
     monkeypatch.setattr(settings, "DEEPSEEK_BASE_URL", "https://api.deepseek.com")
@@ -111,6 +114,17 @@ def configured_ai(monkeypatch):
     monkeypatch.setattr(settings, "AI_POLL_RESERVATION_TTL_SECONDS", 60)
     monkeypatch.setattr(settings, "AI_TRANSLATION_CACHE_TTL_SECONDS", 604800)
     monkeypatch.setattr(settings, "AI_MAX_CONCURRENT_REQUESTS", 8)
+
+    async def runtime_from_environment(*, force_refresh=False):
+        return environment_ai_config()
+
+    monkeypatch.setattr(ai_client, "get_ai_runtime_config", runtime_from_environment)
+    monkeypatch.setattr(
+        political_classifier,
+        "get_ai_runtime_config",
+        runtime_from_environment,
+    )
+    monkeypatch.setattr(ai_service, "get_ai_runtime_config", runtime_from_environment)
 
     async def allow_semantic_content(_texts, **_kwargs):
         return political_classifier.SemanticModerationDecision(

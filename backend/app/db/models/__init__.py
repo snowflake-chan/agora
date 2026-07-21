@@ -1,4 +1,5 @@
 from .user import User
+from .auth_session import AuthSession
 from .content import Content, ContentRevision
 from .patch import Patch, PatchRevision
 from .vote import Vote
@@ -12,6 +13,7 @@ from .settings import SiteSetting
 
 __all__ = [
     "User",
+    "AuthSession",
     "Content",
     "ContentRevision",
     "Patch",

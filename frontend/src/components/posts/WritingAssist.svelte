@@ -6,7 +6,7 @@
     SparklesIcon,
     XIcon,
   } from "@lucide/svelte";
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import {
     assistWriting,
     getAiStatus,
@@ -44,6 +44,8 @@
   let availability = $state<Availability>("checking");
   let open = $state(false);
   let triggerElement = $state<HTMLButtonElement | null>(null);
+  let panelElement = $state<HTMLElement | null>(null);
+  let panelStyle = $state("");
   let action = $state<WritingAction>("polish");
   let loading = $state(false);
   let suggestedTitle = $state("");
@@ -65,6 +67,19 @@
 
   onMount(() => {
     void loadAvailability();
+
+    const reposition = () => positionPanel();
+    window.addEventListener("resize", reposition);
+    window.addEventListener("scroll", reposition, true);
+    window.visualViewport?.addEventListener("resize", reposition);
+    window.visualViewport?.addEventListener("scroll", reposition);
+
+    return () => {
+      window.removeEventListener("resize", reposition);
+      window.removeEventListener("scroll", reposition, true);
+      window.visualViewport?.removeEventListener("resize", reposition);
+      window.visualViewport?.removeEventListener("scroll", reposition);
+    };
   });
 
   $effect(() => {
@@ -89,12 +104,14 @@
     }
   }
 
-  function toggleOpen() {
+  async function toggleOpen() {
     if (open) {
       closePanel(false);
       return;
     }
     open = true;
+    await tick();
+    positionPanel();
   }
 
   function closePanel(restoreFocus = true) {
@@ -172,11 +189,44 @@
 
   function closeOnOutsidePointer(node: HTMLElement) {
     function handlePointer(event: PointerEvent) {
-      if (!open || node.contains(event.target as Node)) return;
+      const target = event.target as Node;
+      if (!open || node.contains(target) || panelElement?.contains(target)) return;
       closePanel(false);
     }
     document.addEventListener("pointerdown", handlePointer, true);
     return { destroy: () => document.removeEventListener("pointerdown", handlePointer, true) };
+  }
+
+  function portalPanel(node: HTMLElement) {
+    panelElement = node;
+    document.body.appendChild(node);
+    positionPanel();
+    return {
+      destroy() {
+        if (panelElement === node) panelElement = null;
+        node.remove();
+      },
+    };
+  }
+
+  function positionPanel() {
+    if (!open || !triggerElement || !panelElement) return;
+    if (window.matchMedia("(max-width: 36rem)").matches) {
+      panelStyle = "";
+      return;
+    }
+
+    const triggerRect = triggerElement.getBoundingClientRect();
+    const viewport = window.visualViewport;
+    const viewportWidth = viewport?.width ?? window.innerWidth;
+    const viewportHeight = viewport?.height ?? window.innerHeight;
+    const viewportTop = viewport?.offsetTop ?? 0;
+    const viewportLeft = viewport?.offsetLeft ?? 0;
+    const top = Math.max(viewportTop + 16, triggerRect.bottom + 7);
+    const right = Math.max(16, window.innerWidth - viewportLeft - viewportWidth + 16, window.innerWidth - triggerRect.right);
+    const width = Math.max(240, Math.min(448, viewportWidth - 32));
+    const maxHeight = Math.max(160, viewportTop + viewportHeight - top - 16);
+    panelStyle = `--writing-panel-top:${top}px;--writing-panel-right:${right}px;--writing-panel-width:${width}px;--writing-panel-max-height:${maxHeight}px;`;
   }
 </script>
 
@@ -200,7 +250,14 @@
   </button>
 
   {#if open}
-    <section id={panelId} class="writing-panel" aria-label={$translator("ai.writingTools")}>
+    <section
+      use:portalPanel
+      id={panelId}
+      class="writing-panel"
+      style={panelStyle}
+      aria-label={$translator("ai.writingTools")}
+      onkeydown={handleKeydown}
+    >
       <div class="writing-panel-header">
         <strong>{$translator("ai.writingTools")}</strong>
         <button
@@ -350,12 +407,12 @@
   }
 
   .writing-panel {
-    position: absolute;
-    z-index: 40;
-    top: calc(100% + 0.45rem);
-    right: 0;
-    width: min(28rem, calc(100vw - 2rem));
-    max-height: min(32rem, 70dvh);
+    position: fixed;
+    z-index: var(--z-popover);
+    top: var(--writing-panel-top, 1rem);
+    right: var(--writing-panel-right, 1rem);
+    width: var(--writing-panel-width, min(28rem, calc(100vw - 2rem)));
+    max-height: min(32rem, var(--writing-panel-max-height, 70dvh));
     overflow: auto;
     overscroll-behavior: contain;
     padding: 0.65rem;
@@ -536,13 +593,12 @@
 
   @media (max-width: 36rem) {
     .writing-panel {
-      position: fixed;
       right: 0.75rem;
-      bottom: 4.75rem;
+      bottom: auto;
       left: 0.75rem;
-      top: auto;
+      top: max(4rem, calc(env(safe-area-inset-top) + 0.75rem));
       width: auto;
-      max-height: 60dvh;
+      max-height: calc(100dvh - 9.5rem - env(safe-area-inset-top));
     }
   }
 

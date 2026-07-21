@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from app.ai.errors import AIServiceError
 from app.ai.client import request_structured_completion
 from app.ai.prompts import MODERATION_SYSTEM_PROMPT, build_moderation_message
+from app.ai.runtime_config import AIRuntimeConfig, get_ai_runtime_config
 from app.ai.schemas import ModerationAIResponse
 from app.config import settings
 
@@ -78,23 +79,26 @@ def combine_related_texts(texts: list[str]) -> list[str]:
     return ["\n\n".join(values)] if values else []
 
 
-def _provider_fallback_is_available() -> bool:
-    return settings.moderation_provider_fallback_is_configured()
-
-
-def semantic_moderation_is_configured() -> bool:
-    return bool(
-        settings.AI_POLITICAL_CLASSIFIER_URL.strip()
-        or _provider_fallback_is_available()
+def _provider_fallback_is_available(runtime_config: AIRuntimeConfig) -> bool:
+    return (
+        runtime_config.moderation_provider_fallback_enabled
+        and runtime_config.provider_is_configured()
     )
 
 
-def _moderation_engine() -> tuple[str, str]:
+def semantic_moderation_is_configured(runtime_config: AIRuntimeConfig) -> bool:
+    return bool(
+        settings.AI_POLITICAL_CLASSIFIER_URL.strip()
+        or _provider_fallback_is_available(runtime_config)
+    )
+
+
+def _moderation_engine(runtime_config: AIRuntimeConfig) -> tuple[str, str]:
     classifier_url = settings.AI_POLITICAL_CLASSIFIER_URL.strip()
     if classifier_url:
         return f"trusted-local:{classifier_url}", "trusted_classifier"
-    if _provider_fallback_is_available():
-        return f"provider:{settings.resolved_ai_model()}", "provider"
+    if _provider_fallback_is_available(runtime_config):
+        return f"provider:{runtime_config.model}", "provider"
     raise AIServiceError(503, "AI_POLITICAL_GUARD_UNAVAILABLE")
 
 
@@ -111,6 +115,7 @@ async def classify_semantic_content(
         moderation_cache_key,
     )
 
+    runtime_config = await get_ai_runtime_config()
     related_texts = combine_related_texts(texts)
     if not related_texts:
         return SemanticModerationDecision(
@@ -120,7 +125,7 @@ async def classify_semantic_content(
         )
 
     document = related_texts[0]
-    engine, provenance = _moderation_engine()
+    engine, provenance = _moderation_engine(runtime_config)
     cache_key = moderation_cache_key(text=document, engine=engine)
     cached = await get_cached_moderation(cache_key)
     if cached is not None:
@@ -157,6 +162,7 @@ async def classify_semantic_content(
                     response_type=ModerationAIResponse,
                     max_tokens=24,
                     system_prompt=MODERATION_SYSTEM_PROMPT,
+                    runtime_config=runtime_config,
                 )
             except AIServiceError as exc:
                 raise AIServiceError(
