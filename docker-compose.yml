@@ -72,6 +72,8 @@ services:
       AI_POLL_RESERVATION_TTL_SECONDS: ${AI_POLL_RESERVATION_TTL_SECONDS:-300}
       AI_TRANSLATION_CACHE_TTL_SECONDS: ${AI_TRANSLATION_CACHE_TTL_SECONDS:-604800}
       AI_MAX_CONCURRENT_REQUESTS: ${AI_MAX_CONCURRENT_REQUESTS:-8}
+      DAILY_QUESTION_ENABLED: ${DAILY_QUESTION_ENABLED:-true}
+      DAILY_QUESTION_HOUR_UTC: ${DAILY_QUESTION_HOUR_UTC:-9}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       # HOST_REPO_DIR is discovered automatically by deploy.sh when it runs
