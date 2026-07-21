@@ -295,7 +295,7 @@ def test_local_classifier_remains_preferred_over_provider_fallback(
 
 
 @pytest.mark.asyncio
-async def test_configured_classifier_failure_is_held_for_review(
+async def test_configured_classifier_failure_falls_back_to_provider(
     monkeypatch,
     semantic_provider,
 ):

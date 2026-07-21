@@ -7,7 +7,12 @@
   import { shouldRequestTranslation } from "../../lib/language";
   import { requestLogin } from "../../lib/login";
   import { dispatchModerationUpdate } from "../../lib/moderation";
-  import { autoTranslate, initPreferences } from "../../lib/preferences";
+  import {
+    aiTranslationLanguage,
+    autoTranslate,
+    initPreferences,
+    resolveAITranslationLanguage,
+  } from "../../lib/preferences";
   import { voteOnPoll, type Poll } from "../../lib/posts";
   import { currentUser } from "../../stores/auth";
   import { relativeTimeClock } from "../../stores/relativeTime";
@@ -22,6 +27,7 @@
     sourceRevisionNumber = null,
     moderationTargetHref = null,
     onModerationQueued = null,
+    translationRequested = false,
   }: {
     postId: string;
     poll: Poll;
@@ -31,6 +37,7 @@
     sourceRevisionNumber?: number | null;
     moderationTargetHref?: string | null;
     onModerationQueued?: (() => void) | null;
+    translationRequested?: boolean;
   } = $props();
 
   let currentPoll = $state<Poll>(poll);
@@ -45,7 +52,7 @@
   let sourceSignature = $state("");
   let visible = $state(false);
   let autoSignature = $state("");
-  let cachedLocale = $state($locale);
+  let cachedLocale = $state(resolveAITranslationLanguage($aiTranslationLanguage, $locale));
   let now = $derived($relativeTimeClock);
   let isClosed = $derived(
     currentPoll.is_closed || Date.parse(currentPoll.closes_at) <= now,
@@ -64,7 +71,8 @@
       text: option.text,
     })),
   ]);
-  let translationNeeded = $derived(shouldRequestTranslation(translationFields, $locale));
+  let translationTarget = $derived(resolveAITranslationLanguage($aiTranslationLanguage, $locale));
+  let translationNeeded = $derived(shouldRequestTranslation(translationFields, translationTarget));
 
   $effect(() => {
     const nextSourceSignature = `${poll.question}:${poll.options.map((option) => option.text).join("\u0000")}`;
@@ -79,7 +87,7 @@
   });
 
   $effect(() => {
-    const nextLocale = $locale;
+    const nextLocale = translationTarget;
     if (nextLocale === cachedLocale) return;
     cachedLocale = nextLocale;
     translatedQuestion = "";
@@ -95,15 +103,32 @@
       || !$currentUser
       || !translationNeeded
     ) return;
-    const signature = `${$locale}:${currentPoll.question}:${currentPoll.options.map((option) => option.text).join("\u0000")}`;
+    const signature = `${translationTarget}:${currentPoll.question}:${currentPoll.options.map((option) => option.text).join("\u0000")}`;
     if (autoSignature === signature) return;
     autoSignature = signature;
     void translatePoll();
   });
 
+  $effect(() => {
+    if (!translationRequested) {
+      translationVisible = false;
+      return;
+    }
+    if (translatedQuestion) {
+      translationVisible = true;
+      return;
+    }
+    if (aiAvailability === "enabled" && translationNeeded && !translationLoading) {
+      void translatePoll();
+    }
+  });
+
   onMount(async () => {
     initPreferences();
     await loadAiAvailability();
+    if (aiAvailability === "enabled" && $currentUser && translationNeeded && remembersTranslation()) {
+      void translatePoll();
+    }
   });
 
   async function loadAiAvailability(forceRefresh = false) {
@@ -132,6 +157,26 @@
     return { destroy: () => observer.disconnect() };
   }
 
+  function translationMemoryKey() {
+    if (!sourceRevisionNumber) return null;
+    return ["agora:translation", "poll", postId, sourceRevisionNumber, translationTarget].join(":");
+  }
+
+  function remembersTranslation() {
+    const key = translationMemoryKey();
+    if (!key) return false;
+    try { return localStorage.getItem(key) === "visible"; } catch { return false; }
+  }
+
+  function rememberTranslation(visible: boolean) {
+    const key = translationMemoryKey();
+    if (!key) return;
+    try {
+      if (visible) localStorage.setItem(key, "visible");
+      else localStorage.removeItem(key);
+    } catch {}
+  }
+
   async function translatePoll() {
     if (translationLoading || readOnly || !translationNeeded) return;
     if (!$currentUser) {
@@ -142,11 +187,23 @@
     try {
       const result = await translateFields(
         translationFields,
-        $locale,
+        translationTarget,
         "poll",
         sourceRevisionNumber
           ? { contentId: postId, revisionNumber: sourceRevisionNumber }
           : null,
+        (field) => {
+          if (field.key === "question") translatedQuestion = field.translation;
+          const optionIndex = currentPoll.options.findIndex(
+            (option, index) => `option_${index + 1}` === field.key,
+          );
+          if (optionIndex >= 0) {
+            const nextOptions = [...translatedOptions];
+            nextOptions[optionIndex] = field.translation;
+            translatedOptions = nextOptions;
+          }
+          translationVisible = true;
+        },
       );
       if (result.skipped) return;
       translatedQuestion = result.fields[0]?.translation ?? "";
@@ -280,7 +337,7 @@
     </div>
   </div>
 
-  <h3 class="poll-question" lang={translationVisible && translatedQuestion ? $locale : undefined}>
+  <h3 class="poll-question" lang={translationVisible && translatedQuestion ? translationTarget : undefined}>
     {translationVisible && translatedQuestion ? translatedQuestion : currentPoll.question}
   </h3>
 
@@ -323,7 +380,7 @@
         <span class="poll-option-marker" aria-hidden="true">
           {#if selected}<CheckIcon size={13} strokeWidth={2.3} />{/if}
         </span>
-        <span class="poll-option-text" lang={translationVisible && translatedOptions[index] ? $locale : undefined}>
+        <span class="poll-option-text" lang={translationVisible && translatedOptions[index] ? translationTarget : undefined}>
           {translationVisible && translatedOptions[index] ? translatedOptions[index] : option.text}
         </span>
         {#if showingResults}

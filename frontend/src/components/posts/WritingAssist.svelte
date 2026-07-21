@@ -139,7 +139,11 @@
         ...(title.trim() ? [{ key: "title", text: title.trim() }] : []),
         { key: "body", text: body.trim() },
       ];
-      const result = await assistWriting(fields, $locale, context, action);
+      const result = await assistWriting(fields, $locale, context, action, (field) => {
+        if (!isCurrentAiResult(sequence, requestSequence, requestedSignature, inputSignature)) return;
+        if (field.key === "title") suggestedTitle = field.translation;
+        if (field.key === "body") suggestedBody = field.translation;
+      });
       if (!isCurrentAiResult(sequence, requestSequence, requestedSignature, inputSignature)) {
         staleResult = true;
         return;

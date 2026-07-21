@@ -31,6 +31,7 @@
     listReports,
     listUsers,
     resetAISettings,
+    testAISettings,
     resolveReport,
     reviewModerationItem,
     setUserRole,
@@ -81,6 +82,7 @@
   let aiSettings = $state<AdminAISettings | null>(null);
   let aiApiKey = $state("");
   let aiSaving = $state(false);
+  let aiTesting = $state(false);
 
   let expandedGuild = $state<string | null>(null);
   let guildMembers = $state<GuildMember[]>([]);
@@ -176,18 +178,38 @@
     return shared;
   }
 
+  function aiSettingsPayload() {
+    if (!aiSettings) return null;
+    return {
+      enabled: aiSettings.enabled,
+      base_url: aiSettings.base_url,
+      model: aiSettings.model,
+      ...(aiApiKey.trim() ? { api_key: aiApiKey.trim() } : {}),
+      moderation_provider_fallback_enabled:
+        aiSettings.moderation_provider_fallback_enabled,
+    };
+  }
+
+  async function testAIProviderSettings() {
+    const payload = aiSettingsPayload();
+    if (!payload || aiTesting || aiSaving) return;
+    aiTesting = true;
+    try {
+      await testAISettings(payload);
+      showNotice($translator("admin.ai.testPassed"));
+    } catch (error) {
+      showNotice(translateError(error, $translator, "admin.ai.testFailed"), "error");
+    } finally {
+      aiTesting = false;
+    }
+  }
+
   async function saveAISettings() {
-    if (!aiSettings || aiSaving) return;
+    const payload = aiSettingsPayload();
+    if (!payload || aiSaving || aiTesting) return;
     aiSaving = true;
     try {
-      aiSettings = await updateAISettings({
-        enabled: aiSettings.enabled,
-        base_url: aiSettings.base_url,
-        model: aiSettings.model,
-        ...(aiApiKey.trim() ? { api_key: aiApiKey.trim() } : {}),
-        moderation_provider_fallback_enabled:
-          aiSettings.moderation_provider_fallback_enabled,
-      });
+      aiSettings = await updateAISettings(payload);
       aiApiKey = "";
       showNotice($translator("admin.ai.saved"));
     } catch (error) {
@@ -845,7 +867,10 @@
           <button class="btn btn-secondary" onclick={resetAIProviderSettings} disabled={aiSaving}>
             <RotateCcw size={15} /> {$translator("admin.ai.useEnvironment")}
           </button>
-          <button class="btn btn-primary" onclick={saveAISettings} disabled={aiSaving}>
+          <button class="btn btn-secondary" onclick={testAIProviderSettings} disabled={aiSaving || aiTesting}>
+            {$translator(aiTesting ? "common.processing" : "admin.ai.testConnection")}
+          </button>
+          <button class="btn btn-primary" onclick={saveAISettings} disabled={aiSaving || aiTesting}>
             {$translator(aiSaving ? "common.processing" : "common.save")}
           </button>
         </div>

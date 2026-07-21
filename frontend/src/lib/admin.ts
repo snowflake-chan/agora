@@ -245,6 +245,14 @@ export async function getAISettings(): Promise<AdminAISettings> {
   return req("/ai-settings");
 }
 
+export async function testAISettings(data: AdminAISettingsUpdate): Promise<{ ok: boolean }> {
+  return req("/ai-settings/test", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
 export async function updateAISettings(data: AdminAISettingsUpdate): Promise<AdminAISettings> {
   return req("/ai-settings", {
     method: "PUT",

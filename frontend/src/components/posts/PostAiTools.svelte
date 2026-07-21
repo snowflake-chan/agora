@@ -15,7 +15,12 @@
   import { shouldRequestTranslation } from "../../lib/language";
   import { requestLogin } from "../../lib/login";
   import { dispatchModerationUpdate } from "../../lib/moderation";
-  import { autoTranslate, initPreferences } from "../../lib/preferences";
+  import {
+    aiTranslationLanguage,
+    autoTranslate,
+    initPreferences,
+    resolveAITranslationLanguage,
+  } from "../../lib/preferences";
   import { currentUser } from "../../stores/auth";
   import { toaster } from "../../stores/toaster";
 
@@ -57,6 +62,7 @@
   let notice = $state<Notice>(null);
   let errorMessage = $state<string | null>(null);
   let cachedLocale = $state<Locale>($locale);
+  let cachedTranslationLocale = $state(resolveAITranslationLanguage($aiTranslationLanguage, $locale));
   let visible = $state(false);
   let autoSignature = $state("");
   let sourceText = $derived(title?.trim() ? `${title.trim()}\n\n${text}` : text);
@@ -64,7 +70,8 @@
     ...(title?.trim() ? [{ key: "title", text: title.trim() }] : []),
     { key: "body", text },
   ]);
-  let translationNeeded = $derived(shouldRequestTranslation(translationFields, $locale));
+  let translationTarget = $derived(resolveAITranslationLanguage($aiTranslationLanguage, $locale));
+  let translationNeeded = $derived(shouldRequestTranslation(translationFields, translationTarget));
   let sourceReference = $derived(
     sourceContentId && sourceRevisionNumber && sourceRevisionNumber > 0
       ? { contentId: sourceContentId, revisionNumber: sourceRevisionNumber }
@@ -73,15 +80,21 @@
 
   $effect(() => {
     const nextLocale = $locale;
-    if (nextLocale === cachedLocale) return;
-    cachedLocale = nextLocale;
-    summary = null;
-    translation = null;
-    translationVisible = false;
-    active = null;
+    const nextTranslationLocale = translationTarget;
+    if (nextLocale !== cachedLocale) {
+      cachedLocale = nextLocale;
+      summary = null;
+      if (active === "summary") active = null;
+    }
+    if (nextTranslationLocale !== cachedTranslationLocale) {
+      cachedTranslationLocale = nextTranslationLocale;
+      translation = null;
+      translationVisible = false;
+      if (active === "translation") active = null;
+      onTranslationChange?.(null);
+    }
     notice = null;
     errorMessage = null;
-    onTranslationChange?.(null);
   });
 
   $effect(() => {
@@ -92,7 +105,7 @@
       || !$currentUser
       || !translationNeeded
     ) return;
-    const signature = `${$locale}:${context}:${title ?? ""}:${text}`;
+    const signature = `${translationTarget}:${context}:${title ?? ""}:${text}`;
     if (autoSignature === signature) return;
     autoSignature = signature;
     void runTranslation();
@@ -101,6 +114,9 @@
   onMount(async () => {
     initPreferences();
     await loadAvailability();
+    if (availability === "enabled" && $currentUser && translationNeeded && remembersTranslation()) {
+      void runTranslation();
+    }
   });
 
   async function loadAvailability(forceRefresh = false) {
@@ -127,6 +143,26 @@
     );
     observer.observe(node);
     return { destroy: () => observer.disconnect() };
+  }
+
+  function translationMemoryKey() {
+    if (!sourceReference) return null;
+    return ["agora:translation", context, sourceReference.contentId, sourceReference.revisionNumber, translationTarget].join(":");
+  }
+
+  function remembersTranslation() {
+    const key = translationMemoryKey();
+    if (!key) return false;
+    try { return localStorage.getItem(key) === "visible"; } catch { return false; }
+  }
+
+  function rememberTranslation(visible: boolean) {
+    const key = translationMemoryKey();
+    if (!key) return;
+    try {
+      if (visible) localStorage.setItem(key, "visible");
+      else localStorage.removeItem(key);
+    } catch {}
   }
 
   function handleError(error: unknown) {
@@ -198,7 +234,7 @@
       requestLogin(undefined, () => void runTranslation());
       return;
     }
-    if (translation?.locale === $locale) {
+    if (translation?.locale === translationTarget) {
       translationVisible = true;
       onTranslationChange?.(translation);
       return;
@@ -206,11 +242,31 @@
     notice = null;
     errorMessage = null;
     active = "translation";
-    const targetLocale = $locale;
+    const targetLocale = translationTarget;
     if (translation?.locale === targetLocale) return;
     loading = "translation";
     try {
-      const output = await translateFields(translationFields, targetLocale, context, sourceReference);
+      const streamed = new Map<string, string>();
+      const output = await translateFields(
+        translationFields,
+        targetLocale,
+        context,
+        sourceReference,
+        (field) => {
+          streamed.set(field.key, field.translation);
+          const streamedBody = streamed.get("body");
+          if (!streamedBody || translationTarget !== targetLocale) return;
+          const nextTranslation: DisplayTranslation = {
+            locale: targetLocale,
+            title: streamed.get("title") ?? null,
+            body: streamedBody,
+            cached: false,
+          };
+          translation = nextTranslation;
+          translationVisible = true;
+          onTranslationChange?.(nextTranslation);
+        },
+      );
       if (output.skipped) {
         active = null;
         return;
@@ -218,7 +274,7 @@
       const translatedTitle = output.fields.find((field) => field.key === "title")?.translation ?? null;
       const translatedBody = output.fields.find((field) => field.key === "body")?.translation;
       if (!translatedBody) throw new ApiError("AI_RESPONSE_INVALID");
-      if ($locale === targetLocale) {
+      if (translationTarget === targetLocale) {
         const nextTranslation: DisplayTranslation = {
           locale: targetLocale,
           title: translatedTitle,
@@ -240,6 +296,7 @@
     if (!translation) return;
     translationVisible = !translationVisible;
     onTranslationChange?.(translationVisible ? translation : null);
+    rememberTranslation(translationVisible);
   }
 </script>
 
@@ -320,7 +377,7 @@
       </section>
     {/if}
 
-    {#if translation?.locale === $locale}
+    {#if translation?.locale === translationTarget}
       <div class="translation-status" aria-live="polite">
         <span>
           <LanguagesIcon size={12} strokeWidth={1.8} aria-hidden="true" />

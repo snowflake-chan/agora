@@ -222,6 +222,33 @@ async def _canonical_translation_fields(
     return None
 
 
+async def translation_source_is_human_approved(
+    session: AsyncSession,
+    *,
+    content_id: UUID,
+    revision_number: int,
+    context: str,
+    fields: list[tuple[str, str]],
+) -> bool:
+    """Trust a human approval only for the unchanged canonical revision."""
+    content = await session.scalar(
+        select(Content).where(Content.id == content_id)
+    )
+    if (
+        content is None
+        or content.revision_number != revision_number
+        or content.moderation_status != "approved"
+    ):
+        return False
+    canonical_fields = await _canonical_translation_fields(
+        session,
+        content,
+        context,
+    )
+    normalized_fields = [(key, value.strip()) for key, value in fields]
+    return canonical_fields is not None and normalized_fields == canonical_fields
+
+
 async def hold_translation_source_for_review(
     session: AsyncSession,
     *,

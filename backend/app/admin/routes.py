@@ -9,6 +9,8 @@ from sqlalchemy.orm import lazyload, selectinload
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from app.ai.client import request_structured_completion
+from app.ai.errors import AIServiceError
 from app.ai.runtime_config import (
     AI_PROVIDER_SETTING_KEY,
     AIRuntimeConfig,
@@ -779,6 +781,10 @@ async def seed_super_admin(
 
 # ── AI provider settings ──
 
+class AdminAIProbeResponse(BaseModel):
+    ok: bool
+
+
 class AdminAISettingsUpdate(BaseModel):
     enabled: bool = False
     base_url: str = Field(default="", max_length=500)
@@ -803,6 +809,48 @@ def _admin_ai_settings_response(config: AIRuntimeConfig) -> dict:
 async def get_admin_ai_settings(_user: User = Depends(super_admin_required)):
     config = await get_ai_runtime_config(force_refresh=True)
     return _admin_ai_settings_response(config)
+
+
+@router.post("/ai-settings/test")
+async def test_admin_ai_settings(
+    data: AdminAISettingsUpdate,
+    _user: User = Depends(super_admin_required),
+):
+    current = await get_ai_runtime_config(force_refresh=True)
+    base_url = data.base_url.strip().rstrip("/")
+    model = data.model.strip()
+    api_key = current.api_key if data.api_key is None else data.api_key.strip()
+    if not base_url.startswith(("http://", "https://")):
+        raise HTTPException(422, detail="AI_BASE_URL_INVALID")
+    if settings.is_production() and not base_url.startswith("https://"):
+        raise HTTPException(422, detail="AI_BASE_URL_HTTPS_REQUIRED")
+    if not (api_key and base_url and model):
+        raise HTTPException(422, detail="AI_PROVIDER_CONFIG_INCOMPLETE")
+    candidate = AIRuntimeConfig(
+        enabled=True,
+        api_key=api_key,
+        base_url=base_url,
+        model=model,
+        moderation_provider_fallback_enabled=(
+            data.moderation_provider_fallback_enabled
+        ),
+        source="database",
+    )
+    try:
+        result = await request_structured_completion(
+            user_message='{"task":"connection_test","output_schema":{"ok":true}}',
+            response_type=AdminAIProbeResponse,
+            max_tokens=16,
+            system_prompt=(
+                'Return exactly {"ok":true} as JSON. Do not add commentary.'
+            ),
+            runtime_config=candidate,
+        )
+    except AIServiceError as exc:
+        raise HTTPException(502, detail="AI_CONNECTION_TEST_FAILED") from exc
+    if result.ok is not True:
+        raise HTTPException(502, detail="AI_CONNECTION_TEST_FAILED")
+    return {"ok": True}
 
 
 @router.put("/ai-settings")

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { moderationTargetContentId } from "./moderation.ts";
+import { hasModerationNotice, moderationTargetContentId } from "./moderation.ts";
 
 describe("moderation event targets", () => {
   it("treats a root-post event as targeting the post", () => {

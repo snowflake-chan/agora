@@ -19,17 +19,21 @@
     type Locale,
   } from "../lib/i18n";
   import {
+    AI_TRANSLATION_LANGUAGES,
+    aiTranslationLanguage,
     colorMode,
     autoTranslate,
     homeLayout,
     initPreferences,
     motion,
+    setAITranslationLanguage,
     setColorMode,
     setAutoTranslate,
     setHomeLayout,
     setMotion,
     setTheme,
     theme,
+    type AITranslationPreference,
     type ColorMode,
     type HomeLayout,
     type Motion,
@@ -46,6 +50,15 @@
     initI18n();
     initPreferences();
   });
+
+  function translationLanguageLabel(value: AITranslationPreference) {
+    if (value === "interface") return $translator("settings.followInterfaceLanguage");
+    try {
+      return new Intl.DisplayNames([$locale], { type: "language" }).of(value) ?? value;
+    } catch {
+      return value;
+    }
+  }
 
   function themeTitle(value: Theme) {
     if (value === "tiktok") return $translator("settings.tiktokTheme");
@@ -122,6 +135,27 @@
           <span aria-hidden="true"></span>
           <b>{$translator($autoTranslate ? "common.enabled" : "common.disabled")}</b>
         </label>
+      </section>
+
+      <section class="settings-section" aria-labelledby="ai-translation-language-title">
+        <div class="section-icon"><Languages size={18} /></div>
+        <div class="section-copy">
+          <h2 id="ai-translation-language-title">{$translator("settings.aiTranslationLanguage")}</h2>
+          <p>{$translator("settings.aiTranslationLanguageDescription")}</p>
+        </div>
+        <select
+          class="language-select"
+          value={$aiTranslationLanguage}
+          aria-label={$translator("settings.aiTranslationLanguage")}
+          onchange={(event) => setAITranslationLanguage(
+            (event.currentTarget as HTMLSelectElement).value as AITranslationPreference,
+          )}
+        >
+          <option value="interface">{translationLanguageLabel("interface")}</option>
+          {#each AI_TRANSLATION_LANGUAGES as item}
+            <option value={item}>{translationLanguageLabel(item)}</option>
+          {/each}
+        </select>
       </section>
 
       <section class="settings-section theme-section" aria-labelledby="theme-title">
@@ -271,6 +305,16 @@
   .toggle-control input:checked + span::after { transform:translateX(1rem); background:var(--vercel-text); }
   .toggle-control input:focus-visible + span { outline:2px solid var(--vercel-ring); outline-offset:2px; }
   .toggle-control b { font-size:.7rem; font-weight:600; }
+  .language-select {
+    min-width: min(100%, 15rem);
+    padding: 0.65rem 2.2rem 0.65rem 0.75rem;
+    color: var(--vercel-text);
+    background: var(--vercel-card);
+    border: 1px solid var(--vercel-border);
+    border-radius: var(--vercel-radius-sm);
+    font: inherit;
+  }
+
   .theme-grid { grid-column:2; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.6rem; margin-top:.2rem; }
   .theme-option { position:relative; display:grid; min-height:9.5rem; align-content:start; gap:.75rem; padding:.75rem; overflow:hidden; border:1px solid var(--vercel-border); border-radius:var(--vercel-radius); color:var(--vercel-text); text-align:left; transition:border-color 180ms ease,transform 180ms ease,background 180ms ease; }
   .theme-option:hover { transform:translateY(-1px); border-color:var(--vercel-border-hover); }

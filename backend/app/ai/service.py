@@ -4,9 +4,10 @@ from app.ai.classifier import (
     semantic_moderation_is_configured,
 )
 from app.ai.errors import AIServiceError
-from app.ai.prompts import build_user_message
+from app.ai.prompts import APPROVED_TRANSLATION_SYSTEM_PROMPT, build_user_message
 from app.ai.runtime_config import AIRuntimeConfig, get_ai_runtime_config
 from app.ai.schemas import (
+    ApprovedTranslationBundleAIResponse,
     PollAIResponse,
     PollGenerateRequest,
     PollResponse,
@@ -76,13 +77,14 @@ async def _prepare_request(
     user_id: str,
     client_identifier: str,
     additional_untrusted_text: list[str] | None = None,
+    skip_semantic_source_check: bool = False,
 ) -> None:
     values = await _validate_request(
         text=text,
         additional_untrusted_text=additional_untrusted_text,
     )
     await enforce_ai_rate_limit(user_id, client_identifier)
-    if settings.AI_POLITICAL_CLASSIFIER_URL.strip():
+    if settings.AI_POLITICAL_CLASSIFIER_URL.strip() and not skip_semantic_source_check:
         await require_semantic_classification(
             values,
             source_moderation_reason=_POLITICAL_MODERATION_REASON,
@@ -97,14 +99,17 @@ async def _request_completion(
     user_id: str,
     client_identifier: str,
     charge_rate_limit: bool = False,
+    system_prompt: str | None = None,
 ):
     # Preflight charges the first attempt. Retries consume another unit.
     if charge_rate_limit:
         await enforce_ai_rate_limit(user_id, client_identifier)
+    request_kwargs = {} if system_prompt is None else {"system_prompt": system_prompt}
     return await request_structured_completion(
         user_message=user_message,
         response_type=response_type,
         max_tokens=max_tokens,
+        **request_kwargs,
     )
 
 
@@ -197,6 +202,7 @@ async def translate_bundle(
     *,
     user_id: str,
     client_identifier: str,
+    source_is_human_approved: bool = False,
 ) -> TranslationBundleResponse:
     source_fields = [(field.key, field.text) for field in data.fields]
     source_values = [field.text for field in data.fields]
@@ -205,10 +211,15 @@ async def translate_bundle(
         additional_untrusted_text=source_values,
         user_id=user_id,
         client_identifier=client_identifier,
+        skip_semantic_source_check=source_is_human_approved,
     )
 
     user_message = build_user_message(
-        task="translate_fields",
+        task=(
+            "translate_approved_fields"
+            if source_is_human_approved
+            else "translate_fields"
+        ),
         target_locale=data.target_locale,
         source_items=[
             {"key": field.key, "text": field.text} for field in data.fields
@@ -227,7 +238,7 @@ async def translate_bundle(
         expected_count=len(data.fields),
     )
     if cached is not None:
-        if settings.uses_production_ai_provider():
+        if settings.uses_production_ai_provider() and not source_is_human_approved:
             await _recheck_political_output(*cached, force=True)
         return TranslationBundleResponse(
             fields=[
@@ -243,7 +254,7 @@ async def translate_bundle(
             expected_count=len(data.fields),
         )
         if cached is not None:
-            if settings.uses_production_ai_provider():
+            if settings.uses_production_ai_provider() and not source_is_human_approved:
                 await _recheck_political_output(*cached, force=True)
             return TranslationBundleResponse(
                 fields=[
@@ -255,17 +266,28 @@ async def translate_bundle(
 
         result = await _request_completion(
             user_message=user_message,
-            response_type=TranslationBundleAIResponse,
+            response_type=(
+                ApprovedTranslationBundleAIResponse
+                if source_is_human_approved
+                else TranslationBundleAIResponse
+            ),
             max_tokens=16384,
             user_id=user_id,
             client_identifier=client_identifier,
+            system_prompt=(
+                APPROVED_TRANSLATION_SYSTEM_PROMPT
+                if source_is_human_approved
+                else None
+            ),
         )
-        _reject_political(result.political_status)
-        _reject_political_output_status(result.output_political_status)
+        if not source_is_human_approved:
+            _reject_political(result.political_status)
+            _reject_political_output_status(result.output_political_status)
         translations = result.translations
         if translations is None or len(translations) != len(data.fields):
             raise AIServiceError(502, "AI_UPSTREAM_INVALID_RESPONSE")
-        await _recheck_political_output(*translations)
+        if not source_is_human_approved:
+            await _recheck_political_output(*translations)
         await cache_translations(cache_key, translations)
         return TranslationBundleResponse(
             fields=[

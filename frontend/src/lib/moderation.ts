@@ -73,5 +73,5 @@ export function isModerationRestricted(
 export function hasModerationNotice(
   status: ModerationStatus | null | undefined,
 ): boolean {
-  return status === "pending_review" || status === "approved" || status === "rejected";
+  return status === "pending_review" || status === "rejected";
 }

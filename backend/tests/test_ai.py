@@ -126,6 +126,15 @@ def configured_ai(monkeypatch):
     )
     monkeypatch.setattr(ai_service, "get_ai_runtime_config", runtime_from_environment)
 
+    async def source_is_not_approved(*_args, **_kwargs):
+        return False
+
+    monkeypatch.setattr(
+        ai_routes,
+        "translation_source_is_human_approved",
+        source_is_not_approved,
+    )
+
     async def allow_semantic_content(_texts, **_kwargs):
         return political_classifier.SemanticModerationDecision(
             status="non_political",
@@ -399,12 +408,13 @@ async def test_trusted_local_classifier_blocks_unmatched_political_language(
 
 
 @pytest.mark.asyncio
-async def test_trusted_local_classifier_failure_is_fail_closed(ai_app, monkeypatch):
+async def test_trusted_local_classifier_failure_without_provider_fallback(ai_app, monkeypatch):
     monkeypatch.setattr(
         settings,
         "AI_POLITICAL_CLASSIFIER_URL",
         "http://politics-classifier:8080/classify",
     )
+    monkeypatch.setattr(settings, "AI_MODERATION_PROVIDER_FALLBACK_ENABLED", False)
     monkeypatch.setattr(
         ai_service,
         "require_semantic_classification",
@@ -811,6 +821,47 @@ async def test_structured_translation_preserves_fields_context_and_order(
     assert len(redis.get_calls) == 2
     assert len(redis.set_calls) == 1
     assert "Release notes" not in redis.get_calls[0]
+
+
+@pytest.mark.asyncio
+async def test_translation_stream_emits_fields_and_final_result(ai_app, monkeypatch):
+    mock_redis(monkeypatch, FakeRedis())
+    mock_deepseek(monkeypatch, [{
+        "political_status": "non_political",
+        "translations": ["Release notes", "Search is faster."],
+    }])
+    response = await post(ai_app, "/api/v1/ai/translate/fields/stream", {
+        "fields": [
+            {"key": "title", "text": "Release notes"},
+            {"key": "body", "text": "Search is faster."},
+        ],
+        "target_locale": "ko",
+        "context": "post",
+    })
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"].startswith("application/x-ndjson")
+    events = [json.loads(line) for line in response.text.splitlines()]
+    assert [event["type"] for event in events] == ["field", "field", "result"]
+
+
+@pytest.mark.asyncio
+async def test_human_approved_revision_can_be_translated(ai_app, monkeypatch):
+    async def approved(*_args, **_kwargs):
+        return True
+    monkeypatch.setattr(ai_routes, "translation_source_is_human_approved", approved)
+    mock_redis(monkeypatch, FakeRedis())
+    requests = mock_deepseek(monkeypatch, [{"translations": ["Approved translation"]}])
+    response = await post(ai_app, "/api/v1/ai/translate/fields", {
+        "fields": [{"key": "body", "text": "Reviewed election context"}],
+        "target_locale": "en",
+        "context": "comment",
+        "source_content_id": str(uuid.uuid4()),
+        "source_revision_number": 4,
+    })
+    assert response.status_code == 200, response.text
+    assert response.json()["fields"] == [{"key": "body", "translation": "Approved translation"}]
+    user_payload = json.loads(json.loads(requests[0].content)["messages"][1]["content"])
+    assert user_payload["task"] == "translate_approved_fields"
 
 
 @pytest.mark.asyncio

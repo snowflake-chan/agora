@@ -152,9 +152,43 @@ async def classify_semantic_content(
             provider_fallback=provenance == "provider"
         )
         if provenance == "trusted_classifier":
-            async with _local_classifier_semaphore:
-                statuses = await classify_with_trusted_local_service([document])
-            status = statuses[0]
+            try:
+                async with _local_classifier_semaphore:
+                    statuses = await classify_with_trusted_local_service([document])
+                status = statuses[0]
+            except AIServiceError:
+                if not _provider_fallback_is_available(runtime_config):
+                    raise
+                provider_engine = f"provider:{runtime_config.model}"
+                provider_cache_key = moderation_cache_key(
+                    text=document,
+                    engine=provider_engine,
+                )
+                provider_cached = await get_cached_moderation(provider_cache_key)
+                if provider_cached is not None:
+                    status, cached_provenance = provider_cached
+                    return SemanticModerationDecision(
+                        status=status,
+                        provenance=cached_provenance,
+                        cached=True,
+                    )
+                await enforce_ai_moderation_rate_limit(provider_fallback=True)
+                try:
+                    result = await request_structured_completion(
+                        user_message=build_moderation_message(document),
+                        response_type=ModerationAIResponse,
+                        max_tokens=24,
+                        system_prompt=MODERATION_SYSTEM_PROMPT,
+                        runtime_config=runtime_config,
+                    )
+                except AIServiceError as exc:
+                    raise AIServiceError(
+                        503,
+                        "AI_POLITICAL_GUARD_UNAVAILABLE",
+                    ) from exc
+                status = result.political_status
+                provenance = "provider"
+                cache_key = provider_cache_key
         else:
             try:
                 result = await request_structured_completion(

@@ -200,6 +200,7 @@
       sourceRevisionNumber={item.revision_number}
       moderationTargetHref={`/posts/${item.id}`}
       onModerationQueued={() => (moderationQueued = true)}
+      translationRequested={displayTranslation !== null}
     />
   {/if}
 

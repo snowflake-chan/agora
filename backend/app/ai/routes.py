@@ -1,6 +1,8 @@
+import json
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,6 +30,7 @@ from app.ai.service import (
 from app.content_moderation import (
     content_href,
     hold_translation_source_for_review,
+    translation_source_is_human_approved,
 )
 from app.db import get_session
 from app.db.models.user import User
@@ -129,11 +132,27 @@ async def translate_fields(
     session: AsyncSession = Depends(get_session),
 ) -> TranslationBundleResponse:
     """Translate related fields together so titles, bodies, and options keep context."""
+    source_is_human_approved = False
+    if (
+        data.source_content_id is not None
+        and data.source_revision_number is not None
+    ):
+        source_is_human_approved = await translation_source_is_human_approved(
+            session,
+            content_id=data.source_content_id,
+            revision_number=data.source_revision_number,
+            context=data.context,
+            fields=[(field.key, field.text) for field in data.fields],
+        )
+        commit = getattr(session, "commit", None)
+        if commit is not None:
+            await commit()
     try:
         return await translate_bundle(
             data,
             user_id=str(user.id),
             client_identifier=client_ip(request),
+            source_is_human_approved=source_is_human_approved,
         )
     except AIServiceError as error:
         held_content = None
@@ -177,6 +196,36 @@ async def translate_fields(
         raise _http_error(error) from error
 
 
+def _stream_fields_response(result: TranslationBundleResponse | WritingAssistResponse) -> StreamingResponse:
+    async def events():
+        for field in result.fields:
+            yield json.dumps(
+                {"type": "field", "field": field.model_dump()},
+                ensure_ascii=False,
+            ) + "\n"
+        yield json.dumps(
+            {"type": "result", "data": result.model_dump()},
+            ensure_ascii=False,
+        ) + "\n"
+
+    return StreamingResponse(
+        events(),
+        media_type="application/x-ndjson",
+        headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.post("/translate/fields/stream")
+async def stream_translated_fields(
+    data: TranslationBundleRequest,
+    request: Request,
+    user: User = Depends(ai_eligible_user),
+    session: AsyncSession = Depends(get_session),
+) -> StreamingResponse:
+    result = await translate_fields(data, request, user, session)
+    return _stream_fields_response(result)
+
+
 @router.post("/writing/assist", response_model=WritingAssistResponse)
 async def improve_draft(
     data: WritingAssistRequest,
@@ -192,6 +241,16 @@ async def improve_draft(
         )
     except AIServiceError as error:
         raise _http_error(error) from error
+
+
+@router.post("/writing/assist/stream")
+async def stream_improved_draft(
+    data: WritingAssistRequest,
+    request: Request,
+    user: User = Depends(ai_eligible_user),
+) -> StreamingResponse:
+    result = await improve_draft(data, request, user)
+    return _stream_fields_response(result)
 
 
 @router.post("/polls/generate", response_model=PollResponse)

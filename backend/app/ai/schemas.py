@@ -14,6 +14,10 @@ from pydantic import (
 
 
 Locale = Literal["en", "ja", "zh-TW"]
+TranslationLocale = Literal[
+    "en", "ja", "zh-TW", "ko", "es", "fr", "de", "pt-BR",
+    "it", "ru", "ar", "hi", "id", "th", "vi", "tr",
+]
 PoliticalStatus = Literal["non_political", "political", "uncertain"]
 TranslationContext = Literal["post", "comment", "patch", "guild", "composer", "poll"]
 WritingAction = Literal["polish", "shorten", "clarify"]
@@ -57,7 +61,7 @@ class TranslationField(StrictModel):
 
 class TranslationBundleRequest(StrictModel):
     fields: list[TranslationField] = Field(min_length=1, max_length=8)
-    target_locale: Locale
+    target_locale: TranslationLocale
     context: TranslationContext = "post"
     source_content_id: ContentId | None = None
     source_revision_number: int | None = Field(default=None, ge=1)
@@ -218,6 +222,20 @@ class TranslationBundleAIResponse(TaskAIResponse):
         if self.output_political_status != "non_political" and self.translations is not None:
             raise ValueError("blocked output must be null")
         return self
+
+
+class ApprovedTranslationBundleAIResponse(StrictModel):
+    translations: list[str]
+
+    @field_validator("translations")
+    @classmethod
+    def validate_translations(cls, value: list[str]) -> list[str]:
+        normalized = [translation.strip() for translation in value]
+        if any(not translation or len(translation) > 24000 for translation in normalized):
+            raise ValueError("translation is invalid")
+        if sum(len(translation) for translation in normalized) > 48000:
+            raise ValueError("translations are too long")
+        return normalized
 
 
 class WritingAssistAIResponse(TaskAIResponse):
