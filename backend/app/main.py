@@ -13,6 +13,7 @@ from app.patches import patches_router
 from app.guilds import router as guilds_router
 from app.admin import router as admin_router
 from app.notifications import router as notifications_router
+from app.ai import router as ai_router
 
 
 @asynccontextmanager
@@ -47,3 +48,4 @@ app.include_router(patches_router, prefix="/api/v1/patches", tags=["patches"])
 app.include_router(guilds_router, prefix="/api/v1/guilds", tags=["guilds"])
 app.include_router(admin_router, prefix="/api/v1/admin", tags=["admin"])
 app.include_router(notifications_router, prefix="/api/v1/notifications", tags=["notifications"])
+app.include_router(ai_router, prefix="/api/v1/ai", tags=["ai"])

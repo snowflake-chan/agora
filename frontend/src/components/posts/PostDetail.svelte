@@ -4,7 +4,7 @@
   import { translateError, translator } from "../../lib/i18n";
   import { requestLogin } from "../../lib/login";
   import { createReport } from "../../lib/admin";
-  import { getPost, listComments, createComment, deleteContent, likePost, unlikePost, type Post, type Comment } from "../../lib/posts";
+  import { getPost, listComments, createComment, deleteContent, likePost, unlikePost, type Post, type Comment, type Poll } from "../../lib/posts";
   import { toaster } from "../../stores/toaster";
   import { currentUser } from "../../stores/auth";
   import TimelineItem from "./TimelineItem.svelte";
@@ -120,6 +120,10 @@
         toaster.error($translator("common.shareFailed"), $translator("common.copyFailed"));
       }
     }
+  }
+
+  function handlePollUpdate(poll: Poll) {
+    if (post) post = { ...post, poll };
   }
 
   function handleDelete() {
@@ -318,6 +322,9 @@
           onReport={$currentUser?.id === item.userId
             ? null
             : () => requestReport(item.key)}
+          poll={i === 0 ? post.poll : null}
+          onPollUpdate={i === 0 ? handlePollUpdate : null}
+          aiText={i === 0 ? post.content : null}
         />
       {/each}
     </div>

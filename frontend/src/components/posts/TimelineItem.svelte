@@ -12,7 +12,10 @@
   import { getUserGuild, type UserGuildBadge } from "../../lib/guilds";
   import { translator } from "../../lib/i18n";
   import { renderMarkdown } from "../../lib/markdown";
+  import type { Poll } from "../../lib/posts";
   import { avatarInitial, displayName, timeAgo } from "../../lib/utils";
+  import PollCard from "./PollCard.svelte";
+  import PostAiTools from "./PostAiTools.svelte";
 
   let {
     username,
@@ -35,6 +38,9 @@
     contentId = null,
     replyingToContent = null,
     replyingToId = null,
+    poll = null,
+    onPollUpdate = null,
+    aiText = null,
   }: {
     username: string;
     userId: string | null;
@@ -56,6 +62,9 @@
     contentId?: string | null;
     replyingToContent?: string | null;
     replyingToId?: string | null;
+    poll?: Poll | null;
+    onPollUpdate?: ((poll: Poll) => void) | null;
+    aiText?: string | null;
   } = $props();
 
   let menuOpen = $state(false);
@@ -191,6 +200,12 @@
             <span class="badge badge-neutral">{tag}</span>
           {/each}
         </div>
+      {/if}
+      {#if poll && contentId}
+        <PollCard postId={contentId} {poll} onUpdate={onPollUpdate} />
+      {/if}
+      {#if aiText}
+        <PostAiTools text={aiText} />
       {/if}
     </div>
 

@@ -7,6 +7,7 @@
   import { stripMarkdown } from "../lib/utils";
   import AuthorMeta from "./AuthorMeta.svelte";
   import VotingWindowMeta from "./patches/VotingWindowMeta.svelte";
+  import PollCard from "./posts/PollCard.svelte";
 
   let {
     item,
@@ -138,6 +139,10 @@
   <p class="mt-1 line-clamp-2 text-sm" style="color: var(--vercel-text-secondary);">
     {snippet}
   </p>
+
+  {#if item.type === "post" && item.poll}
+    <PollCard postId={item.id} poll={item.poll} compact />
+  {/if}
 
   <div class="mt-2 flex items-center justify-between gap-2">
     <div class="flex items-center gap-3 text-xs" style="color: var(--vercel-text-tertiary);">

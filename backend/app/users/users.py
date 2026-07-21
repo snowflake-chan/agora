@@ -15,6 +15,7 @@ from app.db.models.guild import GuildMember as GuildMemberModel
 from app.db.models.moderation import BanRecord
 from app.db.models.post_like import PostLike
 from app.deps import check_not_banned
+from app.post_polls import load_post_polls
 from app.schemas.guild import UserGuildBadge
 from app.schemas.post import PostRead
 from app.schemas.patch import PatchRead
@@ -147,6 +148,7 @@ async def list_user_posts(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     session: AsyncSession = Depends(get_session),
+    viewer: User | None = Depends(optional_current_user),
 ):
     """List posts by a specific user."""
     if not await session.scalar(select(User.id).where(User.id == user_id)):
@@ -177,6 +179,11 @@ async def list_user_posts(
         )
         count_result = await session.execute(count_stmt)
         counts = dict(count_result.all())
+    polls_by_post = await load_post_polls(
+        session,
+        post_ids,
+        viewer_id=viewer.id if viewer else None,
+    )
 
     return [
         PostRead(
@@ -187,6 +194,7 @@ async def list_user_posts(
             tags=p.tags,
             author_username=p.author.username,
             reply_count=counts.get(p.id, 0),
+            poll=polls_by_post.get(p.id),
             created_at=p.created_at,
             updated_at=p.updated_at,
         )

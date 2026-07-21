@@ -52,6 +52,21 @@ describe("translation catalog", () => {
     }
   });
 
+  it("ships aligned poll and AI assistance copy in every supported locale", () => {
+    const featureKeys = Object.keys(messages.en).filter(
+      (key) => key.startsWith("poll.") || key.startsWith("ai."),
+    );
+
+    assert.ok(featureKeys.length > 35);
+    for (const locale of locales) {
+      for (const key of featureKeys) {
+        assert.equal(typeof messages[locale][key], "string", `${locale}.${key}`);
+        assert.notEqual(messages[locale][key].trim(), "", `${locale}.${key}`);
+      }
+      assert.match(messages[locale]["ai.politicalUnavailable"], /AI/i);
+    }
+  });
+
   it("localizes system notifications without exposing stored source copy", () => {
     const translate = (key) => messages.ja[key] ?? messages.en[key] ?? key;
     const localized = localizeNotification(

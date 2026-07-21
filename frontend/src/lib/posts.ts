@@ -16,6 +16,29 @@ export interface Post {
   liked_by_me: boolean;
   created_at: string;
   updated_at: string;
+  poll: Poll | null;
+}
+
+export interface PollOption {
+  id: string;
+  text: string;
+  vote_count: number;
+}
+
+export interface Poll {
+  id: string;
+  question: string;
+  closes_at: string;
+  is_closed: boolean;
+  total_votes: number;
+  selected_option_id?: string | null;
+  options: PollOption[];
+}
+
+export interface PollCreateData {
+  question: string;
+  options: string[];
+  duration_hours: number;
 }
 
 export interface Comment {
@@ -45,7 +68,12 @@ export async function getPost(id: string): Promise<Post> {
   return res.json();
 }
 
-export async function createPost(data: { title: string; content: string; tags?: string[] }): Promise<Post> {
+export async function createPost(data: {
+  title: string;
+  content: string;
+  tags?: string[];
+  poll?: PollCreateData;
+}): Promise<Post> {
   const res = await fetch(`${API_BASE}/posts`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -84,6 +112,17 @@ async function setPostLike(id: string, liked: boolean): Promise<PostLikeState> {
 export const likePost = (id: string) => setPostLike(id, true);
 export const unlikePost = (id: string) => setPostLike(id, false);
 
+export async function voteOnPoll(postId: string, optionId: string): Promise<Poll> {
+  const res = await fetch(`${API_BASE}/posts/${postId}/poll/vote`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ option_id: optionId }),
+    credentials: "include",
+  });
+  if (!res.ok) throw new ApiError((await res.json()).detail ?? "POLL_VOTE_FAILED");
+  return res.json();
+}
+
 export interface FeedItem {
   id: string;
   type: "post" | "patch";
@@ -105,6 +144,7 @@ export interface FeedItem {
   against_count: number;
   abstain_count: number;
   ranking_reason: string | null;
+  poll: Poll | null;
 }
 
 export type FeedMode = "recommended" | "trending" | "following" | "latest";

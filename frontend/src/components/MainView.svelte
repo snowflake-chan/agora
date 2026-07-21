@@ -136,7 +136,7 @@
           {#if $homeLayout === "split"}
             <section class="detail-panel" aria-label={$translator("home.select")}>
             {#if splitActive && selected}
-              {#key `${selected.id}:${selected.reply_count}:${selected.like_count}:${selected.for_count}:${selected.against_count}:${selected.status}`}
+              {#key `${selected.id}:${selected.reply_count}:${selected.like_count}:${selected.for_count}:${selected.against_count}:${selected.status}:${selected.poll?.total_votes ?? 0}:${selected.poll?.selected_option_id ?? ""}:${selected.poll?.is_closed ? 1 : 0}`}
                 {#if selected.type === "post"}
                   <PostDetail postId={selected.id} embedded />
                 {:else}

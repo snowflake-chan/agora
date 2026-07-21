@@ -4,6 +4,7 @@ from .patch import Patch
 from .vote import Vote
 from .notification import Notification
 from .post_like import PostLike
+from .post_poll import PostPoll, PostPollOption, PostPollVote
 from .follow import Follow
 from .guild import Guild, GuildMember
 from .moderation import BanRecord, Report
@@ -16,6 +17,9 @@ __all__ = [
     "Vote",
     "Notification",
     "PostLike",
+    "PostPoll",
+    "PostPollOption",
+    "PostPollVote",
     "Follow",
     "Guild",
     "GuildMember",

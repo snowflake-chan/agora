@@ -4,6 +4,7 @@
   import { translator } from "../../lib/i18n";
   import { stripMarkdown } from "../../lib/utils";
   import AuthorMeta from "../AuthorMeta.svelte";
+  import PollCard from "./PollCard.svelte";
 
   let { post }: { post: Post } = $props();
 
@@ -23,6 +24,10 @@
   <p class="mt-1 line-clamp-2 text-sm" style="color: var(--vercel-text-secondary);">
     {snippet}
   </p>
+
+  {#if post.poll}
+    <PollCard postId={post.id} poll={post.poll} compact />
+  {/if}
 
   <div class="mt-2 flex items-center justify-between gap-2">
     <div class="flex items-center gap-3 text-xs" style="color: var(--vercel-text-tertiary);">

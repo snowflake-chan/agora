@@ -59,3 +59,11 @@ class Content(Base):
 
     # ── Author ──
     author: Mapped["User"] = relationship("User", lazy="joined")  # type: ignore[name-defined]
+    poll: Mapped["PostPoll | None"] = relationship(  # type: ignore[name-defined]
+        "PostPoll",
+        back_populates="post",
+        uselist=False,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        lazy="raise",
+    )

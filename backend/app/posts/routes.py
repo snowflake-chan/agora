@@ -1,8 +1,8 @@
 import asyncio
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, literal, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
@@ -12,17 +12,21 @@ from app.db.models.content import Content as ContentModel
 from app.db.models.follow import Follow
 from app.db.models.patch import Patch as PatchModel
 from app.db.models.post_like import PostLike
+from app.db.models.post_poll import PostPoll, PostPollOption, PostPollVote
 from app.db.models.user import User
 from app.db.models.vote import Vote as VoteModel
 from app.deps import check_not_banned, require_content_visible
 from app.notifications.service import create_notification, notify_followers
 from app.notifications.redis import get_redis
+from app.post_polls import create_post_poll, load_post_polls
 from app.posts.feed import FeedMode, rank_feed_items
 from app.posts.realtime import FEED_CHANNEL, publish_feed_event
 from app.schemas.post import (
     CommentCreate,
     CommentRead,
     FeedItem,
+    PollRead,
+    PollVoteCreate,
     PostCreate,
     PostLikeRead,
     PostRead,
@@ -40,6 +44,7 @@ async def list_posts(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     session: AsyncSession = Depends(get_session),
+    user: User | None = Depends(optional_current_user),
 ):
     """List posts (type=post), newest first."""
     offset = (page - 1) * page_size
@@ -81,6 +86,11 @@ async def list_posts(
             .group_by(PostLike.post_id)
         )
         like_counts = dict(like_result.all())
+    polls_by_post = await load_post_polls(
+        session,
+        post_ids,
+        viewer_id=user.id if user else None,
+    )
 
     return [
         PostRead(
@@ -92,6 +102,7 @@ async def list_posts(
             author_username=p.author.username,
             reply_count=counts.get(p.id, 0),
             like_count=like_counts.get(p.id, 0),
+            poll=polls_by_post.get(p.id),
             created_at=p.created_at,
             updated_at=p.updated_at,
         )
@@ -120,13 +131,16 @@ async def create_post(
         author_id=user.id,
     )
     session.add(post)
+    await session.flush()
+    if data.poll is not None:
+        await create_post_poll(session, post_id=post.id, data=data.poll)
     await session.commit()
-    await session.refresh(post)
 
     # Eagerly load author
     stmt = select(ContentModel).where(ContentModel.id == post.id)
     result = await session.execute(stmt)
     post = result.scalar_one()
+    polls_by_post = await load_post_polls(session, [post.id], viewer_id=user.id)
 
     await publish_feed_event(
         "created",
@@ -149,6 +163,7 @@ async def create_post(
         tags=post.tags,
         author_username=post.author.username,
         reply_count=0,
+        poll=polls_by_post.get(post.id),
         created_at=post.created_at,
         updated_at=post.updated_at,
     )
@@ -257,6 +272,11 @@ async def get_feed(
             .group_by(PostLike.post_id)
         )
         like_counts = dict(like_result.all())
+    polls_by_post = await load_post_polls(
+        session,
+        post_ids,
+        viewer_id=user.id if user else None,
+    )
 
     patch_comment_counts: dict = {}
     patch_ids = [p.id for p in patches]
@@ -295,6 +315,7 @@ async def get_feed(
             author_id=p.author_id, author_username=p.author.username,
             created_at=p.created_at, tags=p.tags, reply_count=reply_counts.get(p.id, 0),
             like_count=like_counts.get(p.id, 0),
+            poll=polls_by_post.get(p.id),
         ))
 
     for p in patches:
@@ -382,6 +403,11 @@ async def get_post(
                 )
             )
         )
+    polls_by_post = await load_post_polls(
+        session,
+        [post.id],
+        viewer_id=user.id if user else None,
+    )
 
     return PostRead(
         id=post.id,
@@ -393,9 +419,97 @@ async def get_post(
         reply_count=reply_count or 0,
         like_count=like_count or 0,
         liked_by_me=liked_by_me,
+        poll=polls_by_post.get(post.id),
         created_at=post.created_at,
         updated_at=post.updated_at,
     )
+
+
+@router.put("/{post_id}/poll/vote", response_model=PollRead)
+async def vote_on_post_poll(
+    post_id: UUID,
+    data: PollVoteCreate,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(current_user),
+):
+    """Cast or replace the caller's selection while the poll remains open."""
+    await check_not_banned(user.id, session)
+    poll = await session.scalar(
+        select(PostPoll).where(PostPoll.post_id == post_id)
+    )
+    if poll is None:
+        raise HTTPException(status_code=404, detail="POLL_NOT_FOUND")
+
+    database_now = await session.scalar(select(func.clock_timestamp()))
+    if poll.closes_at <= database_now:
+        raise HTTPException(status_code=409, detail="POLL_CLOSED")
+
+    option_exists = await session.scalar(
+        select(PostPollOption.id).where(
+            PostPollOption.id == data.option_id,
+            PostPollOption.poll_id == poll.id,
+        )
+    )
+    if option_exists is None:
+        raise HTTPException(status_code=404, detail="POLL_OPTION_NOT_FOUND")
+
+    # The unique key is the concurrency boundary: one voter has one mutable choice.
+    vote_source = (
+        select(
+            literal(uuid4()),
+            PostPoll.id,
+            PostPollOption.id,
+            literal(user.id),
+            func.clock_timestamp(),
+            func.clock_timestamp(),
+        )
+        .select_from(PostPoll)
+        .join(
+            PostPollOption,
+            (PostPollOption.poll_id == PostPoll.id)
+            & (PostPollOption.id == data.option_id),
+        )
+        .where(
+            PostPoll.id == poll.id,
+            PostPoll.closes_at > func.clock_timestamp(),
+        )
+    )
+    vote_result = await session.execute(
+        insert(PostPollVote)
+        .from_select(
+            (
+                "id",
+                "poll_id",
+                "option_id",
+                "user_id",
+                "created_at",
+                "updated_at",
+            ),
+            vote_source,
+        )
+        .on_conflict_do_update(
+            constraint="uq_post_poll_vote_poll_user",
+            set_={
+                "option_id": data.option_id,
+                "updated_at": func.clock_timestamp(),
+            },
+        )
+        .returning(PostPollVote.option_id)
+    )
+    if vote_result.scalar_one_or_none() is None:
+        await session.rollback()
+        raise HTTPException(status_code=409, detail="POLL_CLOSED")
+    await session.commit()
+    polls_by_post = await load_post_polls(
+        session,
+        [post_id],
+        viewer_id=user.id,
+    )
+    updated_poll = polls_by_post.get(post_id)
+    if updated_poll is None:
+        raise HTTPException(status_code=404, detail="POLL_NOT_FOUND")
+    await publish_feed_event("updated", item_type="post", item_id=str(post_id))
+    return updated_poll
 
 
 async def _post_like_state(
