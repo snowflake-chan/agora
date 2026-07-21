@@ -840,7 +840,7 @@ async def test_admin_ai_settings(
         result = await request_structured_completion(
             user_message='{"task":"connection_test","output_schema":{"ok":true}}',
             response_type=AdminAIProbeResponse,
-            max_tokens=16,
+            max_tokens=128,
             system_prompt=(
                 'Return exactly {"ok":true} as JSON. Do not add commentary.'
             ),
