@@ -2,12 +2,16 @@
   import { onMount } from "svelte";
   import {
     Ban,
+    Bot,
     Check,
     ChevronDown,
     ChevronUp,
     Eye,
+    ShieldAlert,
     Trash2,
+    RotateCcw,
     UnlockKeyhole,
+    X,
   } from "@lucide/svelte";
   import {
     adminDeleteGuild,
@@ -18,19 +22,27 @@
     checkAdmin,
     deletePatchAdmin,
     deletePostAdmin,
+    getAISettings,
     getBanStatus,
     listAdminGuildDiscussions,
     listAdminPatches,
     listAdminPosts,
+    listModerationReviews,
     listReports,
     listUsers,
+    resetAISettings,
+    testAISettings,
     resolveReport,
+    reviewModerationItem,
     setUserRole,
     unbanUser,
+    updateAISettings,
+    type AdminAISettings,
     type AdminGuildDiscussion,
     type AdminPatch,
     type AdminPost,
     type AdminUser,
+    type AdminModerationItem,
     type ReportItem,
   } from "../../lib/admin";
   import {
@@ -44,7 +56,7 @@
   import ConfirmDialog from "../ConfirmDialog.svelte";
   import GlassModal from "../GlassModal.svelte";
 
-  type Tab = "reports" | "posts" | "patches" | "users" | "guilds";
+  type Tab = "reports" | "moderation" | "posts" | "patches" | "ai" | "users" | "guilds";
   type BanStatus = {
     id: string;
     type: string;
@@ -58,12 +70,19 @@
   let isSuperAdmin = $state(false);
   let reports = $state<ReportItem[]>([]);
   let handlingReportId = $state<string | null>(null);
+  let moderationReviews = $state<AdminModerationItem[]>([]);
+  let moderationLoading = $state(false);
+  let moderationError = $state(false);
   let posts = $state<AdminPost[]>([]);
   let patches = $state<AdminPatch[]>([]);
   let users = $state<AdminUser[]>([]);
   let guilds = $state<Guild[]>([]);
   let notice = $state("");
   let noticeKind = $state<"success" | "error">("success");
+  let aiSettings = $state<AdminAISettings | null>(null);
+  let aiApiKey = $state("");
+  let aiSaving = $state(false);
+  let aiTesting = $state(false);
 
   let expandedGuild = $state<string | null>(null);
   let guildMembers = $state<GuildMember[]>([]);
@@ -94,6 +113,12 @@
   let confirmText = $state("");
   let confirmAction = $state<() => void>(() => {});
 
+  let moderationModal = $state(false);
+  let moderationTarget = $state<AdminModerationItem | null>(null);
+  let moderationDecision = $state<"approve" | "reject">("approve");
+  let moderationNote = $state("");
+  let moderationSaving = $state(false);
+
   const banOptions = [
     { value: "ban_user", key: "admin.ban.account" },
     { value: "mute_post", key: "admin.ban.posts" },
@@ -120,8 +145,13 @@
         listAdminPosts(),
         listAdminPatches(),
       ]);
+      await loadModerationReviews();
       if (isSuperAdmin) {
-        [users, guilds] = await Promise.all([listUsers(), listGuilds()]);
+        [users, guilds, aiSettings] = await Promise.all([
+          listUsers(),
+          listGuilds(),
+          getAISettings(),
+        ]);
       }
     } catch (error) {
       showNotice(
@@ -134,16 +164,74 @@
   function tabs(): Array<{ value: Tab; key: string }> {
     const shared: Array<{ value: Tab; key: string }> = [
       { value: "reports", key: "admin.tabs.reports" },
+      { value: "moderation", key: "admin.tabs.moderation" },
       { value: "posts", key: "admin.tabs.posts" },
       { value: "patches", key: "admin.tabs.patches" },
     ];
     if (isSuperAdmin) {
       shared.push(
+        { value: "ai", key: "admin.tabs.ai" },
         { value: "users", key: "admin.tabs.users" },
         { value: "guilds", key: "admin.tabs.guilds" },
       );
     }
     return shared;
+  }
+
+  function aiSettingsPayload() {
+    if (!aiSettings) return null;
+    return {
+      enabled: aiSettings.enabled,
+      base_url: aiSettings.base_url,
+      model: aiSettings.model,
+      ...(aiApiKey.trim() ? { api_key: aiApiKey.trim() } : {}),
+      moderation_provider_fallback_enabled:
+        aiSettings.moderation_provider_fallback_enabled,
+    };
+  }
+
+  async function testAIProviderSettings() {
+    const payload = aiSettingsPayload();
+    if (!payload || aiTesting || aiSaving) return;
+    aiTesting = true;
+    try {
+      await testAISettings(payload);
+      showNotice($translator("admin.ai.testPassed"));
+    } catch (error) {
+      showNotice(translateError(error, $translator, "admin.ai.testFailed"), "error");
+    } finally {
+      aiTesting = false;
+    }
+  }
+
+  async function saveAISettings() {
+    const payload = aiSettingsPayload();
+    if (!payload || aiSaving || aiTesting) return;
+    aiSaving = true;
+    try {
+      aiSettings = await updateAISettings(payload);
+      aiApiKey = "";
+      showNotice($translator("admin.ai.saved"));
+    } catch (error) {
+      showNotice(translateError(error, $translator, "admin.ai.saveFailed"), "error");
+    } finally {
+      aiSaving = false;
+    }
+  }
+
+  async function resetAIProviderSettings() {
+    if (aiSaving) return;
+    aiSaving = true;
+    try {
+      await resetAISettings();
+      aiSettings = await getAISettings();
+      aiApiKey = "";
+      showNotice($translator("admin.ai.resetDone"));
+    } catch (error) {
+      showNotice(translateError(error, $translator, "admin.ai.resetFailed"), "error");
+    } finally {
+      aiSaving = false;
+    }
   }
 
   function formatDate(value: string | null | undefined) {
@@ -165,6 +253,86 @@
   function banLabel(type: string) {
     const option = banOptions.find((item) => item.value === type);
     return option ? $translator(option.key) : type;
+  }
+
+  function moderationTypeLabel(type: AdminModerationItem["content_type"]) {
+    return $translator(`admin.moderationType.${type}`);
+  }
+
+  function moderationReasonLabel(reason: string | null) {
+    if (reason === "political_or_uncertain") {
+      return $translator("admin.moderationReason.politicalOrUncertain");
+    }
+    if (reason === "classifier_unavailable") {
+      return $translator("admin.moderationReason.classifierUnavailable");
+    }
+    return $translator("admin.moderationReason.fallback");
+  }
+
+  async function loadModerationReviews() {
+    moderationLoading = true;
+    moderationError = false;
+    try {
+      moderationReviews = await listModerationReviews("pending_review");
+    } catch {
+      moderationReviews = [];
+      moderationError = true;
+    } finally {
+      moderationLoading = false;
+    }
+  }
+
+  function openModerationReview(
+    item: AdminModerationItem,
+    decision: "approve" | "reject",
+  ) {
+    moderationTarget = item;
+    moderationDecision = decision;
+    moderationNote = "";
+    moderationModal = true;
+  }
+
+  async function submitModerationReview() {
+    if (!moderationTarget || moderationSaving) return;
+    if (moderationDecision === "reject" && !moderationNote.trim()) {
+      showNotice($translator("admin.moderationRejectNoteRequired"), "error");
+      return;
+    }
+
+    moderationSaving = true;
+    try {
+      await reviewModerationItem(
+        moderationTarget.id,
+        moderationDecision,
+        moderationNote,
+        moderationTarget.revision_number,
+      );
+      moderationReviews = moderationReviews.filter(
+        (item) => item.id !== moderationTarget?.id,
+      );
+      showNotice(
+        $translator(
+          moderationDecision === "approve"
+            ? "admin.moderationApproved"
+            : "admin.moderationRejected",
+        ),
+      );
+      moderationModal = false;
+      moderationTarget = null;
+    } catch (error) {
+      if (
+        (error as Error)?.message === "CONTENT_REVIEW_ALREADY_DECIDED"
+        || (error as Error)?.message === "CONTENT_REVIEW_CONFLICT"
+      ) {
+        await loadModerationReviews();
+      }
+      showNotice(
+        translateError(error, $translator, "admin.moderationReviewFailed"),
+        "error",
+      );
+    } finally {
+      moderationSaving = false;
+    }
   }
 
   async function handleReport(reportId: string, action: string) {
@@ -427,6 +595,9 @@
         onclick={() => (tab = item.value)}
       >
         {$translator(item.key)}
+        {#if item.value === "moderation" && moderationReviews.length > 0}
+          <span class="tab-count">{moderationReviews.length}</span>
+        {/if}
       </button>
     {/each}
   </nav>
@@ -508,6 +679,77 @@
       {/if}
     </section>
 
+  {:else if tab === "moderation"}
+    <section aria-label={$translator("admin.tabs.moderation")}>
+      {#if moderationLoading}
+        <div class="empty-state"><div class="spinner"></div></div>
+      {:else if moderationError}
+        <div class="inline-error" role="alert">
+          <span>{$translator("admin.moderationLoadFailed")}</span>
+          <button class="btn btn-ghost btn-xs" type="button" onclick={loadModerationReviews}>
+            {$translator("common.retry")}
+          </button>
+        </div>
+      {:else if moderationReviews.length === 0}
+        <div class="empty-state">{$translator("admin.emptyModeration")}</div>
+      {:else}
+        <div class="admin-list">
+          {#each moderationReviews as review (review.id)}
+            <article class="admin-row moderation-row">
+              <div class="row-main">
+                <div class="row-meta">
+                  {$translator("admin.moderationMeta", {
+                    type: moderationTypeLabel(review.content_type),
+                    author: review.author_username || $translator("common.anonymous"),
+                  })}
+                  · {formatDate(review.created_at)}
+                </div>
+                <h2>
+                  <a class="report-target-link" href={review.target_href} target="_blank" rel="noreferrer">
+                    {review.title || $translator("admin.untitled")}
+                    <Eye size={14} aria-hidden="true" />
+                  </a>
+                </h2>
+                <p class="content-excerpt">{review.content}</p>
+                {#if review.poll_question}
+                  <div class="moderation-poll">
+                    <strong>{$translator("poll.label")}: {review.poll_question}</strong>
+                    <ul>
+                      {#each review.poll_options as option}
+                        <li>{option}</li>
+                      {/each}
+                    </ul>
+                  </div>
+                {/if}
+                <p class="moderation-reason">
+                  <ShieldAlert size={14} strokeWidth={1.8} aria-hidden="true" />
+                  {moderationReasonLabel(review.moderation_reason)}
+                </p>
+              </div>
+              <div class="row-actions">
+                <button
+                  class="btn btn-secondary btn-sm"
+                  disabled={moderationSaving}
+                  onclick={() => openModerationReview(review, "approve")}
+                >
+                  <Check size={15} aria-hidden="true" />
+                  {$translator("admin.moderationApprove")}
+                </button>
+                <button
+                  class="btn btn-danger-ghost btn-sm"
+                  disabled={moderationSaving}
+                  onclick={() => openModerationReview(review, "reject")}
+                >
+                  <X size={15} aria-hidden="true" />
+                  {$translator("admin.moderationReject")}
+                </button>
+              </div>
+            </article>
+          {/each}
+        </div>
+      {/if}
+    </section>
+
   {:else if tab === "posts" || tab === "patches"}
     {@const items = tab === "posts" ? posts : patches}
     <section aria-label={$translator(tab === "posts" ? "admin.tabs.posts" : "admin.tabs.patches")}>
@@ -557,6 +799,83 @@
             </article>
           {/each}
         </div>
+      {/if}
+    </section>
+
+  {:else if tab === "ai"}
+    <section class="settings-panel" aria-label={$translator("admin.tabs.ai")}>
+      {#if aiSettings}
+        <div class="settings-heading">
+          <div>
+            <p class="admin-eyebrow">{$translator("admin.ai.eyebrow")}</p>
+            <h2><Bot size={19} /> {$translator("admin.ai.title")}</h2>
+          </div>
+          <span class="source-badge">
+            {$translator(aiSettings.source === "database" ? "admin.ai.sourceDatabase" : "admin.ai.sourceEnvironment")}
+          </span>
+        </div>
+
+        <p class="settings-description">{$translator("admin.ai.description")}</p>
+
+        <label class="toggle-row">
+          <span>
+            <strong>{$translator("admin.ai.enabled")}</strong>
+            <small>{$translator("admin.ai.enabledDescription")}</small>
+          </span>
+          <input type="checkbox" bind:checked={aiSettings.enabled} />
+        </label>
+
+        <div class="settings-grid">
+          <label>
+            <span>{$translator("admin.ai.baseUrl")}</span>
+            <input class="input" type="url" bind:value={aiSettings.base_url} placeholder="https://provider.example/v1" />
+          </label>
+          <label>
+            <span>{$translator("admin.ai.model")}</span>
+            <input class="input" bind:value={aiSettings.model} placeholder="model-name" />
+          </label>
+          <label class="settings-wide">
+            <span>{$translator("admin.ai.apiKey")}</span>
+            <input
+              class="input"
+              type="password"
+              bind:value={aiApiKey}
+              autocomplete="new-password"
+              placeholder={aiSettings.api_key_configured
+                ? $translator("admin.ai.apiKeyConfigured")
+                : $translator("admin.ai.apiKeyPlaceholder")}
+            />
+            <small>{$translator("admin.ai.apiKeyDescription")}</small>
+          </label>
+        </div>
+
+        <label class="toggle-row">
+          <span>
+            <strong>{$translator("admin.ai.moderationFallback")}</strong>
+            <small>{$translator("admin.ai.moderationFallbackDescription")}</small>
+          </span>
+          <input type="checkbox" bind:checked={aiSettings.moderation_provider_fallback_enabled} />
+        </label>
+
+        <div class:configured={aiSettings.trusted_classifier_configured} class="classifier-status">
+          {$translator(aiSettings.trusted_classifier_configured
+            ? "admin.ai.classifierConfigured"
+            : "admin.ai.classifierMissing")}
+        </div>
+
+        <div class="settings-actions">
+          <button class="btn btn-secondary" onclick={resetAIProviderSettings} disabled={aiSaving}>
+            <RotateCcw size={15} /> {$translator("admin.ai.useEnvironment")}
+          </button>
+          <button class="btn btn-secondary" onclick={testAIProviderSettings} disabled={aiSaving || aiTesting}>
+            {$translator(aiTesting ? "common.processing" : "admin.ai.testConnection")}
+          </button>
+          <button class="btn btn-primary" onclick={saveAISettings} disabled={aiSaving || aiTesting}>
+            {$translator(aiSaving ? "common.processing" : "common.save")}
+          </button>
+        </div>
+      {:else}
+        <div class="empty-state"><div class="spinner"></div></div>
       {/if}
     </section>
 
@@ -706,6 +1025,56 @@
 {/if}
 
 <GlassModal
+  show={moderationModal}
+  title={$translator(
+    moderationDecision === "approve"
+      ? "admin.moderationApproveTitle"
+      : "admin.moderationRejectTitle",
+  )}
+  onclose={() => (moderationModal = false)}
+>
+  <div class="modal-stack">
+    {#if moderationTarget}
+      <p class="moderation-modal-context">
+        {moderationTarget.title || moderationTypeLabel(moderationTarget.content_type)}
+      </p>
+    {/if}
+    <label>
+      <span class="field-label">{$translator("admin.moderationNote")}</span>
+      <textarea
+        class="input"
+        rows="4"
+        maxlength="500"
+        bind:value={moderationNote}
+        placeholder={$translator("admin.moderationNotePlaceholder")}
+      ></textarea>
+      <span class="field-note">{$translator("admin.moderationNoteHelp")}</span>
+    </label>
+    {#if moderationDecision === "reject" && !moderationNote.trim()}
+      <p class="validation-note">{$translator("admin.moderationRejectNoteRequired")}</p>
+    {/if}
+    <div class="modal-actions">
+      <button class="btn btn-ghost btn-sm" onclick={() => (moderationModal = false)}>
+        {$translator("common.cancel")}
+      </button>
+      <button
+        class={moderationDecision === "approve" ? "btn btn-primary btn-sm" : "btn btn-danger btn-sm"}
+        disabled={moderationSaving || (moderationDecision === "reject" && !moderationNote.trim())}
+        onclick={submitModerationReview}
+      >
+        {$translator(
+          moderationSaving
+            ? "admin.moderationReviewing"
+            : moderationDecision === "approve"
+              ? "admin.moderationApprove"
+              : "admin.moderationReject",
+        )}
+      </button>
+    </div>
+  </div>
+</GlassModal>
+
+<GlassModal
   show={banModal}
   title={$translator("admin.banTitle", { name: banUsername })}
   onclose={() => (banModal = false)}
@@ -845,12 +1214,117 @@
     border-left-color: var(--vercel-danger);
   }
 
+  .settings-panel {
+    display: grid;
+    gap: 1rem;
+    padding: 1.25rem;
+    border: 1px solid var(--vercel-border);
+    border-radius: var(--vercel-radius-lg);
+    background: var(--vercel-card);
+  }
+
+  .settings-heading,
+  .settings-actions,
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .settings-heading h2 {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--vercel-text);
+    font-size: 1.05rem;
+  }
+
+  .source-badge,
+  .classifier-status {
+    width: fit-content;
+    padding: 0.35rem 0.55rem;
+    border: 1px solid var(--vercel-border);
+    border-radius: var(--vercel-radius-sm);
+    color: var(--vercel-text-tertiary);
+    background: var(--vercel-surface-muted);
+    font-size: 0.72rem;
+    font-weight: 650;
+  }
+
+  .classifier-status.configured {
+    color: var(--vercel-success);
+    border-color: color-mix(in srgb, var(--vercel-success) 35%, var(--vercel-border));
+  }
+
+  .settings-description,
+  .toggle-row small,
+  .settings-grid small {
+    color: var(--vercel-text-tertiary);
+    font-size: 0.75rem;
+    line-height: 1.5;
+  }
+
+  .settings-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.9rem;
+  }
+
+  .settings-grid label {
+    display: grid;
+    gap: 0.4rem;
+    color: var(--vercel-text-secondary);
+    font-size: 0.78rem;
+    font-weight: 600;
+  }
+
+  .settings-wide { grid-column: 1 / -1; }
+
+  .toggle-row {
+    padding: 0.85rem;
+    border: 1px solid var(--vercel-border);
+    border-radius: var(--vercel-radius-sm);
+  }
+
+  .toggle-row span { display: grid; gap: 0.2rem; }
+  .toggle-row strong { color: var(--vercel-text); font-size: 0.82rem; }
+  .toggle-row input { width: 1.1rem; height: 1.1rem; accent-color: var(--vercel-accent); }
+  .settings-actions { justify-content: flex-end; }
+
+  @media (max-width: 40rem) {
+    .settings-grid { grid-template-columns: 1fr; }
+    .settings-wide { grid-column: auto; }
+    .settings-heading { align-items: flex-start; flex-direction: column; }
+  }
+
   .admin-tabs {
     display: flex;
     gap: 0.25rem;
     margin: 1rem 0;
     overflow-x: auto;
     border-bottom: 1px solid var(--vercel-border);
+  }
+
+  .admin-tabs :global(.filter-tab) {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    white-space: nowrap;
+  }
+
+  .tab-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.25rem;
+    height: 1.25rem;
+    padding: 0 0.3rem;
+    color: var(--vercel-warning);
+    background: var(--vercel-warning-bg);
+    border-radius: var(--vercel-radius-sm);
+    font-size: 0.6875rem;
+    font-variant-numeric: tabular-nums;
   }
 
   .admin-list {
@@ -890,6 +1364,67 @@
     align-items: start;
   }
 
+  .moderation-row {
+    align-items: start;
+  }
+
+  .moderation-reason {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin: 0.55rem 0 0;
+    color: var(--vercel-warning);
+    font-size: 0.75rem;
+  }
+
+  .moderation-poll {
+    max-width: 65ch;
+    margin-top: 0.55rem;
+    padding-left: 0.75rem;
+    border-left: 2px solid var(--vercel-border-hover);
+    color: var(--vercel-text-secondary);
+    font-size: 0.75rem;
+    line-height: 1.5;
+  }
+
+  .moderation-poll strong {
+    color: var(--vercel-text);
+    font-weight: 650;
+  }
+
+  .moderation-poll ul {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.9rem;
+    margin: 0.25rem 0 0;
+    padding-left: 1rem;
+  }
+
+  .moderation-modal-context {
+    margin: 0;
+    color: var(--vercel-text-secondary);
+    font-size: 0.8125rem;
+    line-height: 1.5;
+  }
+
+  .validation-note {
+    margin: -0.5rem 0 0;
+    color: var(--vercel-danger);
+    font-size: 0.75rem;
+  }
+
+  .inline-error {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    color: var(--vercel-danger);
+    background: var(--vercel-danger-bg);
+    border-left: 3px solid var(--vercel-danger);
+    font-size: 0.8125rem;
+  }
+
   .resolved {
     opacity: 0.62;
   }
@@ -915,11 +1450,16 @@
   }
 
   .content-excerpt {
+    display: -webkit-box;
     max-width: 65ch;
+    overflow: hidden;
     margin: 0.35rem 0 0;
     color: var(--vercel-text-secondary);
     font-size: 0.8125rem;
     line-height: 1.5;
+    overflow-wrap: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
   }
 
   .status-text {

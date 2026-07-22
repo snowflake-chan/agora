@@ -9,10 +9,12 @@ class UserManager(BaseUserManager):
     reset_password_token_secret = settings.JWT_SECRET
     verification_token_secret = settings.JWT_SECRET
 
-    def parse_id(self, value: str) -> uuid.UUID:
+    def parse_id(self, value: str | uuid.UUID) -> uuid.UUID:
+        if isinstance(value, uuid.UUID):
+            return value
         try:
-            return uuid.UUID(value)
-        except ValueError:
+            return uuid.UUID(str(value))
+        except (AttributeError, TypeError, ValueError):
             raise exceptions.InvalidID()
     
 async def get_user_manager(

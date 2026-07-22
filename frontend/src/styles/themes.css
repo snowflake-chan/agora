@@ -22,9 +22,9 @@ html[data-theme="tiktok"] {
   --vercel-accent-foreground: #ffffff;
   --vercel-accent-hover: #e9274d;
   --vercel-ring: rgba(37, 244, 238, 0.58);
-  --vercel-radius: 6px;
+  --vercel-radius: 8px;
   --vercel-radius-lg: 8px;
-  --vercel-radius-sm: 4px;
+  --vercel-radius-sm: 6px;
   color-scheme: dark;
 }
 
@@ -94,9 +94,9 @@ html[data-theme="claude"] {
   --vercel-warning-bg: #f7f0df;
   --vercel-info: #596f88;
   --vercel-ring: rgba(201, 100, 66, 0.3);
-  --vercel-radius: 12px;
-  --vercel-radius-lg: 16px;
-  --vercel-radius-sm: 8px;
+  --vercel-radius: 8px;
+  --vercel-radius-lg: 8px;
+  --vercel-radius-sm: 6px;
   color-scheme: light;
 }
 
@@ -438,9 +438,9 @@ html[data-color-mode="light"] ::-webkit-scrollbar-thumb {
 
 /* Apple-inspired Pinguo theme */
 html[data-theme="apple"] {
-  --vercel-radius: 20px;
-  --vercel-radius-lg: 22px;
-  --vercel-radius-sm: 12px;
+  --vercel-radius: 8px;
+  --vercel-radius-lg: 8px;
+  --vercel-radius-sm: 6px;
   --apple-theme-ease: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
@@ -530,9 +530,7 @@ html[data-theme="apple"] .pill-bar {
 }
 
 html[data-theme="apple"] .pill-item,
-html[data-theme="apple"] .pill-highlight,
-html[data-theme="apple"] .btn,
-html[data-theme="apple"] .btn-icon {
+html[data-theme="apple"] .pill-highlight {
   border-radius: 9999px;
 }
 

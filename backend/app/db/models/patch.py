@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, SmallInteger, String, Text, text
+from sqlalchemy import CheckConstraint, ForeignKey, Index, Integer, SmallInteger, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import TIMESTAMP
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -59,6 +59,12 @@ class Patch(Base):
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     pr_number: Mapped[int] = mapped_column(nullable=False)
+    submitted_head_sha: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
+    revision_number: Mapped[int] = mapped_column(
+        Integer, default=1, server_default="1", nullable=False
+    )
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft")
     voting_ends_at: Mapped[datetime | None] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
@@ -86,3 +92,39 @@ class Patch(Base):
     # ── Relationships ──
     author: Mapped["User"] = relationship("User", lazy="joined")  # type: ignore[name-defined]
     votes: Mapped[list["Vote"]] = relationship("Vote", back_populates="patch", lazy="selectin", cascade="all, delete-orphan")  # type: ignore[name-defined]
+    revisions: Mapped[list["PatchRevision"]] = relationship(
+        "PatchRevision",
+        back_populates="patch",
+        order_by="PatchRevision.version",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        lazy="raise",
+    )
+
+
+class PatchRevision(Base):
+    """Immutable snapshot of a draft proposal superseded by an edit."""
+
+    __tablename__ = "patch_revision"
+    __table_args__ = (
+        UniqueConstraint(
+            "patch_id", "version", name="uq_patch_revision_version"
+        ),
+        CheckConstraint("version > 0", name="ck_patch_revision_version_positive"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    patch_id: Mapped[UUID] = mapped_column(
+        ForeignKey("patch.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    editor_id: Mapped[UUID] = mapped_column(
+        ForeignKey("user.id", ondelete="CASCADE"), nullable=False
+    )
+    edited_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), default=datetime.now, nullable=False
+    )
+
+    patch: Mapped[Patch] = relationship(Patch, back_populates="revisions")

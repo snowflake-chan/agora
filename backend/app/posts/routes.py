@@ -1,35 +1,118 @@
 import asyncio
-from uuid import UUID
+from datetime import datetime, timezone
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, literal, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
 
 from app.db import get_session
-from app.db.models.content import Content as ContentModel
+from app.db.models.content import Content as ContentModel, ContentRevision
 from app.db.models.follow import Follow
 from app.db.models.patch import Patch as PatchModel
 from app.db.models.post_like import PostLike
+from app.db.models.post_poll import PostPoll, PostPollOption, PostPollVote
 from app.db.models.user import User
 from app.db.models.vote import Vote as VoteModel
-from app.deps import check_not_banned, require_content_visible
-from app.notifications.service import create_notification, notify_followers
+from app.deps import (
+    check_not_banned,
+    require_content_interactable,
+    require_content_visible,
+)
+from app.content_moderation import (
+    PUBLIC_MODERATION_STATUSES,
+    announce_content_published,
+    assess_content_moderation_after_read,
+    content_is_public,
+    content_tree_visibility_clause,
+    content_visibility_clause,
+    moderation_metadata_for,
+    notify_content_pending,
+)
+from app.schemas.content_input import validate_moderation_input_size
 from app.notifications.redis import get_redis
+from app.post_polls import create_post_poll, load_post_polls
 from app.posts.feed import FeedMode, rank_feed_items
 from app.posts.realtime import FEED_CHANNEL, publish_feed_event
 from app.schemas.post import (
     CommentCreate,
     CommentRead,
+    ContentEditRead,
+    ContentRevisionRead,
     FeedItem,
+    PollRead,
+    PollVoteCreate,
     PostCreate,
     PostLikeRead,
     PostRead,
+    PostUpdate,
 )
 from app.users.deps import current_user, optional_current_user
 
 router = APIRouter()
+
+
+def _content_edit_read(content: ContentModel, user: User) -> ContentEditRead:
+    return ContentEditRead(
+        id=content.id,
+        type=content.type,
+        title=content.title,
+        content=content.content,
+        tags=content.tags,
+        author_id=content.author_id,
+        parent_id=content.parent_id,
+        patch_id=content.patch_id,
+        guild_id=content.guild_id,
+        **moderation_metadata_for(content, user),
+        revision_number=content.revision_number,
+        created_at=content.created_at,
+        updated_at=content.updated_at,
+    )
+
+
+async def _publish_content_edit(
+    content: ContentModel,
+    *,
+    hidden: bool = False,
+) -> None:
+    """Refresh only the public root affected by an edit."""
+    if content.type == "post":
+        await publish_feed_event(
+            "removed" if hidden else "updated",
+            item_type="post",
+            item_id=str(content.id),
+        )
+    elif content.patch_id is not None:
+        await publish_feed_event(
+            "updated",
+            item_type="patch",
+            item_id=str(content.patch_id),
+        )
+    elif content.parent_id is not None:
+        await publish_feed_event(
+            "updated",
+            item_type="post",
+            item_id=str(content.parent_id),
+        )
+
+
+async def _content_is_public_for_edit(
+    session: AsyncSession,
+    content: ContentModel,
+) -> bool:
+    """Check inherited visibility without triggering an async lazy load."""
+    if content.moderation_status not in PUBLIC_MODERATION_STATUSES:
+        return False
+    if content.parent_id is None:
+        return True
+    parent_status = await session.scalar(
+        select(ContentModel.moderation_status).where(
+            ContentModel.id == content.parent_id
+        )
+    )
+    return parent_status in PUBLIC_MODERATION_STATUSES
 
 
 # ── Posts ──
@@ -40,19 +123,26 @@ async def list_posts(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     session: AsyncSession = Depends(get_session),
+    user: User | None = Depends(optional_current_user),
 ):
     """List posts (type=post), newest first."""
     offset = (page - 1) * page_size
 
     # Count total
     total = await session.scalar(
-        select(func.count(ContentModel.id)).where(ContentModel.type == "post")
+        select(func.count(ContentModel.id)).where(
+            ContentModel.type == "post",
+            content_visibility_clause(user),
+        )
     )
 
     # Fetch posts with author
     stmt = (
         select(ContentModel)
-        .where(ContentModel.type == "post")
+        .where(
+            ContentModel.type == "post",
+            content_visibility_clause(user),
+        )
         .order_by(ContentModel.created_at.desc())
         .offset(offset)
         .limit(page_size)
@@ -70,6 +160,7 @@ async def list_posts(
             .where(
                 ContentModel.parent_id.in_(post_ids),
                 ContentModel.type == "comment",
+                content_visibility_clause(user),
             )
             .group_by(ContentModel.parent_id)
         )
@@ -81,6 +172,11 @@ async def list_posts(
             .group_by(PostLike.post_id)
         )
         like_counts = dict(like_result.all())
+    polls_by_post = await load_post_polls(
+        session,
+        post_ids,
+        viewer_id=user.id if user else None,
+    )
 
     return [
         PostRead(
@@ -92,6 +188,9 @@ async def list_posts(
             author_username=p.author.username,
             reply_count=counts.get(p.id, 0),
             like_count=like_counts.get(p.id, 0),
+            poll=polls_by_post.get(p.id),
+            **moderation_metadata_for(p, user),
+            revision_number=p.revision_number,
             created_at=p.created_at,
             updated_at=p.updated_at,
         )
@@ -112,34 +211,50 @@ async def create_post(
     if not data.content.strip():
         raise HTTPException(status_code=422, detail="Content is required")
 
+    moderation_texts = [data.title, data.content, *(data.tags or [])]
+    if data.poll is not None:
+        moderation_texts.extend(
+            [data.poll.question, *data.poll.options]
+        )
+    moderation = await assess_content_moderation_after_read(
+        session,
+        *moderation_texts,
+    )
+
+    # The read transaction was released during semantic review. Recheck the
+    # mutable restriction in the short write transaction.
+    await check_not_banned(user.id, session, "mute_post")
+
     post = ContentModel(
         type="post",
         title=data.title.strip(),
         content=data.content.strip(),
         tags=data.tags,
         author_id=user.id,
+        moderation_status=moderation.status,
+        moderation_reason=moderation.reason,
+        published_at=(
+            datetime.now(timezone.utc)
+            if moderation.status == "published"
+            else None
+        ),
     )
     session.add(post)
+    await session.flush()
+    if data.poll is not None:
+        await create_post_poll(session, post_id=post.id, data=data.poll)
     await session.commit()
-    await session.refresh(post)
 
     # Eagerly load author
     stmt = select(ContentModel).where(ContentModel.id == post.id)
     result = await session.execute(stmt)
     post = result.scalar_one()
+    polls_by_post = await load_post_polls(session, [post.id], viewer_id=user.id)
 
-    await publish_feed_event(
-        "created",
-        item_type="post",
-        item_id=str(post.id),
-    )
-    await notify_followers(
-        author_id=user.id,
-        type="following_post",
-        title=f"{user.nickname or user.username} published a new post",
-        message=post.title or "",
-        link=f"/posts/{post.id}",
-    )
+    if post.moderation_status == "pending_review":
+        await notify_content_pending(post)
+    else:
+        await announce_content_published(post, session=session)
 
     return PostRead(
         id=post.id,
@@ -149,12 +264,211 @@ async def create_post(
         tags=post.tags,
         author_username=post.author.username,
         reply_count=0,
+        poll=polls_by_post.get(post.id),
+        **moderation_metadata_for(post, user),
+        revision_number=post.revision_number,
         created_at=post.created_at,
         updated_at=post.updated_at,
     )
 
 
 # ── Feed (unified timeline) ──
+
+
+@router.patch("/{content_id}", response_model=ContentEditRead)
+async def update_content(
+    content_id: UUID,
+    data: PostUpdate,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(current_user),
+):
+    """Edit owned content while preserving the superseded version forever."""
+    candidate = await session.scalar(
+        select(ContentModel).where(ContentModel.id == content_id)
+    )
+    candidate = await require_content_visible(candidate, user, session)
+    if candidate.author_id != user.id:
+        raise HTTPException(status_code=403, detail="FORBIDDEN")
+    if candidate.type not in ("post", "comment", "guild_post"):
+        raise HTTPException(status_code=422, detail="CONTENT_NOT_EDITABLE")
+    if candidate.revision_number != data.revision_number:
+        raise HTTPException(status_code=409, detail="CONTENT_EDIT_CONFLICT")
+
+    if candidate.type == "post" and await session.scalar(
+        select(PostPoll.id).where(PostPoll.post_id == candidate.id)
+    ):
+        raise HTTPException(status_code=409, detail="POLL_CONTENT_EDIT_LOCKED")
+
+    fields = data.model_fields_set - {"revision_number"}
+    allowed_fields = {
+        "post": {"title", "content", "tags"},
+        "comment": {"content"},
+        "guild_post": {"title", "content"},
+    }[candidate.type]
+    if not fields:
+        raise HTTPException(status_code=422, detail="CONTENT_UPDATE_REQUIRED")
+    if fields - allowed_fields:
+        raise HTTPException(status_code=422, detail="CONTENT_FIELD_NOT_EDITABLE")
+
+    new_title = candidate.title
+    new_content = candidate.content
+    new_tags = candidate.tags
+    if "title" in fields:
+        new_title = data.title.strip() if data.title is not None else None
+        if candidate.type == "post" and not new_title:
+            raise HTTPException(status_code=422, detail="TITLE_REQUIRED")
+        if new_title is not None and len(new_title) > 200:
+            raise HTTPException(status_code=422, detail="TITLE_TOO_LONG")
+    if "content" in fields:
+        new_content = data.content.strip() if data.content is not None else ""
+        if not new_content:
+            raise HTTPException(status_code=422, detail="CONTENT_REQUIRED")
+    if "tags" in fields:
+        new_tags = (
+            None if data.tags is None else [tag.strip() for tag in data.tags]
+        )
+        if new_tags and any(len(tag) > 50 for tag in new_tags):
+            raise HTTPException(status_code=422, detail="TAG_TOO_LONG")
+
+    if (
+        new_title == candidate.title
+        and new_content == candidate.content
+        and new_tags == candidate.tags
+    ):
+        raise HTTPException(status_code=422, detail="CONTENT_NO_CHANGES")
+
+    base_revision = data.revision_number
+    try:
+        validate_moderation_input_size(
+            [new_title or "", new_content, *(new_tags or [])]
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail="AI_INPUT_TOO_LONG") from error
+
+    moderation = await assess_content_moderation_after_read(
+        session,
+        new_title or "",
+        new_content,
+        *(new_tags or []),
+    )
+
+    # Only lock the scalar ID. Content's eager author/parent joins include
+    # nullable relationships that PostgreSQL cannot lock with FOR UPDATE.
+    locked_id = await session.scalar(
+        select(ContentModel.id)
+        .where(ContentModel.id == content_id)
+        .with_for_update()
+    )
+    if locked_id is None:
+        raise HTTPException(status_code=404, detail="CONTENT_NOT_FOUND")
+    content = await session.scalar(
+        select(ContentModel)
+        .where(ContentModel.id == locked_id)
+        .execution_options(populate_existing=True)
+    )
+    content = await require_content_visible(content, user, session)
+    if content.author_id != user.id:
+        raise HTTPException(status_code=403, detail="FORBIDDEN")
+    if content.revision_number != base_revision:
+        raise HTTPException(status_code=409, detail="CONTENT_EDIT_CONFLICT")
+    if content.type == "post" and await session.scalar(
+        select(PostPoll.id).where(PostPoll.post_id == content.id)
+    ):
+        raise HTTPException(status_code=409, detail="POLL_CONTENT_EDIT_LOCKED")
+
+    await check_not_banned(
+        user.id,
+        session,
+        "mute_patch" if content.patch_id is not None else "mute_post",
+    )
+    was_public = await _content_is_public_for_edit(session, content)
+    edited_at = await session.scalar(select(func.clock_timestamp()))
+    session.add(
+        ContentRevision(
+            content_id=content.id,
+            version=content.revision_number,
+            title=content.title,
+            content=content.content,
+            tags=content.tags,
+            editor_id=user.id,
+            was_public=was_public,
+            edited_at=edited_at,
+        )
+    )
+    content.title = new_title
+    content.content = new_content
+    content.tags = new_tags
+    content.revision_number += 1
+    content.updated_at = edited_at
+    content.moderation_status = moderation.status
+    content.moderation_reason = moderation.reason
+    content.moderation_review_note = None
+    content.moderation_reviewed_by = None
+    content.moderation_reviewed_at = None
+    content.moderation_effects_completed_at = None
+    if (
+        moderation.status != "pending_review"
+        and not was_public
+        and content.published_at is None
+    ):
+        content.published_at = edited_at
+
+    await session.commit()
+    content = await session.scalar(
+        select(ContentModel).where(ContentModel.id == content_id)
+    )
+    if content is None:
+        raise HTTPException(status_code=404, detail="CONTENT_NOT_FOUND")
+
+    if content.moderation_status == "pending_review":
+        await notify_content_pending(content)
+        if was_public:
+            await _publish_content_edit(content, hidden=True)
+    elif was_public:
+        await _publish_content_edit(content)
+    elif await _content_is_public_for_edit(session, content):
+        await announce_content_published(content, session=session)
+
+    return _content_edit_read(content, user)
+
+
+@router.get(
+    "/{content_id}/history",
+    response_model=list[ContentRevisionRead],
+)
+async def get_content_history(
+    content_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    user: User | None = Depends(optional_current_user),
+):
+    """Return immutable snapshots visible under the current privacy boundary."""
+    allow_staff = bool(user and user.role in ("moderator", "super_admin"))
+    content = await session.scalar(
+        select(ContentModel).where(ContentModel.id == content_id)
+    )
+    content = await require_content_visible(
+        content,
+        user,
+        session,
+        allow_staff=allow_staff,
+    )
+    privileged = bool(
+        user
+        and (
+            content.author_id == user.id
+            or user.role in ("moderator", "super_admin")
+        )
+    )
+    stmt = select(ContentRevision).where(
+        ContentRevision.content_id == content.id
+    )
+    if not privileged:
+        # A never-published held draft cannot become public through history.
+        stmt = stmt.where(ContentRevision.was_public.is_(True))
+    revisions = (
+        await session.execute(stmt.order_by(ContentRevision.version.desc()))
+    ).scalars().all()
+    return [ContentRevisionRead.model_validate(item) for item in revisions]
 
 
 @router.get("/-/feed", response_model=list[FeedItem])
@@ -191,6 +505,7 @@ async def get_feed(
                     ContentModel.type == "post",
                     ContentModel.author_id == user.id,
                     ContentModel.tags.is_not(None),
+                    content_visibility_clause(user),
                 )
                 .order_by(ContentModel.created_at.desc())
                 .limit(50)
@@ -204,6 +519,7 @@ async def get_feed(
                     ContentModel.type == "post",
                     PostLike.user_id == user.id,
                     ContentModel.tags.is_not(None),
+                    content_visibility_clause(user),
                 )
                 .order_by(ContentModel.created_at.desc())
                 .limit(50)
@@ -216,8 +532,16 @@ async def get_feed(
     posts = (
         await session.execute(
             select(ContentModel)
-            .where(ContentModel.type == "post")
-            .order_by(ContentModel.created_at.desc())
+            .where(
+                ContentModel.type == "post",
+                content_visibility_clause(user),
+            )
+            .order_by(
+                func.coalesce(
+                    ContentModel.published_at,
+                    ContentModel.created_at,
+                ).desc()
+            )
             .limit(500)
         )
     ).scalars().all()
@@ -246,6 +570,7 @@ async def get_feed(
             .where(
                 ContentModel.parent_id.in_(post_ids),
                 ContentModel.type == "comment",
+                content_visibility_clause(user),
             )
             .group_by(ContentModel.parent_id)
         )
@@ -257,6 +582,11 @@ async def get_feed(
             .group_by(PostLike.post_id)
         )
         like_counts = dict(like_result.all())
+    polls_by_post = await load_post_polls(
+        session,
+        post_ids,
+        viewer_id=user.id if user else None,
+    )
 
     patch_comment_counts: dict = {}
     patch_ids = [p.id for p in patches]
@@ -268,6 +598,7 @@ async def get_feed(
                     .where(
                         ContentModel.patch_id.in_(patch_ids),
                         ContentModel.type == "comment",
+                        content_visibility_clause(user),
                     )
                     .group_by(ContentModel.patch_id)
                 )
@@ -290,11 +621,16 @@ async def get_feed(
 
     items: list[FeedItem] = []
     for p in posts:
+        feed_published_at = p.published_at or p.created_at
         items.append(FeedItem(
             id=p.id, type="post", title=p.title or "", content=p.content,
             author_id=p.author_id, author_username=p.author.username,
-            created_at=p.created_at, tags=p.tags, reply_count=reply_counts.get(p.id, 0),
+            created_at=feed_published_at, tags=p.tags,
+            reply_count=reply_counts.get(p.id, 0),
             like_count=like_counts.get(p.id, 0),
+            poll=polls_by_post.get(p.id),
+            **moderation_metadata_for(p, user),
+            revision_number=p.revision_number,
         ))
 
     for p in patches:
@@ -311,6 +647,7 @@ async def get_feed(
             for_count=vote_counts.get(str(p.id), {}).get("for", 0),
             against_count=vote_counts.get(str(p.id), {}).get("against", 0),
             abstain_count=vote_counts.get(str(p.id), {}).get("abstain", 0),
+            revision_number=p.revision_number,
         ))
 
     ranked = rank_feed_items(
@@ -356,6 +693,7 @@ async def get_post(
     user: User | None = Depends(optional_current_user),
 ):
     """Get a single post by ID."""
+    allow_staff = bool(user and user.role in ("moderator", "super_admin"))
     stmt = select(ContentModel).where(
         ContentModel.id == post_id, ContentModel.type == "post"
     )
@@ -363,11 +701,24 @@ async def get_post(
     post = result.scalar_one_or_none()
     if not post:
         raise HTTPException(status_code=404, detail="POST_NOT_FOUND")
+    try:
+        post = await require_content_visible(
+            post,
+            user,
+            session,
+            allow_staff=allow_staff,
+        )
+    except HTTPException as error:
+        if error.detail == "CONTENT_NOT_FOUND":
+            raise HTTPException(status_code=404, detail="POST_NOT_FOUND") from error
+        raise
 
     # Count replies
     reply_count = await session.scalar(
         select(func.count(ContentModel.id)).where(
-            ContentModel.parent_id == post.id, ContentModel.type == "comment"
+            ContentModel.parent_id == post.id,
+            ContentModel.type == "comment",
+            content_visibility_clause(user, allow_staff=allow_staff),
         )
     )
     like_count = await session.scalar(
@@ -382,6 +733,11 @@ async def get_post(
                 )
             )
         )
+    polls_by_post = await load_post_polls(
+        session,
+        [post.id],
+        viewer_id=user.id if user else None,
+    )
 
     return PostRead(
         id=post.id,
@@ -393,9 +749,107 @@ async def get_post(
         reply_count=reply_count or 0,
         like_count=like_count or 0,
         liked_by_me=liked_by_me,
+        poll=polls_by_post.get(post.id),
+        **moderation_metadata_for(post, user, allow_staff=allow_staff),
+        revision_number=post.revision_number,
         created_at=post.created_at,
         updated_at=post.updated_at,
     )
+
+
+@router.put("/{post_id}/poll/vote", response_model=PollRead)
+async def vote_on_post_poll(
+    post_id: UUID,
+    data: PollVoteCreate,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(current_user),
+):
+    """Cast or replace the caller's selection while the poll remains open."""
+    await check_not_banned(user.id, session)
+    poll = await session.scalar(
+        select(PostPoll).where(PostPoll.post_id == post_id)
+    )
+    if poll is None:
+        raise HTTPException(status_code=404, detail="POLL_NOT_FOUND")
+    post = await session.scalar(
+        select(ContentModel).where(
+            ContentModel.id == post_id,
+            ContentModel.type == "post",
+        )
+    )
+    post = await require_content_interactable(post, user, session)
+
+    database_now = await session.scalar(select(func.clock_timestamp()))
+    if poll.closes_at <= database_now:
+        raise HTTPException(status_code=409, detail="POLL_CLOSED")
+
+    option_exists = await session.scalar(
+        select(PostPollOption.id).where(
+            PostPollOption.id == data.option_id,
+            PostPollOption.poll_id == poll.id,
+        )
+    )
+    if option_exists is None:
+        raise HTTPException(status_code=404, detail="POLL_OPTION_NOT_FOUND")
+
+    # The unique key is the concurrency boundary: one voter has one mutable choice.
+    vote_source = (
+        select(
+            literal(uuid4()),
+            PostPoll.id,
+            PostPollOption.id,
+            literal(user.id),
+            func.clock_timestamp(),
+            func.clock_timestamp(),
+        )
+        .select_from(PostPoll)
+        .join(
+            PostPollOption,
+            (PostPollOption.poll_id == PostPoll.id)
+            & (PostPollOption.id == data.option_id),
+        )
+        .where(
+            PostPoll.id == poll.id,
+            PostPoll.closes_at > func.clock_timestamp(),
+        )
+    )
+    vote_result = await session.execute(
+        insert(PostPollVote)
+        .from_select(
+            (
+                "id",
+                "poll_id",
+                "option_id",
+                "user_id",
+                "created_at",
+                "updated_at",
+            ),
+            vote_source,
+        )
+        .on_conflict_do_update(
+            constraint="uq_post_poll_vote_poll_user",
+            set_={
+                "option_id": data.option_id,
+                "updated_at": func.clock_timestamp(),
+            },
+        )
+        .returning(PostPollVote.option_id)
+    )
+    if vote_result.scalar_one_or_none() is None:
+        await session.rollback()
+        raise HTTPException(status_code=409, detail="POLL_CLOSED")
+    await session.commit()
+    polls_by_post = await load_post_polls(
+        session,
+        [post_id],
+        viewer_id=user.id,
+    )
+    updated_poll = polls_by_post.get(post_id)
+    if updated_poll is None:
+        raise HTTPException(status_code=404, detail="POLL_NOT_FOUND")
+    if post and content_is_public(post):
+        await publish_feed_event("updated", item_type="post", item_id=str(post_id))
+    return updated_poll
 
 
 async def _post_like_state(
@@ -427,9 +881,7 @@ async def like_post(
             ContentModel.id == post_id, ContentModel.type.in_(("post", "comment"))
         )
     )
-    if not content:
-        raise HTTPException(status_code=404, detail="CONTENT_NOT_FOUND")
-    await require_content_visible(content, user, session)
+    content = await require_content_interactable(content, user, session)
 
     await session.execute(
         insert(PostLike)
@@ -440,7 +892,7 @@ async def like_post(
     state = await _post_like_state(session, post_id, user.id)
     root_type = "post" if content.type == "post" else "patch" if content.patch_id else "post"
     root_id = content.id if content.type == "post" else content.patch_id or content.parent_id
-    if root_id:
+    if root_id and content_is_public(content):
         await publish_feed_event(
             "updated",
             item_type=root_type,
@@ -461,8 +913,6 @@ async def unlike_post(
             ContentModel.id == post_id, ContentModel.type.in_(("post", "comment"))
         )
     )
-    if not content:
-        raise HTTPException(status_code=404, detail="CONTENT_NOT_FOUND")
     await require_content_visible(content, user, session)
 
     await session.execute(
@@ -474,7 +924,7 @@ async def unlike_post(
     state = await _post_like_state(session, post_id, user.id)
     root_type = "post" if content.type == "post" else "patch" if content.patch_id else "post"
     root_id = content.id if content.type == "post" else content.patch_id or content.parent_id
-    if root_id:
+    if root_id and content_is_public(content):
         await publish_feed_event(
             "updated",
             item_type=root_type,
@@ -490,13 +940,34 @@ async def delete_content(
     user: User = Depends(current_user),
 ):
     """Delete own content (post or comment)."""
-    stmt = select(ContentModel).where(ContentModel.id == content_id)
-    result = await session.execute(stmt)
-    content = result.scalar_one_or_none()
-    if not content:
-        raise HTTPException(status_code=404, detail="CONTENT_NOT_FOUND")
+    stmt = (
+        select(ContentModel.id)
+        .where(ContentModel.id == content_id)
+        .with_for_update()
+    )
+    locked_content_id = await session.scalar(stmt)
+    content = (
+        await session.scalar(
+            select(ContentModel).where(ContentModel.id == locked_content_id)
+        )
+        if locked_content_id is not None
+        else None
+    )
+    await require_content_visible(content, user, session)
     if content.author_id != user.id:
         raise HTTPException(status_code=403, detail="FORBIDDEN")
+    if content.revision_number > 1:
+        raise HTTPException(
+            status_code=409,
+            detail="AUDITED_CONTENT_DELETE_LOCKED",
+        )
+    if content.type == "post" and await session.scalar(
+        select(PostPoll.id).where(PostPoll.post_id == content.id)
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="POLL_CONTENT_DELETE_LOCKED",
+        )
 
     if content.type == "post":
         root_type = "post"
@@ -508,9 +979,10 @@ async def delete_content(
         root_type = "post"
         root_id = content.parent_id
 
+    was_public = content_is_public(content)
     await session.delete(content)
     await session.commit()
-    if root_id:
+    if root_id and was_public:
         await publish_feed_event(
             "removed" if content.type == "post" else "updated",
             item_type=root_type,
@@ -528,13 +1000,24 @@ async def list_comments(
     user: User | None = Depends(optional_current_user),
 ):
     """List comments for a post, flat with replying_id markers."""
+    allow_staff = bool(user and user.role in ("moderator", "super_admin"))
     # Verify post exists
     post_stmt = select(ContentModel).where(
         ContentModel.id == post_id, ContentModel.type == "post"
     )
     post_result = await session.execute(post_stmt)
-    if not post_result.scalar_one_or_none():
-        raise HTTPException(status_code=404, detail="POST_NOT_FOUND")
+    post = post_result.scalar_one_or_none()
+    try:
+        await require_content_visible(
+            post,
+            user,
+            session,
+            allow_staff=allow_staff,
+        )
+    except HTTPException as error:
+        if error.detail == "CONTENT_NOT_FOUND":
+            raise HTTPException(status_code=404, detail="POST_NOT_FOUND") from error
+        raise
 
     # Fetch comments
     stmt = (
@@ -542,6 +1025,7 @@ async def list_comments(
         .where(
             ContentModel.parent_id == post_id,
             ContentModel.type == "comment",
+            content_tree_visibility_clause(user, allow_staff=allow_staff),
         )
         .order_by(ContentModel.created_at.asc())
     )
@@ -555,7 +1039,10 @@ async def list_comments(
     if replying_ids:
         user_stmt = select(ContentModel.id, User.username, ContentModel.content).join(
             User, ContentModel.author_id == User.id
-        ).where(ContentModel.id.in_(replying_ids))
+        ).where(
+            ContentModel.id.in_(replying_ids),
+            content_visibility_clause(user, allow_staff=allow_staff),
+        )
         user_result = await session.execute(user_stmt)
         rows = user_result.all()
         usernames = {str(row[0]): row[1] for row in rows}
@@ -570,7 +1057,10 @@ async def list_comments(
             (
                 await session.execute(
                     select(ContentModel.replying_id, func.count(ContentModel.id))
-                    .where(ContentModel.replying_id.in_(comment_ids))
+                    .where(
+                        ContentModel.replying_id.in_(comment_ids),
+                        content_visibility_clause(user, allow_staff=allow_staff),
+                    )
                     .group_by(ContentModel.replying_id)
                 )
             ).all()
@@ -609,7 +1099,10 @@ async def list_comments(
             reply_count=reply_counts.get(c.id, 0),
             like_count=like_counts.get(c.id, 0),
             liked_by_me=c.id in liked_ids,
+            **moderation_metadata_for(c, user, allow_staff=allow_staff),
+            revision_number=c.revision_number,
             created_at=c.created_at,
+            updated_at=c.updated_at,
         )
         for c in comments
     ]
@@ -630,8 +1123,12 @@ async def create_comment(
     )
     post_result = await session.execute(post_stmt)
     post = post_result.scalar_one_or_none()
-    if not post:
-        raise HTTPException(status_code=404, detail="POST_NOT_FOUND")
+    try:
+        post = await require_content_interactable(post, user, session)
+    except HTTPException as error:
+        if error.detail == "CONTENT_NOT_FOUND":
+            raise HTTPException(status_code=404, detail="POST_NOT_FOUND") from error
+        raise
 
     if not data.content.strip():
         raise HTTPException(status_code=422, detail="Content is required")
@@ -644,8 +1141,72 @@ async def create_comment(
             ContentModel.parent_id == post.id,
         )
         reply_result = await session.execute(reply_stmt)
-        if not reply_result.scalar_one_or_none():
+        reply_target = reply_result.scalar_one_or_none()
+        if not reply_target:
             raise HTTPException(status_code=404, detail="REPLY_TARGET_NOT_FOUND")
+        try:
+            await require_content_interactable(reply_target, user, session)
+        except HTTPException as error:
+            if error.detail == "CONTENT_NOT_FOUND":
+                raise HTTPException(
+                    status_code=404,
+                    detail="REPLY_TARGET_NOT_FOUND",
+                ) from error
+            raise
+
+    moderation = await assess_content_moderation_after_read(
+        session,
+        data.content,
+    )
+
+    # Recheck the target tree after the external call, holding the relevant
+    # rows until the new comment is committed.
+    await check_not_banned(user.id, session, "mute_post")
+    locked_post_id = await session.scalar(
+        select(ContentModel.id)
+        .where(ContentModel.id == post_id, ContentModel.type == "post")
+        .with_for_update()
+    )
+    if locked_post_id is None:
+        raise HTTPException(status_code=404, detail="POST_NOT_FOUND")
+    post = await session.scalar(
+        select(ContentModel)
+        .where(ContentModel.id == locked_post_id)
+        .execution_options(populate_existing=True)
+    )
+    try:
+        post = await require_content_interactable(post, user, session)
+    except HTTPException as error:
+        if error.detail == "CONTENT_NOT_FOUND":
+            raise HTTPException(status_code=404, detail="POST_NOT_FOUND") from error
+        raise
+
+    if data.replying_id:
+        locked_reply_id = await session.scalar(
+            select(ContentModel.id)
+            .where(
+                ContentModel.id == data.replying_id,
+                ContentModel.type == "comment",
+                ContentModel.parent_id == post.id,
+            )
+            .with_for_update()
+        )
+        if locked_reply_id is None:
+            raise HTTPException(status_code=404, detail="REPLY_TARGET_NOT_FOUND")
+        reply_target = await session.scalar(
+            select(ContentModel)
+            .where(ContentModel.id == locked_reply_id)
+            .execution_options(populate_existing=True)
+        )
+        try:
+            await require_content_interactable(reply_target, user, session)
+        except HTTPException as error:
+            if error.detail == "CONTENT_NOT_FOUND":
+                raise HTTPException(
+                    status_code=404,
+                    detail="REPLY_TARGET_NOT_FOUND",
+                ) from error
+            raise
 
     comment = ContentModel(
         type="comment",
@@ -653,42 +1214,23 @@ async def create_comment(
         parent_id=post.id,
         replying_id=data.replying_id,
         author_id=user.id,
+        moderation_status=moderation.status,
+        moderation_reason=moderation.reason,
+        published_at=(
+            datetime.now(timezone.utc)
+            if moderation.status == "published"
+            else None
+        ),
     )
     session.add(comment)
     await session.commit()
     await session.refresh(comment)
 
     # ── Notifications ──
-    # Notify post author (unless commenting on your own post)
-    if post.author_id != user.id:
-        await create_notification(
-            recipient_id=post.author_id,
-            type="reply",
-            title="New reply",
-            message=f"{user.nickname or user.username} replied to your post \"{post.title or ''}\"",
-            link=f"/posts/{post.id}#{comment.id}",
-        )
-
-    # Notify replied-to comment author (if replying to a specific comment)
-    if data.replying_id:
-        reply_stmt = select(ContentModel.author_id).where(
-            ContentModel.id == data.replying_id
-        )
-        reply_author_id = await session.scalar(reply_stmt)
-        if reply_author_id and reply_author_id != user.id:
-            await create_notification(
-                recipient_id=reply_author_id,
-                type="reply",
-                title="New reply",
-                message=f"{user.nickname or user.username} replied to your comment",
-                link=f"/posts/{post.id}#{comment.id}",
-            )
-
-    await publish_feed_event(
-        "updated",
-        item_type="post",
-        item_id=str(post.id),
-    )
+    if comment.moderation_status == "pending_review":
+        await notify_content_pending(comment)
+    else:
+        await announce_content_published(comment, session=session)
     return CommentRead(
         id=comment.id,
         content=comment.content,
@@ -698,5 +1240,8 @@ async def create_comment(
         author_username=comment.author.username,
         replying_to_username=None,
         replying_to_content=None,
+        **moderation_metadata_for(comment, user),
+        revision_number=comment.revision_number,
         created_at=comment.created_at,
+        updated_at=comment.updated_at,
     )

@@ -2,6 +2,7 @@ alembic==1.18.5
 redis==8.0.1
 sse-starlette==3.4.5
 asyncpg==0.31.0
+cryptography==49.0.0
 email-validator==2.3.0
 fastapi==0.139.1
 fastapi-users==15.0.5

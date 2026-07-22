@@ -3,10 +3,15 @@
   import { onMount } from "svelte";
   import { getVotingCountdown, type VotingCountdown } from "../lib/governance";
   import type { FeedItem } from "../lib/posts";
+  import type { DisplayTranslation } from "../lib/ai";
   import { translator } from "../lib/i18n";
   import { stripMarkdown } from "../lib/utils";
   import AuthorMeta from "./AuthorMeta.svelte";
-  import VotingWindowMeta from "./patches/VotingWindowMeta.svelte";
+  import PollCard from "./posts/PollCard.svelte";
+  import ModerationNotice from "./posts/ModerationNotice.svelte";
+  import PostAiTools from "./posts/PostAiTools.svelte";
+  import VoteSummary from "./patches/VoteSummary.svelte";
+  import { hasModerationNotice, isModerationRestricted } from "../lib/moderation";
 
   let {
     item,
@@ -27,7 +32,9 @@
     failed: "badge-danger",
   };
 
-  let snippet = $derived(stripMarkdown(item.content));
+  let displayTranslation = $state<DisplayTranslation | null>(null);
+  let displayTitle = $derived(displayTranslation?.title ?? item.title);
+  let snippet = $derived(stripMarkdown(displayTranslation?.body ?? item.content));
   let href = $derived(item.type === "post" ? `/posts/${item.id}` : `/patches/${item.id}`);
   let statusInfo = $derived(
     item.type === "patch" && item.status
@@ -38,6 +45,16 @@
       : null
   );
   let rankingReason = $derived(formatRankingReason(item.ranking_reason));
+  let moderationQueued = $state(false);
+  let effectiveModerationStatus = $derived(
+    moderationQueued ? "pending_review" : item.moderation_status,
+  );
+  let moderationRestricted = $derived(
+    item.type === "post" && isModerationRestricted(effectiveModerationStatus),
+  );
+  let moderationVisible = $derived(
+    item.type === "post" && hasModerationNotice(effectiveModerationStatus),
+  );
   let now = $state(Date.now());
   let countdownState = $derived(getVotingCountdown(item.voting_ends_at, now));
   let countdown = $derived(formatCountdown(countdownState));
@@ -45,6 +62,17 @@
     Boolean(item.voting_ends_at) &&
       new Date(item.voting_ends_at as string).getTime() - now < 2 * 60 * 60 * 1000,
   );
+
+  $effect(() => {
+    item.id;
+    item.type === "post" ? item.revision_number : item.updated_at;
+    displayTranslation = null;
+  });
+
+  $effect(() => {
+    const nextStatus = item.moderation_status;
+    if (nextStatus !== "published") moderationQueued = false;
+  });
 
   onMount(() => {
     if (item.type !== "patch" || item.status !== "voting" || !item.voting_ends_at) {
@@ -86,6 +114,7 @@
   }
 
   function handleOpen(event: MouseEvent) {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     if (window.matchMedia("(min-width: 64rem)").matches && onSelect) {
       event.preventDefault();
       onSelect(item);
@@ -100,9 +129,6 @@
 >
   <div class="stream-card-topline">
     <span class="content-kind">{$translator(item.type === "post" ? "common.discussion" : "common.change")}</span>
-    {#if rankingReason}
-      <span class="ranking-reason">{rankingReason}</span>
-    {/if}
     {#if item.type === "patch"}
       {#if statusInfo}
         <span class="badge {statusInfo.cls}">
@@ -112,17 +138,26 @@
       {#if item.pr_number}
         <span class="text-xs" style="color: var(--vercel-text-tertiary);">PR #{item.pr_number}</span>
       {/if}
-      <VotingWindowMeta
-        status={item.status}
-        votingWindowKind={item.voting_window_kind}
-        votingPeriodHours={item.voting_period_hours}
-        votingStartedAt={item.voting_started_at}
-        votingEndsAt={item.voting_ends_at}
-      />
-    {:else if item.tags && item.tags.length > 0}
-      <span class="stream-tag">{item.tags[0]}</span>
+    {:else}
+      {#if item.tags && item.tags.length > 0}
+        <span class="stream-tag">{item.tags[0]}</span>
+      {/if}
     {/if}
   </div>
+
+  {#if rankingReason}
+    <p class="ranking-reason">{rankingReason}</p>
+  {/if}
+
+  {#if moderationVisible}
+    <div class="stream-card-notice">
+      <ModerationNotice
+        status={effectiveModerationStatus}
+        reason={moderationQueued ? null : item.moderation_reason}
+        compact
+      />
+    </div>
+  {/if}
 
   <h2 class="mt-1 text-base font-semibold">
     <a
@@ -131,7 +166,7 @@
       style="color: var(--vercel-text);"
       onclick={handleOpen}
     >
-      {item.title}
+      {displayTitle}
     </a>
   </h2>
 
@@ -139,13 +174,44 @@
     {snippet}
   </p>
 
-  <div class="mt-2 flex items-center justify-between gap-2">
-    <div class="flex items-center gap-3 text-xs" style="color: var(--vercel-text-tertiary);">
-      {#if item.type === "post" && item.tags && item.tags.length > 0}
-        <span>{item.tags.join(", ")}</span>
-      {/if}
+  {#if !moderationRestricted}
+    <div class="stream-translation">
+      <PostAiTools
+        text={item.content}
+        title={item.title}
+        context={item.type === "patch" ? "patch" : "post"}
+        compact
+        translationOnly
+        sourceContentId={item.type === "post" ? item.id : null}
+        sourceRevisionNumber={item.type === "post" ? item.revision_number : null}
+        moderationTargetHref={item.type === "post" ? `/posts/${item.id}` : null}
+        onModerationQueued={() => (moderationQueued = true)}
+        onTranslationChange={(translation) => (displayTranslation = translation)}
+      />
+    </div>
+  {/if}
+
+  {#if item.type === "post" && item.poll}
+    <PollCard
+      postId={item.id}
+      poll={item.poll}
+      compact
+      readOnly={moderationRestricted}
+      sourceRevisionNumber={item.revision_number}
+      moderationTargetHref={`/posts/${item.id}`}
+      onModerationQueued={() => (moderationQueued = true)}
+      translationRequested={displayTranslation !== null}
+    />
+  {/if}
+
+  <div class="stream-footer">
+    <div class="stream-stats" style="color: var(--vercel-text-tertiary);">
       {#if item.type === "patch"}
-        <span>{$translator("patch.for")} {item.for_count} · {$translator("patch.against")} {item.against_count}</span>
+        <VoteSummary
+          forCount={item.for_count}
+          againstCount={item.against_count}
+          abstainCount={item.abstain_count}
+        />
         {#if countdown}
           <span class:urgent={countdownUrgent} class="vote-countdown">
             <Clock3Icon size={14} strokeWidth={1.8} aria-hidden="true" />
@@ -153,16 +219,18 @@
           </span>
         {/if}
       {/if}
-      {#if item.type === "post"}
+      {#if item.type === "post" && !moderationRestricted}
         <span class="flex items-center gap-1">
           <HeartIcon class="size-3.5" aria-hidden="true" />
           {item.like_count}
         </span>
       {/if}
-      <span class="flex items-center gap-1">
-        <MessageCircleIcon class="size-3.5" aria-hidden="true" />
-        {item.reply_count}
-      </span>
+      {#if !moderationRestricted}
+        <span class="flex items-center gap-1">
+          <MessageCircleIcon class="size-3.5" aria-hidden="true" />
+          {item.reply_count}
+        </span>
+      {/if}
     </div>
 
     <AuthorMeta username={item.author_username ?? $translator("common.anonymous")} userId={item.author_id} createdAt={item.created_at} />
@@ -173,6 +241,7 @@
   .stream-card {
     position: relative;
     display: block;
+    container-type: inline-size;
     padding: 1rem;
     border-bottom: 1px solid var(--vercel-border);
     transition: background 180ms ease, box-shadow 180ms ease;
@@ -195,6 +264,20 @@
     gap: 0.5rem;
   }
 
+  .stream-card h2 {
+    display: -webkit-box;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .stream-card-notice {
+    position: relative;
+    z-index: 1;
+    margin-top: 0.45rem;
+  }
+
   .content-kind {
     color: var(--vercel-text-tertiary);
     font-size: 0.65rem;
@@ -213,11 +296,30 @@
 
   .ranking-reason {
     overflow: hidden;
-    max-width: 12rem;
+    max-width: 100%;
+    margin: 0.3rem 0 0;
     color: var(--vercel-text-secondary);
     font-size: 0.68rem;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .stream-footer {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.65rem;
+    align-items: center;
+    margin-top: 0.65rem;
+  }
+
+  .stream-stats {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.45rem 0.75rem;
+    font-size: 0.72rem;
   }
 
   .vote-countdown {
@@ -244,6 +346,11 @@
     inset: 0;
   }
 
+  .stream-translation {
+    position: relative;
+    z-index: 1;
+  }
+
   .stream-card:has(.card-link:focus-visible) {
     outline: 2px solid var(--vercel-text);
     outline-offset: -2px;
@@ -251,5 +358,12 @@
 
   .card-link:focus-visible {
     outline: none;
+  }
+
+  @container (max-width: 23rem) {
+    .stream-card-topline { gap: 0.35rem; }
+    .ranking-reason { font-size: 0.65rem; }
+    .stream-footer { grid-template-columns: minmax(0, 1fr); }
+    .stream-stats { order: 2; }
   }
 </style>

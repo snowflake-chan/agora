@@ -6,12 +6,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-
-if not logging.getLogger().handlers:
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
-    )
+from app.daily_questions import run_daily_question_scheduler
+from app.moderation_delivery import (
+    reconcile_moderation_effects,
+    run_moderation_delivery_scheduler,
+)
 from app.patches.reconcile import reconcile as reconcile_patches
 from app.patches.reconcile import run_scheduler
 from app.users import auth_router, users_router
@@ -20,19 +19,38 @@ from app.patches import patches_router
 from app.guilds import router as guilds_router
 from app.admin import router as admin_router
 from app.notifications import router as notifications_router
+from app.public import router as public_router
+from app.ai.routes import router as ai_router
+
+if not logging.getLogger().handlers:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Reconcile once, then keep vote deadlines independent of traffic."""
+    """Recover durable jobs, then keep them independent of request traffic."""
     await reconcile_patches()
-    scheduler = asyncio.create_task(run_scheduler())
+    await reconcile_moderation_effects()
+    schedulers = (
+        asyncio.create_task(run_scheduler()),
+        asyncio.create_task(run_daily_question_scheduler()),
+        asyncio.create_task(
+            run_moderation_delivery_scheduler(
+                settings.GOVERNANCE_POLL_SECONDS
+            )
+        ),
+    )
     try:
         yield
     finally:
-        scheduler.cancel()
-        with suppress(asyncio.CancelledError):
-            await scheduler
+        for scheduler in schedulers:
+            scheduler.cancel()
+        for scheduler in schedulers:
+            with suppress(asyncio.CancelledError):
+                await scheduler
 
 
 app = FastAPI(lifespan=lifespan)
@@ -54,3 +72,5 @@ app.include_router(patches_router, prefix="/api/v1/patches", tags=["patches"])
 app.include_router(guilds_router, prefix="/api/v1/guilds", tags=["guilds"])
 app.include_router(admin_router, prefix="/api/v1/admin", tags=["admin"])
 app.include_router(notifications_router, prefix="/api/v1/notifications", tags=["notifications"])
+app.include_router(public_router, prefix="/api/v1/public", tags=["public"])
+app.include_router(ai_router, prefix="/api/v1/ai", tags=["ai"])

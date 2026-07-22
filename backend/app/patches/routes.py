@@ -13,16 +13,26 @@ from sqlalchemy.orm import lazyload
 from app.config import settings
 from app.bg import spawn
 from app.db import get_session
-from app.db.models.patch import Patch as PatchModel
+from app.db.models.patch import Patch as PatchModel, PatchRevision
 from app.db.models.content import Content as ContentModel
 from app.db.models.post_like import PostLike
 from app.db.models.vote import Vote as VoteModel
 from app.db.models.user import User
 from app.notifications.service import create_notification, notify_followers
 from app.posts.realtime import publish_feed_event
+from app.content_moderation import (
+    announce_content_published,
+    assess_content_moderation_after_read,
+    content_tree_visibility_clause,
+    content_visibility_clause,
+    moderation_metadata_for,
+    notify_content_pending,
+)
 from app.schemas.patch import (
     PatchCreate,
     PatchRead,
+    PatchRevisionRead,
+    PatchUpdate,
     VoteCreate,
     VoteRead,
 )
@@ -35,7 +45,11 @@ from app.patches.github import (
     merge_pr,
     pull_request_readiness_error,
 )
-from app.deps import check_not_banned, require_patch_visible
+from app.deps import (
+    check_not_banned,
+    require_content_interactable,
+    require_patch_visible,
+)
 from app.users.deps import current_user, optional_current_user
 
 router = APIRouter()
@@ -206,17 +220,64 @@ async def _do_merge_and_deploy(patch_id: str, pr_number: int, patch_title: str |
 
             patch_title = patch.title
             pr_number = patch.pr_number
-            try:
-                await merge_pr(pr_number)
-                patch.status = "merged"
-            except GitHubMergeUncertainError as exc:
-                logger.warning("merge outcome unknown for PR #%s: %s", pr_number, exc)
-                return
-            except Exception as exc:
-                logger.exception("merge failed for PR #%s", pr_number)
+            expected_head_sha = patch.submitted_head_sha
+            if not expected_head_sha:
+                logger.error(
+                    "refusing PR #%s because governed head SHA is missing",
+                    pr_number,
+                )
                 patch.status = "failed"
-            await session.commit()
-            outcome = patch.status
+                await session.commit()
+                outcome = patch.status
+            else:
+                try:
+                    pull_request = await get_pull_request(pr_number)
+                    current_head_sha = pull_request.get("head", {}).get("sha")
+                    if current_head_sha != expected_head_sha:
+                        raise RuntimeError("PULL_REQUEST_HEAD_CHANGED")
+
+                    if pull_request.get("merged") or pull_request.get("merged_at"):
+                        patch.status = "merged"
+                    else:
+                        commit_checks = await get_commit_checks(expected_head_sha)
+                        readiness_error = pull_request_readiness_error(
+                            pull_request,
+                            commit_checks,
+                        )
+                        if readiness_error in (
+                            "PULL_REQUEST_READINESS_PENDING",
+                            "PULL_REQUEST_CHECKS_PENDING",
+                        ):
+                            logger.info(
+                                "PR #%s is temporarily pending: %s",
+                                pr_number,
+                                readiness_error,
+                            )
+                            return
+                        if readiness_error:
+                            raise RuntimeError(readiness_error)
+                        await merge_pr(
+                            pr_number,
+                            expected_head_sha=expected_head_sha,
+                        )
+                        patch.status = "merged"
+                except GitHubPullRequestError as exc:
+                    # A transient lookup failure has no truthful terminal result.
+                    # Leave the proposal passed so startup reconciliation can retry.
+                    logger.warning(
+                        "GitHub lookup unavailable for PR #%s: %s",
+                        pr_number,
+                        exc,
+                    )
+                    return
+                except GitHubMergeUncertainError as exc:
+                    logger.warning("merge outcome unknown for PR #%s: %s", pr_number, exc)
+                    return
+                except Exception as exc:
+                    logger.exception("merge failed for PR #%s", pr_number)
+                    patch.status = "failed"
+                await session.commit()
+                outcome = patch.status
     except Exception as status_exc:
         logger.exception("could not record merge outcome for PR #%s", pr_number)
         return
@@ -302,6 +363,7 @@ def _patch_to_read(
         title=patch.title,
         content=patch.content,
         pr_number=patch.pr_number,
+        submitted_head_sha=patch.submitted_head_sha,
         status=patch.status,
         author_id=patch.author_id,
         author_username=patch.author.username,
@@ -313,6 +375,7 @@ def _patch_to_read(
         against_count=c["against"],
         abstain_count=c["abstain"],
         comment_count=comment_count,
+        revision_number=patch.revision_number,
         created_at=patch.created_at,
         updated_at=patch.updated_at,
     )
@@ -387,6 +450,7 @@ async def list_patches(
                     .where(
                         ContentModel.patch_id.in_(patch_ids),
                         ContentModel.type == "comment",
+                        content_visibility_clause(user),
                     )
                     .group_by(ContentModel.patch_id)
                 )
@@ -443,6 +507,103 @@ async def create_patch(
     return _patch_to_read(patch)
 
 
+@router.patch("/{patch_id}", response_model=PatchRead)
+async def update_patch(
+    patch_id: UUID,
+    data: PatchUpdate,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(current_user),
+):
+    """Edit an owned draft; submission permanently closes this endpoint."""
+    fields = data.model_fields_set - {"revision_number"}
+    if not fields:
+        raise HTTPException(status_code=422, detail="PATCH_UPDATE_REQUIRED")
+
+    # Lock only the base row. Patch.author is eager-loaded, so locking the ORM
+    # entity directly can ask PostgreSQL to lock the nullable side of a join.
+    locked_id = await session.scalar(
+        select(PatchModel.id)
+        .where(PatchModel.id == patch_id)
+        .with_for_update()
+    )
+    if locked_id is None:
+        raise HTTPException(status_code=404, detail="PATCH_NOT_FOUND")
+    patch = await session.scalar(
+        select(PatchModel).where(PatchModel.id == locked_id)
+    )
+    patch = require_patch_visible(patch, user)
+    if patch.author_id != user.id:
+        raise HTTPException(status_code=403, detail="FORBIDDEN")
+    if patch.status != "draft":
+        raise HTTPException(status_code=409, detail="PATCH_EDIT_LOCKED")
+    if patch.revision_number != data.revision_number:
+        raise HTTPException(status_code=409, detail="PATCH_EDIT_CONFLICT")
+    await check_not_banned(user.id, session, "mute_patch")
+
+    new_title = patch.title
+    new_content = patch.content
+    if "title" in fields:
+        new_title = data.title.strip() if data.title is not None else ""
+        if not new_title:
+            raise HTTPException(status_code=422, detail="TITLE_REQUIRED")
+        if len(new_title) > 200:
+            raise HTTPException(status_code=422, detail="TITLE_TOO_LONG")
+    if "content" in fields:
+        new_content = data.content.strip() if data.content is not None else ""
+        if not new_content:
+            raise HTTPException(status_code=422, detail="CONTENT_REQUIRED")
+    if new_title == patch.title and new_content == patch.content:
+        raise HTTPException(status_code=422, detail="PATCH_NO_CHANGES")
+
+    edited_at = await session.scalar(select(func.clock_timestamp()))
+    session.add(
+        PatchRevision(
+            patch_id=patch.id,
+            version=patch.revision_number,
+            title=patch.title,
+            content=patch.content,
+            editor_id=user.id,
+            edited_at=edited_at,
+        )
+    )
+    patch.title = new_title
+    patch.content = new_content
+    patch.revision_number += 1
+    patch.updated_at = edited_at
+    await session.commit()
+
+    updated = await session.scalar(
+        select(PatchModel).where(PatchModel.id == patch.id)
+    )
+    if updated is None:
+        raise HTTPException(status_code=404, detail="PATCH_NOT_FOUND")
+    return _patch_to_read(updated)
+
+
+@router.get(
+    "/{patch_id}/history",
+    response_model=list[PatchRevisionRead],
+)
+async def get_patch_history(
+    patch_id: UUID,
+    user: User | None = Depends(optional_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Expose draft history to its owner/staff and public history to everyone."""
+    patch = await session.scalar(
+        select(PatchModel).where(PatchModel.id == patch_id)
+    )
+    patch = require_patch_visible(patch, user, allow_staff=True)
+    revisions = (
+        await session.execute(
+            select(PatchRevision)
+            .where(PatchRevision.patch_id == patch.id)
+            .order_by(PatchRevision.version.desc())
+        )
+    ).scalars().all()
+    return [PatchRevisionRead.model_validate(item) for item in revisions]
+
+
 @router.get("/{patch_id}", response_model=PatchRead)
 async def get_patch(
     patch_id: UUID,
@@ -453,14 +614,16 @@ async def get_patch(
     stmt = select(PatchModel).where(PatchModel.id == patch_id)
     result = await session.execute(stmt)
     patch = result.scalar_one_or_none()
-    patch = require_patch_visible(patch, user)
+    patch = require_patch_visible(patch, user, allow_staff=True)
 
     await _auto_tally(session, patch)
 
     counts = await _get_vote_counts(session, patch_id)
     comment_count = await session.scalar(
         select(func.count(ContentModel.id)).where(
-            ContentModel.patch_id == patch.id, ContentModel.type == "comment"
+            ContentModel.patch_id == patch.id,
+            ContentModel.type == "comment",
+            content_visibility_clause(user),
         )
     )
     return _patch_to_read(patch, counts, comment_count or 0)
@@ -515,8 +678,16 @@ async def submit_patch(
     if patch.status != "draft":
         raise HTTPException(status_code=422, detail="PATCH_NOT_DRAFT")
 
+    if patch.revision_number > 1:
+        moderation = await assess_content_moderation(patch.title, patch.content)
+        if moderation.status != "published":
+            raise HTTPException(
+                status_code=422, detail="PATCH_CONTENT_REVIEW_REQUIRED"
+            )
+
     # A proposal must still point to mergeable work when voting starts. Keep
     # draft creation available in installations that have not connected GitHub.
+    submitted_head_sha: str | None = None
     if settings.GITHUB_REPO:
         try:
             pull_request = await get_pull_request(patch.pr_number)
@@ -531,6 +702,7 @@ async def submit_patch(
         head_sha = pull_request.get("head", {}).get("sha")
         if not head_sha:
             raise HTTPException(status_code=502, detail="GITHUB_PR_LOOKUP_FAILED")
+        submitted_head_sha = head_sha
         try:
             commit_checks = await get_commit_checks(head_sha)
         except GitHubPullRequestError as exc:
@@ -567,6 +739,7 @@ async def submit_patch(
     )
 
     patch.status = "voting"
+    patch.submitted_head_sha = submitted_head_sha
     patch.voting_started_at = now
     patch.voting_period_hours = voting_period_hours
     patch.voting_window_kind = (
@@ -683,7 +856,11 @@ async def list_votes(
     # Verify patch exists
     patch_stmt = select(PatchModel).where(PatchModel.id == patch_id)
     patch_result = await session.execute(patch_stmt)
-    require_patch_visible(patch_result.scalar_one_or_none(), user)
+    require_patch_visible(
+        patch_result.scalar_one_or_none(),
+        user,
+        allow_staff=True,
+    )
 
     stmt = (
         select(VoteModel)
@@ -715,10 +892,11 @@ async def list_patch_comments(
     session: AsyncSession = Depends(get_session),
     user: User | None = Depends(optional_current_user),
 ):
+    allow_staff = bool(user and user.role in ("moderator", "super_admin"))
     patch = await session.scalar(
         select(PatchModel).where(PatchModel.id == patch_id)
     )
-    patch = require_patch_visible(patch, user)
+    patch = require_patch_visible(patch, user, allow_staff=True)
 
     comments = (
         await session.execute(
@@ -726,6 +904,7 @@ async def list_patch_comments(
             .where(
                 ContentModel.patch_id == patch.id,
                 ContentModel.type == "comment",
+                content_tree_visibility_clause(user, allow_staff=allow_staff),
             )
             .order_by(ContentModel.created_at.asc())
         )
@@ -739,7 +918,10 @@ async def list_patch_comments(
             await session.execute(
                 select(ContentModel.id, User.username, ContentModel.content)
                 .join(User, ContentModel.author_id == User.id)
-                .where(ContentModel.id.in_(replying_ids))
+                .where(
+                    ContentModel.id.in_(replying_ids),
+                    content_visibility_clause(user, allow_staff=allow_staff),
+                )
             )
         ).all()
     usernames = {row[0]: row[1] for row in trace_rows}
@@ -753,7 +935,10 @@ async def list_patch_comments(
             (
                 await session.execute(
                     select(ContentModel.replying_id, func.count(ContentModel.id))
-                    .where(ContentModel.replying_id.in_(comment_ids))
+                    .where(
+                        ContentModel.replying_id.in_(comment_ids),
+                        content_visibility_clause(user, allow_staff=allow_staff),
+                    )
                     .group_by(ContentModel.replying_id)
                 )
             ).all()
@@ -792,7 +977,10 @@ async def list_patch_comments(
             reply_count=reply_counts.get(comment.id, 0),
             like_count=like_counts.get(comment.id, 0),
             liked_by_me=comment.id in liked_ids,
+            **moderation_metadata_for(comment, user, allow_staff=allow_staff),
+            revision_number=comment.revision_number,
             created_at=comment.created_at,
+            updated_at=comment.updated_at,
         )
         for comment in comments
     ]
@@ -815,7 +1003,7 @@ async def create_patch_comment(
 
     if data.replying_id:
         target = await session.scalar(
-            select(ContentModel.id).where(
+            select(ContentModel).where(
                 ContentModel.id == data.replying_id,
                 ContentModel.patch_id == patch.id,
                 ContentModel.type == "comment",
@@ -823,6 +1011,65 @@ async def create_patch_comment(
         )
         if not target:
             raise HTTPException(status_code=404, detail="REPLY_TARGET_NOT_FOUND")
+        try:
+            await require_content_interactable(target, user, session)
+        except HTTPException as error:
+            if error.detail == "CONTENT_NOT_FOUND":
+                raise HTTPException(
+                    status_code=404,
+                    detail="REPLY_TARGET_NOT_FOUND",
+                ) from error
+            raise
+
+    moderation = await assess_content_moderation_after_read(
+        session,
+        data.content,
+    )
+
+    # A draft can become inaccessible, or a reply can disappear, while the
+    # external semantic review runs. Recheck both under short row locks.
+    await check_not_banned(user.id, session, "mute_patch")
+    locked_patch_id = await session.scalar(
+        select(PatchModel.id)
+        .where(PatchModel.id == patch_id)
+        .with_for_update()
+    )
+    if locked_patch_id is None:
+        raise HTTPException(status_code=404, detail="PATCH_NOT_FOUND")
+    patch = await session.scalar(
+        select(PatchModel)
+        .options(lazyload(PatchModel.author))
+        .where(PatchModel.id == locked_patch_id)
+        .execution_options(populate_existing=True)
+    )
+    patch = require_patch_visible(patch, user)
+
+    if data.replying_id:
+        locked_reply_id = await session.scalar(
+            select(ContentModel.id)
+            .where(
+                ContentModel.id == data.replying_id,
+                ContentModel.patch_id == patch.id,
+                ContentModel.type == "comment",
+            )
+            .with_for_update()
+        )
+        if locked_reply_id is None:
+            raise HTTPException(status_code=404, detail="REPLY_TARGET_NOT_FOUND")
+        target = await session.scalar(
+            select(ContentModel)
+            .where(ContentModel.id == locked_reply_id)
+            .execution_options(populate_existing=True)
+        )
+        try:
+            await require_content_interactable(target, user, session)
+        except HTTPException as error:
+            if error.detail == "CONTENT_NOT_FOUND":
+                raise HTTPException(
+                    status_code=404,
+                    detail="REPLY_TARGET_NOT_FOUND",
+                ) from error
+            raise
 
     comment = ContentModel(
         type="comment",
@@ -830,42 +1077,22 @@ async def create_patch_comment(
         patch_id=patch.id,
         replying_id=data.replying_id,
         author_id=user.id,
+        moderation_status=moderation.status,
+        moderation_reason=moderation.reason,
+        published_at=(
+            datetime.now(timezone.utc)
+            if moderation.status == "published"
+            else None
+        ),
     )
     session.add(comment)
     await session.commit()
     await session.refresh(comment)
 
-    is_public = patch.status != "draft"
-    if is_public and patch.author_id != user.id:
-        await create_notification(
-            recipient_id=patch.author_id,
-            type="reply",
-            title="New change discussion",
-            message=f"{user.nickname or user.username} commented on \"{patch.title}\"",
-            link=f"/patches/{patch.id}#{comment.id}",
-        )
-
-    if is_public and data.replying_id:
-        reply_author_id = await session.scalar(
-            select(ContentModel.author_id).where(
-                ContentModel.id == data.replying_id
-            )
-        )
-        if reply_author_id and reply_author_id not in (user.id, patch.author_id):
-            await create_notification(
-                recipient_id=reply_author_id,
-                type="reply",
-                title="New discussion reply",
-                message=f"{user.nickname or user.username} replied to your comment",
-                link=f"/patches/{patch.id}#{comment.id}",
-            )
-
-    if is_public:
-        await publish_feed_event(
-            "updated",
-            item_type="patch",
-            item_id=str(patch.id),
-        )
+    if comment.moderation_status == "pending_review":
+        await notify_content_pending(comment)
+    else:
+        await announce_content_published(comment, session=session)
     return CommentRead(
         id=comment.id,
         content=comment.content,
@@ -875,5 +1102,8 @@ async def create_patch_comment(
         author_username=comment.author.username,
         replying_to_username=None,
         replying_to_content=None,
+        **moderation_metadata_for(comment, user),
+        revision_number=comment.revision_number,
         created_at=comment.created_at,
+        updated_at=comment.updated_at,
     )

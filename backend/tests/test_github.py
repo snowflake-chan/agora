@@ -69,7 +69,12 @@ async def test_merge_pr_recovers_when_github_already_merged(monkeypatch):
             return httpx.Response(405, json={"message": "Pull Request is not mergeable"})
         return httpx.Response(
             200,
-            json={"number": 17, "state": "closed", "merged": True},
+            json={
+                "number": 17,
+                "state": "closed",
+                "merged": True,
+                "head": {"sha": "approved-sha"},
+            },
         )
 
     monkeypatch.setattr(
@@ -80,7 +85,7 @@ async def test_merge_pr_recovers_when_github_already_merged(monkeypatch):
         ),
     )
 
-    assert await merge_pr(17) is False
+    assert await merge_pr(17, expected_head_sha="approved-sha") is False
 
 
 @pytest.mark.asyncio
@@ -94,7 +99,12 @@ async def test_merge_pr_recovers_after_timeout_when_github_merged(monkeypatch):
             raise httpx.ReadTimeout("merge response timed out", request=request)
         return httpx.Response(
             200,
-            json={"number": 17, "state": "closed", "merged": True},
+            json={
+                "number": 17,
+                "state": "closed",
+                "merged": True,
+                "head": {"sha": "approved-sha"},
+            },
         )
 
     monkeypatch.setattr(
@@ -105,7 +115,7 @@ async def test_merge_pr_recovers_after_timeout_when_github_merged(monkeypatch):
         ),
     )
 
-    assert await merge_pr(17) is False
+    assert await merge_pr(17, expected_head_sha="approved-sha") is False
 
 
 @pytest.mark.asyncio
@@ -126,7 +136,32 @@ async def test_merge_pr_marks_unreachable_github_as_uncertain(monkeypatch):
     )
 
     with pytest.raises(GitHubMergeUncertainError):
-        await merge_pr(17)
+        await merge_pr(17, expected_head_sha="approved-sha")
+
+
+@pytest.mark.asyncio
+async def test_merge_pr_sends_governed_head_sha(monkeypatch):
+    monkeypatch.setattr(settings, "GITHUB_REPO", "example/agora")
+    monkeypatch.setattr(settings, "GITHUB_TOKEN", "test-token")
+    async_client = httpx.AsyncClient
+    requests: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"merged": True})
+
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        lambda **kwargs: async_client(
+            transport=httpx.MockTransport(handler), **kwargs
+        ),
+    )
+
+    assert await merge_pr(17, expected_head_sha="approved-sha") is True
+    assert requests[0].method == "PUT"
+    assert requests[0].url.path.endswith("/pulls/17/merge")
+    assert requests[0].read() == b'{"sha":"approved-sha"}'
 
 
 def test_pull_request_readiness_requires_mergeability_and_passing_checks():

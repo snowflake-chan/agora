@@ -4,19 +4,42 @@ from uuid import UUID
 from sqlalchemy import func, select, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import lazyload
+from sqlalchemy.orm import lazyload, selectinload
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 
+from app.ai.client import request_structured_completion
+from app.ai.errors import AIServiceError
+from app.ai.runtime_config import (
+    AI_PROVIDER_SETTING_KEY,
+    AIRuntimeConfig,
+    get_ai_runtime_config,
+    invalidate_ai_runtime_config,
+    serialize_database_config,
+)
 from app.config import settings
-from app.deps import check_not_banned, require_content_visible, require_patch_visible
+from app.content_moderation import (
+    REVIEWABLE_MODERATION_STATUSES,
+    content_is_public,
+    content_href,
+)
+from app.deps import (
+    check_not_banned,
+    require_content_interactable,
+    require_patch_visible,
+)
 from app.db import get_session
 from app.db.models.content import Content as ContentModel
 from app.db.models.guild import Guild, GuildMember
 from app.db.models.moderation import BanRecord, Report
 from app.db.models.patch import Patch as PatchModel
+from app.db.models.post_poll import PostPoll
+from app.db.models.settings import SiteSetting
 from app.db.models.user import User
-from app.schemas.moderation import ReportCreate
+from app.moderation_delivery import deliver_moderation_effects
+from app.posts.realtime import publish_feed_event
+from app.schemas.moderation import ContentReviewDecision, ReportCreate
 from app.users.deps import current_user
 
 router = APIRouter()
@@ -33,6 +56,136 @@ async def super_admin_required(user: User = Depends(current_user)):
     if user.role != "super_admin":
         raise HTTPException(403, detail="FORBIDDEN")
     return user
+
+
+def _content_review_item(content: ContentModel) -> dict:
+    poll = content.poll if content.type == "post" else None
+    return {
+        "id": content.id,
+        "content_id": content.id,
+        "content_type": content.type,
+        "title": content.title,
+        "content": content.content,
+        "revision_number": content.revision_number,
+        "author_id": content.author_id,
+        "author_username": content.author.username if content.author else "",
+        "moderation_status": content.moderation_status,
+        "moderation_reason": content.moderation_reason,
+        "moderation_review_note": content.moderation_review_note,
+        "moderation_reviewed_by": content.moderation_reviewed_by,
+        "moderation_reviewed_at": content.moderation_reviewed_at,
+        "created_at": content.created_at,
+        "target_href": content_href(content),
+        "parent_id": content.parent_id,
+        "patch_id": content.patch_id,
+        "guild_id": content.guild_id,
+        "poll_question": poll.question if poll is not None else None,
+        "poll_options": (
+            [option.text for option in poll.options]
+            if poll is not None
+            else []
+        ),
+    }
+
+
+@router.get("/moderation")
+async def list_content_reviews(
+    status: str = Query("pending_review"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
+    user: User = Depends(admin_required),
+    session: AsyncSession = Depends(get_session),
+):
+    if status not in REVIEWABLE_MODERATION_STATUSES:
+        raise HTTPException(400, detail="INVALID_MODERATION_STATUS")
+    rows = (
+        await session.execute(
+            select(ContentModel)
+            .options(
+                selectinload(ContentModel.poll).selectinload(PostPoll.options)
+            )
+            .where(ContentModel.moderation_status == status)
+            .order_by(ContentModel.created_at.asc(), ContentModel.id.asc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+    ).scalars().all()
+    return [_content_review_item(content) for content in rows]
+
+
+@router.post("/moderation/{content_id}/review")
+async def review_content(
+    content_id: UUID,
+    body: ContentReviewDecision,
+    user: User = Depends(admin_required),
+    session: AsyncSession = Depends(get_session),
+):
+    content = (
+        await session.execute(
+            select(ContentModel)
+            .options(
+                lazyload(ContentModel.author),
+                lazyload(ContentModel.moderation_reviewer),
+            )
+            .where(ContentModel.id == content_id)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if content is None:
+        raise HTTPException(404, detail="CONTENT_NOT_FOUND")
+    if content.moderation_status != "pending_review":
+        raise HTTPException(409, detail="CONTENT_REVIEW_ALREADY_DECIDED")
+    expected_revision = body.revision_number or 1
+    if content.revision_number != expected_revision:
+        raise HTTPException(409, detail="CONTENT_REVIEW_CONFLICT")
+
+    approved = body.decision == "approve"
+    first_publication = approved and content.published_at is None
+    content.moderation_status = "approved" if approved else "rejected"
+    content.moderation_review_note = body.note
+    content.moderation_reviewed_by = user.id
+    reviewed_at = await session.scalar(
+        select(func.clock_timestamp())
+    )
+    content.moderation_reviewed_at = reviewed_at
+    # A previously public item keeps its original feed position while its edit
+    # is reviewed. New held submissions begin their public lifetime here.
+    if first_publication:
+        content.published_at = reviewed_at
+    content.moderation_effects_completed_at = None
+
+    # A private poll has not had a real voting window yet. Preserve the
+    # author's chosen duration, but start it when the post becomes public.
+    if first_publication and content.type == "post":
+        poll = await session.scalar(
+            select(PostPoll)
+            .where(PostPoll.post_id == content.id)
+            .with_for_update()
+        )
+        if poll is not None:
+            duration = poll.closes_at - poll.created_at
+            poll.created_at = reviewed_at
+            poll.closes_at = reviewed_at + duration
+    await session.commit()
+
+    # The decision is durable before any external side effect. Delivery takes
+    # its own row lock, deduplicates notification rows, and is retried by the
+    # startup/periodic reconciler if this request is interrupted.
+    try:
+        await deliver_moderation_effects(content_id)
+    except Exception as exc:
+        print(f"[moderation-delivery] immediate delivery failed: {exc}")
+
+    content = await session.scalar(
+        select(ContentModel)
+        .options(
+            selectinload(ContentModel.poll).selectinload(PostPoll.options)
+        )
+        .where(ContentModel.id == content_id)
+    )
+    if content is None:
+        raise HTTPException(404, detail="CONTENT_NOT_FOUND")
+    return _content_review_item(content)
 
 
 # ═══════════════════════════════════════════
@@ -72,7 +225,7 @@ async def create_report(
                 .with_for_update()
             )
         ).scalar_one_or_none()
-        target = await require_content_visible(
+        target = await require_content_interactable(
             target,
             user,
             session,
@@ -361,6 +514,8 @@ async def admin_list_posts(user: User = Depends(admin_required), session: AsyncS
         id=r.id, title=r.title, content=r.content[:300],
         author_username=r.author.username if r.author else "",
         author_id=r.author_id, created_at=r.created_at.isoformat() if r.created_at else "",
+        moderation_status=r.moderation_status,
+        moderation_reason=r.moderation_reason,
     ) for r in rows]
 
 
@@ -383,9 +538,23 @@ async def admin_list_patches(user: User = Depends(admin_required), session: Asyn
 
 @router.delete("/posts/{post_id}")
 async def delete_post_admin(post_id: UUID, user: User = Depends(super_admin_required), session: AsyncSession = Depends(get_session)):
-    c = (await session.execute(select(ContentModel).where(ContentModel.id == post_id))).scalar_one_or_none()
+    locked_content_id = await session.scalar(
+        select(ContentModel.id)
+        .where(ContentModel.id == post_id)
+        .with_for_update()
+    )
+    c = (
+        await session.scalar(
+            select(ContentModel).where(ContentModel.id == locked_content_id)
+        )
+        if locked_content_id is not None
+        else None
+    )
     if not c: raise HTTPException(404)
+    was_public = content_is_public(c)
     await session.delete(c); await session.commit()
+    if was_public:
+        await publish_feed_event("removed", item_type="post", item_id=str(post_id))
     return {"ok": True}
 
 
@@ -540,11 +709,20 @@ async def admin_list_discussions(guild_id: UUID, user: User = Depends(super_admi
 
 @router.delete("/guilds/{guild_id}/discussions/{post_id}")
 async def admin_delete_discussion(guild_id: UUID, post_id: UUID, user: User = Depends(super_admin_required), session: AsyncSession = Depends(get_session)):
-    c = (await session.execute(select(ContentModel).where(
-        ContentModel.id == post_id,
-        ContentModel.guild_id == guild_id,
-        ContentModel.type == "guild_post",
-    ))).scalar_one_or_none()
+    locked_content_id = await session.scalar(
+        select(ContentModel.id).where(
+            ContentModel.id == post_id,
+            ContentModel.guild_id == guild_id,
+            ContentModel.type == "guild_post",
+        ).with_for_update()
+    )
+    c = (
+        await session.scalar(
+            select(ContentModel).where(ContentModel.id == locked_content_id)
+        )
+        if locked_content_id is not None
+        else None
+    )
     if not c: raise HTTPException(404)
     await session.delete(c); await session.commit()
     return {"ok": True}
@@ -599,6 +777,129 @@ async def seed_super_admin(
     )
     await session.commit()
     return {"ok": True}
+
+
+# ── AI provider settings ──
+
+class AdminAIProbeResponse(BaseModel):
+    ok: bool
+
+
+class AdminAISettingsUpdate(BaseModel):
+    enabled: bool = False
+    base_url: str = Field(default="", max_length=500)
+    model: str = Field(default="", max_length=200)
+    api_key: str | None = Field(default=None, max_length=1000)
+    moderation_provider_fallback_enabled: bool = False
+
+
+def _admin_ai_settings_response(config: AIRuntimeConfig) -> dict:
+    return {
+        "enabled": config.enabled,
+        "base_url": config.base_url,
+        "model": config.model,
+        "api_key_configured": bool(config.api_key),
+        "moderation_provider_fallback_enabled": config.moderation_provider_fallback_enabled,
+        "trusted_classifier_configured": bool(settings.AI_POLITICAL_CLASSIFIER_URL.strip()),
+        "source": config.source,
+    }
+
+
+@router.get("/ai-settings")
+async def get_admin_ai_settings(_user: User = Depends(super_admin_required)):
+    config = await get_ai_runtime_config(force_refresh=True)
+    return _admin_ai_settings_response(config)
+
+
+@router.post("/ai-settings/test")
+async def test_admin_ai_settings(
+    data: AdminAISettingsUpdate,
+    _user: User = Depends(super_admin_required),
+):
+    current = await get_ai_runtime_config(force_refresh=True)
+    base_url = data.base_url.strip().rstrip("/")
+    model = data.model.strip()
+    api_key = current.api_key if data.api_key is None else data.api_key.strip()
+    if not base_url.startswith(("http://", "https://")):
+        raise HTTPException(422, detail="AI_BASE_URL_INVALID")
+    if settings.is_production() and not base_url.startswith("https://"):
+        raise HTTPException(422, detail="AI_BASE_URL_HTTPS_REQUIRED")
+    if not (api_key and base_url and model):
+        raise HTTPException(422, detail="AI_PROVIDER_CONFIG_INCOMPLETE")
+    candidate = AIRuntimeConfig(
+        enabled=True,
+        api_key=api_key,
+        base_url=base_url,
+        model=model,
+        moderation_provider_fallback_enabled=(
+            data.moderation_provider_fallback_enabled
+        ),
+        source="database",
+    )
+    try:
+        result = await request_structured_completion(
+            user_message='{"task":"connection_test","output_schema":{"ok":true}}',
+            response_type=AdminAIProbeResponse,
+            max_tokens=128,
+            system_prompt=(
+                'Return exactly {"ok":true} as JSON. Do not add commentary.'
+            ),
+            runtime_config=candidate,
+        )
+    except AIServiceError as exc:
+        raise HTTPException(502, detail="AI_CONNECTION_TEST_FAILED") from exc
+    if result.ok is not True:
+        raise HTTPException(502, detail="AI_CONNECTION_TEST_FAILED")
+    return {"ok": True}
+
+
+@router.put("/ai-settings")
+async def set_admin_ai_settings(
+    data: AdminAISettingsUpdate,
+    _user: User = Depends(super_admin_required),
+    session: AsyncSession = Depends(get_session),
+):
+    current = await get_ai_runtime_config(force_refresh=True)
+    base_url = data.base_url.strip().rstrip("/")
+    model = data.model.strip()
+    api_key = current.api_key if data.api_key is None else data.api_key.strip()
+    if base_url and not base_url.startswith(("http://", "https://")):
+        raise HTTPException(422, detail="AI_BASE_URL_INVALID")
+    if settings.is_production() and base_url and not base_url.startswith("https://"):
+        raise HTTPException(422, detail="AI_BASE_URL_HTTPS_REQUIRED")
+    if data.enabled and not (api_key and base_url and model):
+        raise HTTPException(422, detail="AI_PROVIDER_CONFIG_INCOMPLETE")
+    if data.enabled and not settings.AI_POLITICAL_CLASSIFIER_URL.strip() and not data.moderation_provider_fallback_enabled:
+        raise HTTPException(422, detail="AI_MODERATION_PATH_REQUIRED")
+
+    config = AIRuntimeConfig(
+        enabled=data.enabled,
+        api_key=api_key,
+        base_url=base_url,
+        model=model,
+        moderation_provider_fallback_enabled=data.moderation_provider_fallback_enabled,
+        source="database",
+    )
+    row = (await session.execute(select(SiteSetting).where(SiteSetting.key == AI_PROVIDER_SETTING_KEY))).scalar_one_or_none()
+    if row is None:
+        row = SiteSetting(key=AI_PROVIDER_SETTING_KEY)
+        session.add(row)
+    row.value = serialize_database_config(config)
+    await session.commit()
+    invalidate_ai_runtime_config()
+    return _admin_ai_settings_response(await get_ai_runtime_config(force_refresh=True))
+
+
+@router.delete("/ai-settings", status_code=204)
+async def reset_admin_ai_settings(
+    _user: User = Depends(super_admin_required),
+    session: AsyncSession = Depends(get_session),
+) -> None:
+    row = (await session.execute(select(SiteSetting).where(SiteSetting.key == AI_PROVIDER_SETTING_KEY))).scalar_one_or_none()
+    if row is not None:
+        await session.delete(row)
+        await session.commit()
+    invalidate_ai_runtime_config()
 
 
 # ── Level Names ──

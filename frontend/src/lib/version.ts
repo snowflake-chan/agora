@@ -1,0 +1,1 @@
+export const BUILD_VERSION = __AGORA_BUILD_VERSION__;

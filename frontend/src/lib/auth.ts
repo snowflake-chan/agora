@@ -1,5 +1,6 @@
 import { API_BASE } from "./config";
 import type { VotingWindowKind } from "./governance";
+import type { ModerationFields } from "./moderation";
 
 export interface User {
   id: string;
@@ -27,7 +28,7 @@ export interface FollowState {
   is_following: boolean;
 }
 
-export interface UserContentItem {
+export interface UserContentItem extends ModerationFields {
   id: string;
   type: "post" | "comment" | "patch";
   title: string | null;

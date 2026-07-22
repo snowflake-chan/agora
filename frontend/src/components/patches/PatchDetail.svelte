@@ -5,6 +5,8 @@
     CircleMinusIcon,
     ExternalLink,
     FlagIcon,
+    HistoryIcon,
+    PencilIcon,
     ThumbsDownIcon,
     ThumbsUpIcon,
   } from "@lucide/svelte";
@@ -18,18 +20,23 @@
     type VotingCountdown,
   } from "../../lib/governance";
   import { locale, translateError, translator } from "../../lib/i18n";
+  import type { DisplayTranslation } from "../../lib/ai";
   import { requestLogin } from "../../lib/login";
+  import { onModerationUpdateForPath } from "../../lib/moderation";
   import { renderMarkdown } from "../../lib/markdown";
-  import { getPatch, deletePatch, submitPatch, votePatch, listVotes, listPatchComments, createPatchComment, type Patch, type Vote } from "../../lib/patches";
-  import { deleteContent, likePost, unlikePost, type Comment } from "../../lib/posts";
+  import { getPatch, deletePatch, submitPatch, votePatch, listVotes, listPatchComments, createPatchComment, updatePatch, listPatchHistory, type Patch, type Vote } from "../../lib/patches";
+  import { deleteContent, likePost, unlikePost, updateContent, listContentHistory, type Comment } from "../../lib/posts";
   import { toaster } from "../../stores/toaster";
   import { currentUser } from "../../stores/auth";
   import { GITHUB_REPO } from "../../lib/config";
   import AuthorMeta from "../AuthorMeta.svelte";
   import ConfirmDialog from "../ConfirmDialog.svelte";
-  import GlassModal from "../GlassModal.svelte";
+  import ReportDialog from "../moderation/ReportDialog.svelte";
   import TimelineItem from "../posts/TimelineItem.svelte";
   import VotingWindowMeta from "./VotingWindowMeta.svelte";
+  import PostAiTools from "../posts/PostAiTools.svelte";
+  import ContentEditModal from "../content/ContentEditModal.svelte";
+  import RevisionHistoryModal, { type RevisionSnapshot } from "../content/RevisionHistoryModal.svelte";
 
   let { patchId = "", embedded = false }: { patchId: string; embedded?: boolean } = $props();
 
@@ -43,10 +50,12 @@
   let submittingReply = $state(false);
   let submittingPatch = $state(false);
   let likingId = $state<string | null>(null);
+  let displayTranslation = $state<DisplayTranslation | null>(null);
 
   let showSubmitDialog = $state(false);
   let showVoteDialog = $state(false);
   let pendingChoice = $state("");
+  let submittingVote = $state(false);
   let showDeleteDialog = $state(false);
   let pendingCommentDelete = $state<Comment | null>(null);
   let reportOpen = $state(false);
@@ -55,6 +64,10 @@
   let reportReason = $state("");
   let reporting = $state(false);
   let currentTime = $state(Date.now());
+  let editTarget = $state<Patch | Comment | null>(null);
+  let editKind = $state<"patch" | "comment">("patch");
+  let historyPatch = $state<Patch | null>(null);
+  let historyComment = $state<Comment | null>(null);
 
   const STATUS_TYPES: Record<string, string> = {
     draft: "neutral",
@@ -98,7 +111,7 @@
     );
   }
 
-  onMount(async () => {
+  async function loadPatchDetail(showError = true) {
     try {
       const [p, v, c] = await Promise.all([
         getPatch(patchId),
@@ -109,12 +122,21 @@
       votes = v;
       comments = c;
       const myVote = v.find((v) => v.voter_id === $currentUser?.id);
-      if (myVote) currentUserVote = myVote;
+      currentUserVote = myVote ?? null;
     } catch {
-      toaster.error($translator("common.error"), $translator("patch.loadFailed"));
+      if (showError) {
+        toaster.error($translator("common.error"), $translator("patch.loadFailed"));
+      }
     } finally {
       loading = false;
     }
+  }
+
+  onMount(() => {
+    void loadPatchDetail();
+    return onModerationUpdateForPath(`/patches/${patchId}`, () => {
+      void loadPatchDetail(false);
+    });
   });
 
   onMount(() => {
@@ -182,16 +204,17 @@
   }
 
   function promptVote(choice: string) {
-    if (!votingIsOpen) return;
+    if (!votingIsOpen || submittingVote) return;
     pendingChoice = choice;
     showVoteDialog = true;
   }
 
   async function confirmVote() {
-    if (!votingIsOpen) {
+    if (!votingIsOpen || submittingVote) {
       toaster.error($translator("patch.closed"), $translator("patch.awaitingTally"));
       return;
     }
+    submittingVote = true;
     try {
       const v = await votePatch(patchId, pendingChoice);
       currentUserVote = v;
@@ -200,6 +223,8 @@
       toaster.success($translator("patch.voteSuccess"));
     } catch (e: any) {
       toaster.error($translator("patch.voteFailed"), $translator("common.tryAgain"));
+    } finally {
+      submittingVote = false;
     }
   }
 
@@ -308,11 +333,11 @@
     reportOpen = true;
   }
 
-  async function submitReport() {
-    if (!reportReason.trim() || reporting) return;
+  async function submitReport(reason: string) {
+    if (!reason.trim() || reporting) return;
     reporting = true;
     try {
-      await createReport(reportTarget, reportReason.trim(), reportTargetType);
+      await createReport(reportTarget, reason.trim(), reportTargetType);
       reportOpen = false;
       toaster.success(
         $translator("moderation.reportSuccessTitle"),
@@ -326,6 +351,70 @@
     } finally {
       reporting = false;
     }
+  }
+
+  function openEdit(target: Patch | Comment, kind: "patch" | "comment") {
+    editTarget = target;
+    editKind = kind;
+  }
+
+  async function saveEdit(payload: {
+    revision_number: number;
+    title?: string;
+    content: string;
+    tags?: string[] | null;
+  }) {
+    if (!editTarget) return;
+    if (editKind === "patch") {
+      patch = await updatePatch(editTarget.id, payload);
+    } else {
+      const updated = await updateContent(editTarget.id, payload);
+      comments = comments.map((comment) =>
+        comment.id === updated.id ? { ...comment, ...updated } : comment,
+      );
+    }
+    editTarget = null;
+  }
+
+  function historyCurrent(): RevisionSnapshot | null {
+    if (historyPatch) {
+      return {
+        version: historyPatch.revision_number,
+        title: historyPatch.title,
+        content: historyPatch.content,
+        edited_at: historyPatch.updated_at,
+      };
+    }
+    if (historyComment) {
+      return {
+        version: historyComment.revision_number,
+        title: null,
+        content: historyComment.content,
+        edited_at: historyComment.updated_at ?? historyComment.created_at,
+      };
+    }
+    return null;
+  }
+
+  async function loadHistory(): Promise<RevisionSnapshot[]> {
+    if (historyPatch) {
+      return (await listPatchHistory(historyPatch.id)).map((revision) => ({
+        version: revision.version,
+        title: revision.title,
+        content: revision.content,
+        edited_at: revision.edited_at,
+      }));
+    }
+    if (historyComment) {
+      return (await listContentHistory(historyComment.id)).map((revision) => ({
+        version: revision.version,
+        title: revision.title,
+        content: revision.content,
+        tags: revision.tags,
+        edited_at: revision.edited_at,
+      }));
+    }
+    return [];
   }
 
   function goBack() {
@@ -378,8 +467,24 @@
         PR #{patch.pr_number}
         <ExternalLink size={13} strokeWidth={1.8} aria-hidden="true" />
       </a>
+      {#if patch.submitted_head_sha}
+        <code class="governed-sha" title={$translator("patch.governedCommit")}>
+          {patch.submitted_head_sha.slice(0, 7)}
+        </code>
+      {/if}
+      {#if patch.revision_number > 1}
+        <button
+          type="button"
+          class="btn-icon patch-history-action"
+          title={$translator("revision.viewHistory")}
+          aria-label={$translator("revision.viewHistory")}
+          onclick={() => (historyPatch = patch)}
+        >
+          <HistoryIcon size={15} strokeWidth={1.8} aria-hidden="true" />
+        </button>
+      {/if}
     </div>
-    <h1 class="mt-2 text-xl font-bold" style="color: var(--vercel-text);">{patch.title}</h1>
+    <h1 class="mt-2 text-xl font-bold" style="color: var(--vercel-text);">{displayTranslation?.title ?? patch.title}</h1>
     <div class="patch-author-row mt-1">
       <AuthorMeta username={patch.author_username ?? $translator("common.anonymous")} userId={patch.author_id} createdAt={patch.created_at} />
       {#if $currentUser?.id !== patch.author_id}
@@ -397,7 +502,13 @@
 
   <!-- Content (rendered markdown) -->
   <div class="card p-4 mb-8">
-    <div class="markdown-body">{@html renderMarkdown(patch.content)}</div>
+    <div class="markdown-body">{@html renderMarkdown(displayTranslation?.body ?? patch.content)}</div>
+    <PostAiTools
+      text={patch.content}
+      title={patch.title}
+      context="patch"
+      onTranslationChange={(translation) => (displayTranslation = translation)}
+    />
   </div>
 
   <!-- Vote panel -->
@@ -422,8 +533,8 @@
       <!-- Vote bar -->
       {#if totalVotes > 0}
         <div class="vote-bar flex h-2 mb-4 rounded-full overflow-hidden">
-          <div style="width: {forPct}%; background: var(--vercel-success); transition: width 0.3s;"></div>
-          <div style="width: {againstPct}%; background: var(--vercel-danger); transition: width 0.3s;"></div>
+          <div class="vote-bar-for" style="width: {forPct}%;"></div>
+          <div class="vote-bar-against" style="width: {againstPct}%;"></div>
           <div class="vote-bar-abstain" style="width: {abstainPct}%;"></div>
         </div>
       {/if}
@@ -435,12 +546,15 @@
       </div>
 
       {#if votingIsOpen && $currentUser}
-        <div class="vote-actions">
+        <div class="vote-actions" role="group" aria-label={$translator("patch.governance")}>
           <button
+            type="button"
             class="vote-choice"
             class:is-for={currentUserVote?.choice === "for"}
             class:is-other={Boolean(currentUserVote && currentUserVote.choice !== "for")}
             aria-pressed={currentUserVote?.choice === "for"}
+            disabled={submittingVote}
+            aria-busy={submittingVote}
             onclick={() => promptVote("for")}
           >
             <ThumbsUpIcon size={16} strokeWidth={1.8} />
@@ -450,10 +564,13 @@
             {/if}
           </button>
           <button
+            type="button"
             class="vote-choice"
             class:is-against={currentUserVote?.choice === "against"}
             class:is-other={Boolean(currentUserVote && currentUserVote.choice !== "against")}
             aria-pressed={currentUserVote?.choice === "against"}
+            disabled={submittingVote}
+            aria-busy={submittingVote}
             onclick={() => promptVote("against")}
           >
             <ThumbsDownIcon size={16} strokeWidth={1.8} />
@@ -463,10 +580,13 @@
             {/if}
           </button>
           <button
+            type="button"
             class="vote-choice"
             class:is-abstain={currentUserVote?.choice === "abstain"}
             class:is-other={Boolean(currentUserVote && currentUserVote.choice !== "abstain")}
             aria-pressed={currentUserVote?.choice === "abstain"}
+            disabled={submittingVote}
+            aria-busy={submittingVote}
             onclick={() => promptVote("abstain")}
           >
             <CircleMinusIcon size={16} strokeWidth={1.8} />
@@ -502,6 +622,10 @@
   {#if $currentUser?.id === patch.author_id}
     <div class="mb-8 flex gap-2">
       {#if patch.status === "draft"}
+        <button class="btn btn-ghost btn-sm" onclick={() => openEdit(patch, "patch")}>
+          <PencilIcon size={15} strokeWidth={1.8} aria-hidden="true" />
+          {$translator("common.edit")}
+        </button>
         <button
           class="btn btn-primary btn-sm"
           disabled={submittingPatch}
@@ -541,8 +665,13 @@
             replyingToContent={comment.replying_to_content}
             replyingToId={comment.replying_id}
             contentId={comment.id}
+            aiText={comment.content}
+            aiContext="comment"
             onReply={$currentUser ? () => beginReply(comment) : null}
-            onDelete={$currentUser?.id === comment.author_id ? () => requestDeleteComment(comment) : null}
+            onDelete={$currentUser?.id === comment.author_id && comment.revision_number === 1 ? () => requestDeleteComment(comment) : null}
+            onEdit={$currentUser?.id === comment.author_id ? () => openEdit(comment, "comment") : null}
+            onHistory={comment.revision_number > 1 ? () => (historyComment = comment) : null}
+            revisionNumber={comment.revision_number}
             liked={comment.liked_by_me}
             likeCount={comment.like_count}
             replyCount={comment.reply_count}
@@ -553,6 +682,10 @@
             onReport={$currentUser?.id === comment.author_id
               ? null
               : () => requestReport(comment.id)}
+            moderationStatus={comment.moderation_status}
+            moderationReason={comment.moderation_reason}
+            moderationReviewNote={comment.moderation_review_note}
+            moderationTargetHref={`/patches/${patchId}`}
           />
         {/each}
       </div>
@@ -595,7 +728,7 @@
       {#each votes as v (v.id)}
         <div class="flex items-center justify-between px-4 py-2 text-sm border-b last:border-0" style="border-color: var(--vercel-border);">
           <span style="color: var(--vercel-text-secondary);">{v.voter_username ?? $translator("common.anonymous")}</span>
-          <span class="text-xs" style="color: {v.choice === 'for' ? 'var(--vercel-success)' : v.choice === 'against' ? 'var(--vercel-danger)' : 'var(--vercel-text-tertiary)'};">
+          <span class="vote-record-choice" class:is-abstain={v.choice === "abstain"}>
             {voteLabel(v.choice)}
           </span>
         </div>
@@ -626,35 +759,33 @@
   title={$translator("patch.castVoteTitle", { choice: voteLabel(pendingChoice) })}
   description={$translator("patch.castVoteDescription", { choice: voteLabel(pendingChoice) })}
   confirmText={$translator("common.confirm")}
+  tone="primary"
   onConfirm={confirmVote}
 />
 
-<GlassModal
-  show={reportOpen}
-  title={$translator("moderation.reportTitle")}
-  onclose={() => (reportOpen = false)}
->
-  <textarea
-    class="input report-reason"
-    rows="4"
-    bind:value={reportReason}
-    maxlength="500"
-    aria-label={$translator("moderation.reportReasonPlaceholder")}
-    placeholder={$translator("moderation.reportReasonPlaceholder")}
-  ></textarea>
-  <div class="report-actions">
-    <button class="btn btn-ghost btn-sm" onclick={() => (reportOpen = false)}>
-      {$translator("common.cancel")}
-    </button>
-    <button
-      class="btn btn-primary btn-sm"
-      disabled={reporting || !reportReason.trim()}
-      onclick={submitReport}
-    >
-      {$translator(reporting ? "moderation.reporting" : "moderation.reportSubmit")}
-    </button>
-  </div>
-</GlassModal>
+<ReportDialog
+  bind:open={reportOpen}
+  bind:reason={reportReason}
+  {reporting}
+  onsubmit={submitReport}
+/>
+
+<ContentEditModal
+  show={editTarget !== null}
+  kind={editKind}
+  title={editTarget && "title" in editTarget ? editTarget.title : ""}
+  content={editTarget?.content ?? ""}
+  revisionNumber={editTarget?.revision_number ?? 1}
+  onclose={() => (editTarget = null)}
+  onsave={saveEdit}
+/>
+
+<RevisionHistoryModal
+  show={historyPatch !== null || historyComment !== null}
+  current={historyCurrent()}
+  load={loadHistory}
+  onclose={() => { historyPatch = null; historyComment = null; }}
+/>
 
 <style>
   .patch-meta-row {
@@ -666,6 +797,16 @@
 
   .patch-report-action {
     margin-left: auto;
+  }
+
+  .patch-history-action {
+    width: 1.85rem;
+    height: 1.85rem;
+    color: var(--vercel-text-tertiary);
+  }
+
+  .patch-history-action:hover {
+    color: var(--vercel-text);
   }
 
   .patch-author-row {
@@ -685,6 +826,15 @@
 
   .patch-pr-link:hover {
     color: var(--vercel-text);
+  }
+
+  .governed-sha {
+    padding: 0.15rem 0.35rem;
+    border: 1px solid var(--vercel-border);
+    border-radius: var(--vercel-radius-sm);
+    color: var(--vercel-text-tertiary);
+    background: var(--vercel-surface-muted);
+    font-size: 0.68rem;
   }
 
   .section-kicker {
@@ -712,8 +862,16 @@
     transition: width 0.3s ease;
   }
 
+  .vote-bar-for {
+    background: var(--vercel-accent);
+  }
+
+  .vote-bar-against {
+    background: color-mix(in srgb, var(--vercel-accent) 58%, var(--vercel-surface-muted));
+  }
+
   .vote-bar-abstain {
-    background: var(--vercel-neutral-bg);
+    background: color-mix(in srgb, var(--vercel-accent) 22%, var(--vercel-surface-muted));
   }
 
   .vote-heading,
@@ -739,7 +897,7 @@
   .vote-deadline {
     padding: 0.3rem 0.55rem;
     border: 1px solid var(--vercel-border);
-    border-radius: 0.375rem;
+    border-radius: var(--vercel-radius-sm);
     color: var(--vercel-text-secondary);
     font-size: 0.7rem;
     font-variant-numeric: tabular-nums;
@@ -757,7 +915,7 @@
     align-items: baseline;
     gap: 0.4rem;
     padding: 0.6rem 0.7rem;
-    border-radius: 0.4rem;
+    border-radius: var(--vercel-radius-sm);
     background: var(--vercel-surface-muted);
   }
 
@@ -772,8 +930,18 @@
     font-size: 0.7rem;
   }
 
-  .vote-total.is-for strong { color: var(--vercel-success); }
-  .vote-total.is-against strong { color: var(--vercel-danger); }
+  .vote-total.is-for strong,
+  .vote-total.is-against strong { color: var(--vercel-accent); }
+
+  .vote-record-choice {
+    color: var(--vercel-accent);
+    font-size: 0.75rem;
+    font-weight: 650;
+  }
+
+  .vote-record-choice.is-abstain {
+    color: var(--vercel-text-tertiary);
+  }
 
   .vote-actions {
     display: grid;
@@ -790,7 +958,7 @@
     justify-content: center;
     gap: 0.4rem;
     border: 1px solid var(--vercel-border-hover);
-    border-radius: 0.5rem;
+    border-radius: var(--vercel-radius-sm);
     color: var(--vercel-text-secondary);
     background: var(--vercel-hover);
     font-size: 0.8rem;
@@ -804,22 +972,12 @@
     transform: translateY(-1px);
   }
 
-  .vote-choice.is-for {
-    border-color: color-mix(in srgb, var(--vercel-success) 55%, transparent);
-    color: var(--vercel-success);
-    background: color-mix(in srgb, var(--vercel-success) 12%, transparent);
-  }
-
-  .vote-choice.is-against {
-    border-color: color-mix(in srgb, var(--vercel-danger) 55%, transparent);
-    color: var(--vercel-danger);
-    background: color-mix(in srgb, var(--vercel-danger) 12%, transparent);
-  }
-
+  .vote-choice.is-for,
+  .vote-choice.is-against,
   .vote-choice.is-abstain {
-    border-color: var(--vercel-text-tertiary);
-    color: var(--vercel-text);
-    background: var(--vercel-hover-strong);
+    border-color: color-mix(in srgb, var(--vercel-accent) 55%, transparent);
+    color: var(--vercel-accent);
+    background: color-mix(in srgb, var(--vercel-accent) 12%, transparent);
   }
 
   .vote-choice.is-other {
@@ -847,18 +1005,6 @@
 
   .vote-check {
     margin-left: auto;
-  }
-
-  .report-reason {
-    width: 100%;
-    resize: vertical;
-  }
-
-  .report-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 0.5rem;
-    margin-top: 1rem;
   }
 
   .discussion-section {

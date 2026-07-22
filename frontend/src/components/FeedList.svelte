@@ -2,6 +2,7 @@
   import { onDestroy, onMount, tick } from "svelte";
   import { API_BASE } from "../lib/config";
   import { translator } from "../lib/i18n";
+  import { moderationTargetContentId, onModerationUpdate } from "../lib/moderation";
   import { getFeed, type FeedItem, type FeedMode } from "../lib/posts";
   import FeedCard from "./FeedCard.svelte";
 
@@ -62,6 +63,15 @@
     }, { rootMargin: "300px" });
     observer.observe(sentinel);
   });
+
+  onMount(() => onModerationUpdate((detail) => {
+    const match = detail.link.match(/^\/posts\/([^/?#]+)/);
+    const rootId = match?.[1];
+    if (rootId && moderationTargetContentId(detail, rootId) === rootId) {
+      removedIds.add(rootId);
+    }
+    void refreshFirstPage();
+  }));
 
   onDestroy(() => {
     observer?.disconnect();

@@ -4,6 +4,7 @@ import BanGate from "./BanGate.svelte";
 import NotificationBell from "./NotificationBell.svelte";
 import SettingsButton from "./SettingsButton.svelte";
 import AboutButton from "./AboutButton.svelte";
+import PublicFeedsButton from "./PublicFeedsButton.svelte";
 ---
 
 <!-- Top header -->
@@ -14,6 +15,7 @@ import AboutButton from "./AboutButton.svelte";
       <span class="text-lg font-bold tracking-tight" style="color: var(--vercel-text);">Agora</span>
     </a>
     <div class="flex items-center gap-1">
+      <PublicFeedsButton client:load />
       <AboutButton client:load />
       <SettingsButton client:load />
       <NotificationBell client:load />

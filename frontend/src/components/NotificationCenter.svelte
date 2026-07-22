@@ -7,9 +7,9 @@
     type Notification,
   } from "../lib/notifications";
   import { localizeNotification, translator } from "../lib/i18n";
-  import { timeAgo } from "../lib/utils";
   import { currentUser, initAuth } from "../stores/auth";
   import { toaster } from "../stores/toaster";
+  import RelativeTime from "./RelativeTime.svelte";
 
   let items = $state<Notification[]>([]);
   let loading = $state(true);
@@ -80,7 +80,7 @@
                 <strong>{copy.title}</strong>
                 <span>{copy.message}</span>
               </span>
-              <time>{timeAgo(item.created_at)}</time>
+              <RelativeTime value={item.created_at} />
             </button>
           {/each}
         {/if}
@@ -108,7 +108,7 @@
                 <strong>{copy.title}</strong>
                 <span>{copy.message}</span>
               </span>
-              <time>{timeAgo(item.created_at)}</time>
+              <RelativeTime value={item.created_at} />
             </button>
           {/each}
         {/if}
@@ -126,7 +126,7 @@
     color: var(--vercel-text-tertiary); font-size: .625rem; font-weight: 650;
     letter-spacing: .14em; text-transform: uppercase;
   }
-  .notification-header h1 { font-size: 1.8rem; font-weight: 650; letter-spacing: -.04em; }
+  .notification-header h1 { font-size: 1.8rem; font-weight: 650; letter-spacing: 0; }
   .notification-header > div > span { color: var(--vercel-text-tertiary); font-size: .75rem; }
   .notification-header button {
     color: var(--vercel-text-secondary); font-size: .75rem;

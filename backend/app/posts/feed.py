@@ -19,9 +19,11 @@ def _age_hours(created_at: datetime, now: datetime) -> float:
 
 
 def _interaction_count(item: FeedItem) -> int:
+    poll_votes = item.poll.total_votes if item.poll else 0
     return (
         item.like_count
         + item.reply_count
+        + poll_votes
         + item.for_count
         + item.against_count
         + item.abstain_count
@@ -30,7 +32,8 @@ def _interaction_count(item: FeedItem) -> int:
 
 def _engagement_points(item: FeedItem) -> float:
     if item.type == "post":
-        return item.like_count * 1.5 + item.reply_count * 2.5
+        poll_votes = item.poll.total_votes if item.poll else 0
+        return item.like_count * 1.5 + item.reply_count * 2.5 + poll_votes
     votes = item.for_count + item.against_count + item.abstain_count
     return item.reply_count * 2.5 + votes * 1.25
 

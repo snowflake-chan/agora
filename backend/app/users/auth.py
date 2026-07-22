@@ -8,6 +8,7 @@ from app.config import settings
 from app.schemas.user import LoginRequest, UserCreate, UserRead
 from app.db.models.user import User, get_user_db
 from app.users.backend import auth_backend, transport as cookie_transport
+from app.users.deps import optional_current_user
 from app.users.rate_limit import client_ip, enforce_rate_limit
 
 router = APIRouter()
@@ -15,7 +16,7 @@ password_helper = PasswordHelper()
 
 
 def _set_auth_cookie(response: Response, token: str) -> None:
-    """Set the JWT cookie with every policy configured by CookieTransport."""
+    """Set the session cookie with every policy configured by CookieTransport."""
     response.set_cookie(
         key=cookie_transport.cookie_name,
         value=token,
@@ -123,6 +124,14 @@ async def login(
 
 
 @router.post("/logout", status_code=204)
-async def logout(response: Response) -> None:
-    """Clear the session cookie."""
+async def logout(
+    request: Request,
+    response: Response,
+    user: User | None = Depends(optional_current_user),
+    strategy: Strategy = Depends(auth_backend.get_strategy),
+) -> None:
+    """Revoke the current device session and clear its cookie."""
+    token = request.cookies.get(cookie_transport.cookie_name)
+    if token and user:
+        await strategy.destroy_token(token, user)
     _delete_auth_cookie(response)

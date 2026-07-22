@@ -1,7 +1,16 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
-  import { Bell, Check, MessageSquare, ThumbsUp, X } from "@lucide/svelte";
-  import { locale, localizeNotification, translator } from "../lib/i18n";
+  import {
+    Bell,
+    Check,
+    Clock3,
+    MessageSquare,
+    ShieldCheck,
+    ShieldX,
+    ThumbsUp,
+    X,
+  } from "@lucide/svelte";
+  import { localizeNotification, translator } from "../lib/i18n";
   import {
     cleanupNotificationStore,
     initNotificationStore,
@@ -10,6 +19,7 @@
     unreadCount,
   } from "../stores/notifications";
   import { currentUser, initAuth } from "../stores/auth";
+  import RelativeTime from "./RelativeTime.svelte";
 
   let open = false;
   let initialized = false;
@@ -40,24 +50,14 @@
     window.location.href = link;
   }
 
-  function timeAgo(value: string): string {
-    const elapsedSeconds = Math.round((new Date(value).getTime() - Date.now()) / 1000);
-    const format = new Intl.RelativeTimeFormat($locale, { numeric: "auto" });
-    if (Math.abs(elapsedSeconds) < 60) return format.format(elapsedSeconds, "second");
-    const minutes = Math.round(elapsedSeconds / 60);
-    if (Math.abs(minutes) < 60) return format.format(minutes, "minute");
-    const hours = Math.round(minutes / 60);
-    if (Math.abs(hours) < 24) return format.format(hours, "hour");
-    const days = Math.round(hours / 24);
-    if (Math.abs(days) < 30) return format.format(days, "day");
-    return format.format(Math.round(days / 30), "month");
-  }
-
   function typeIcon(type: string) {
     if (type === "reply") return MessageSquare;
     if (type === "vote") return ThumbsUp;
     if (type === "vote_passed" || type === "patch_merged") return Check;
     if (type === "vote_rejected" || type === "patch_failed") return X;
+    if (type === "moderation_pending") return Clock3;
+    if (type === "moderation_approved") return ShieldCheck;
+    if (type === "moderation_rejected") return ShieldX;
     return Bell;
   }
 
@@ -92,7 +92,7 @@
               <div class="notif-body">
                 <div class="notif-title">{copy.title}</div>
                 <div class="notif-msg">{copy.message}</div>
-                <div class="notif-time">{timeAgo(notif.created_at)}</div>
+                <RelativeTime className="notif-time" value={notif.created_at} />
               </div>
             </button>
           {/each}
@@ -107,7 +107,7 @@
                 <div class="notif-body">
                   <div class="notif-title">{copy.title}</div>
                   <div class="notif-msg">{copy.message}</div>
-                  <div class="notif-time">{timeAgo(notif.created_at)}</div>
+                  <RelativeTime className="notif-time" value={notif.created_at} />
                 </div>
               </button>
             {/each}
