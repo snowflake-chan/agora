@@ -13,6 +13,7 @@
   import { toaster } from "../../stores/toaster";
   import { currentUser } from "../../stores/auth";
   import TimelineItem from "./TimelineItem.svelte";
+  import WritingAssist from "./WritingAssist.svelte";
   import ConfirmDialog from "../ConfirmDialog.svelte";
   import ReportDialog from "../moderation/ReportDialog.svelte";
   import ContentEditModal from "../content/ContentEditModal.svelte";
@@ -466,7 +467,12 @@
           style="min-height: 80px; resize: vertical;"
           placeholder={$translator("post.replyPlaceholder")}
         ></textarea>
-        <div class="mt-2 flex justify-end">
+        <div class="mt-2 flex items-center justify-between gap-2">
+          <WritingAssist
+            body={replyText}
+            context="comment"
+            onApply={(value) => (replyText = value.body)}
+          />
           <button
             class="btn btn-primary btn-sm"
             onclick={handleSubmitReply}

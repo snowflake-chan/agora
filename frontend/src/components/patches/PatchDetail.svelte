@@ -36,6 +36,7 @@
   import VotingWindowMeta from "./VotingWindowMeta.svelte";
   import PostAiTools from "../posts/PostAiTools.svelte";
   import ContentEditModal from "../content/ContentEditModal.svelte";
+  import WritingAssist from "../posts/WritingAssist.svelte";
   import RevisionHistoryModal, { type RevisionSnapshot } from "../content/RevisionHistoryModal.svelte";
 
   let { patchId = "", embedded = false }: { patchId: string; embedded?: boolean } = $props();
@@ -709,6 +710,11 @@
         ></textarea>
         <div class="composer-footer">
           <span>{$translator("common.markdownSupported")}</span>
+          <WritingAssist
+            body={replyText}
+            context="comment"
+            onApply={(value) => (replyText = value.body)}
+          />
           <button class="btn btn-primary btn-sm" disabled={submittingReply || !replyText.trim()} onclick={submitReply}>
             {submittingReply ? $translator("common.sending") : $translator("patch.joinDiscussion")}
           </button>
