@@ -220,64 +220,74 @@ async def _do_merge_and_deploy(patch_id: str, pr_number: int, patch_title: str |
 
             patch_title = patch.title
             pr_number = patch.pr_number
+
             expected_head_sha = patch.submitted_head_sha
             if not expected_head_sha:
                 logger.error(
                     "refusing PR #%s because governed head SHA is missing",
                     pr_number,
                 )
-                patch.status = "failed"
-                await session.commit()
-                outcome = patch.status
-            else:
-                try:
-                    pull_request = await get_pull_request(pr_number)
-                    current_head_sha = pull_request.get("head", {}).get("sha")
-                    if current_head_sha != expected_head_sha:
-                        raise RuntimeError("PULL_REQUEST_HEAD_CHANGED")
+                return
 
-                    if pull_request.get("merged") or pull_request.get("merged_at"):
-                        patch.status = "merged"
-                    else:
-                        commit_checks = await get_commit_checks(expected_head_sha)
-                        readiness_error = pull_request_readiness_error(
-                            pull_request,
-                            commit_checks,
-                        )
-                        if readiness_error in (
-                            "PULL_REQUEST_READINESS_PENDING",
-                            "PULL_REQUEST_CHECKS_PENDING",
-                        ):
-                            logger.info(
-                                "PR #%s is temporarily pending: %s",
-                                pr_number,
-                                readiness_error,
-                            )
-                            return
-                        if readiness_error:
-                            raise RuntimeError(readiness_error)
-                        await merge_pr(
-                            pr_number,
-                            expected_head_sha=expected_head_sha,
-                        )
-                        patch.status = "merged"
-                except GitHubPullRequestError as exc:
-                    # A transient lookup failure has no truthful terminal result.
-                    # Leave the proposal passed so startup reconciliation can retry.
-                    logger.warning(
-                        "GitHub lookup unavailable for PR #%s: %s",
-                        pr_number,
-                        exc,
+            try:
+                pull_request = await get_pull_request(pr_number)
+                current_head_sha = pull_request.get("head", {}).get("sha")
+                if current_head_sha != expected_head_sha:
+                    raise RuntimeError("PULL_REQUEST_HEAD_CHANGED")
+
+                if pull_request.get("merged") or pull_request.get("merged_at"):
+                    patch.status = "merged"
+                else:
+                    commit_checks = await get_commit_checks(expected_head_sha)
+                    readiness_error = pull_request_readiness_error(
+                        pull_request,
+                        commit_checks,
                     )
-                    return
-                except GitHubMergeUncertainError as exc:
-                    logger.warning("merge outcome unknown for PR #%s: %s", pr_number, exc)
-                    return
-                except Exception as exc:
-                    logger.exception("merge failed for PR #%s", pr_number)
-                    patch.status = "failed"
-                await session.commit()
-                outcome = patch.status
+                    if readiness_error in (
+                        "PULL_REQUEST_READINESS_PENDING",
+                        "PULL_REQUEST_CHECKS_PENDING",
+                    ):
+                        logger.info(
+                            "PR #%s is temporarily pending: %s",
+                            pr_number,
+                            readiness_error,
+                        )
+                        return
+                    if readiness_error:
+                        raise RuntimeError(readiness_error)
+                    await merge_pr(
+                        pr_number,
+                        expected_head_sha=expected_head_sha,
+                    )
+                    patch.status = "merged"
+
+                # Token economy: refund deposit + pass reward
+                if patch.status == "merged":
+                    from app.tokens import service as token_service
+                    deposit = await token_service.get_param(session, "proposal_deposit")
+                    pass_reward = await token_service.get_param(session, "proposal_pass_reward")
+                    await token_service.earn(session, patch.author_id, deposit, "proposal_deposit_refund", patch.id)
+                    await token_service.earn(session, patch.author_id, pass_reward, "proposal_pass", patch.id, bypass_cap=True)
+                    # Guild leveling: count proposal for author's guild
+                    from app.guilds.leveling import count_proposal_for_guild
+                    await count_proposal_for_guild(session, patch.id, patch.author_id)
+            except GitHubPullRequestError as exc:
+                # A transient lookup failure has no truthful terminal result.
+                # Leave the proposal passed so startup reconciliation can retry.
+                logger.warning(
+                    "GitHub lookup unavailable for PR #%s: %s",
+                    pr_number,
+                    exc,
+                )
+                return
+            except GitHubMergeUncertainError as exc:
+                logger.warning("merge outcome unknown for PR #%s: %s", pr_number, exc)
+                return
+            except Exception as exc:
+                logger.exception("merge failed for PR #%s", pr_number)
+                patch.status = "failed"
+            await session.commit()
+            outcome = patch.status
     except Exception as status_exc:
         logger.exception("could not record merge outcome for PR #%s", pr_number)
         return
@@ -746,6 +756,15 @@ async def submit_patch(
         "active_creator" if active_creator else "standard"
     )
     patch.voting_ends_at = now + timedelta(hours=voting_period_hours)
+
+    # Token economy: spend proposal deposit
+    from app.tokens import service as token_service
+    deposit = await token_service.get_param(session, "proposal_deposit")
+    try:
+        await token_service.spend(session, user.id, deposit, "proposal_create", patch.id)
+    except ValueError:
+        raise HTTPException(402, detail=f"INSUFFICIENT_AGC_NEED_{deposit}")
+
     await session.commit()
 
     response_patch = await session.scalar(
@@ -820,6 +839,31 @@ async def vote_patch(
 
     await session.commit()
     await session.refresh(vote)
+
+    # Token economy: quality vote reward when voter has also left a substantive comment
+    from app.tokens import service as token_service
+    from app.db.models import TokenTransaction as TokenTxnModel
+    already_rewarded = (await session.execute(
+        select(TokenTxnModel).where(
+            TokenTxnModel.user_id == user.id,
+            TokenTxnModel.source == "vote_quality",
+            TokenTxnModel.reference_id == patch_id,
+        )
+    )).scalar_one_or_none()
+
+    if not already_rewarded:
+        from app.db.models.content import Content as ContentModel
+        quality_comment = (await session.execute(
+            select(func.length(ContentModel.content)).where(
+                ContentModel.author_id == user.id,
+                ContentModel.patch_id == patch_id,
+                func.length(ContentModel.content) >= 20,
+            )
+        )).scalar_one_or_none()
+        if quality_comment is not None:
+            vote_reward = await token_service.get_param(session, "vote_reward")
+            await token_service.earn(session, user.id, vote_reward, "vote_quality", patch_id)
+            await session.commit()
 
     # Notify patch author (unless voting on your own patch)
     if patch.author_id != user.id:

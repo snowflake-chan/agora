@@ -25,10 +25,11 @@
   import { onModerationUpdateForPath } from "../../lib/moderation";
   import { renderMarkdown } from "../../lib/markdown";
   import { getPatch, deletePatch, submitPatch, votePatch, listVotes, listPatchComments, createPatchComment, updatePatch, listPatchHistory, type Patch, type Vote } from "../../lib/patches";
-  import { deleteContent, getPostLikeState, likePost, unlikePost, updateContent, listContentHistory, type Comment } from "../../lib/posts";
+  import { deleteContent, likePost, unlikePost, updateContent, listContentHistory, type Comment } from "../../lib/posts";
   import { toaster } from "../../stores/toaster";
   import { currentUser } from "../../stores/auth";
   import { GITHUB_REPO } from "../../lib/config";
+  import { getBalance, getTokenParams, type TokenBalance } from "../../lib/tokens";
   import AuthorMeta from "../AuthorMeta.svelte";
   import ConfirmDialog from "../ConfirmDialog.svelte";
   import ReportDialog from "../moderation/ReportDialog.svelte";
@@ -36,7 +37,6 @@
   import VotingWindowMeta from "./VotingWindowMeta.svelte";
   import PostAiTools from "../posts/PostAiTools.svelte";
   import ContentEditModal from "../content/ContentEditModal.svelte";
-  import WritingAssist from "../posts/WritingAssist.svelte";
   import RevisionHistoryModal, { type RevisionSnapshot } from "../content/RevisionHistoryModal.svelte";
 
   let { patchId = "", embedded = false }: { patchId: string; embedded?: boolean } = $props();
@@ -69,6 +69,9 @@
   let editKind = $state<"patch" | "comment">("patch");
   let historyPatch = $state<Patch | null>(null);
   let historyComment = $state<Comment | null>(null);
+  let proposalDeposit = $state(50);
+  let tokenBalance = $state<TokenBalance | null>(null);
+  let loadingTokenInfo = $state(true);
 
   const STATUS_TYPES: Record<string, string> = {
     draft: "neutral",
@@ -138,6 +141,18 @@
     return onModerationUpdateForPath(`/patches/${patchId}`, () => {
       void loadPatchDetail(false);
     });
+  });
+
+  onMount(async () => {
+    try {
+      const [params, balance] = await Promise.all([getTokenParams(), getBalance()]);
+      proposalDeposit = params.proposal_deposit;
+      tokenBalance = balance;
+    } catch {
+      // Leave defaults so the page remains usable.
+    } finally {
+      loadingTokenInfo = false;
+    }
   });
 
   onMount(() => {
@@ -293,14 +308,8 @@
       comments = comments.map((item) =>
         item.id === comment.id ? { ...item, ...state } : item
       );
-    } catch {
-      try {
-        const state = await getPostLikeState(comment.id);
-        comments = comments.map((item) => item.id === comment.id ? { ...item, ...state } : item);
-        if (state.liked_by_me === comment.liked_by_me) throw new Error("LIKE_NOT_APPLIED");
-      } catch {
-        toaster.error($translator("common.operationFailed"), $translator("common.tryAgain"));
-      }
+    } catch (e: any) {
+      toaster.error($translator("common.operationFailed"), $translator("common.tryAgain"));
     } finally {
       likingId = null;
     }
@@ -627,7 +636,7 @@
 
   <!-- Author actions -->
   {#if $currentUser?.id === patch.author_id}
-    <div class="mb-8 flex gap-2">
+    <div class="mb-8 flex flex-wrap items-center gap-2">
       {#if patch.status === "draft"}
         <button class="btn btn-ghost btn-sm" onclick={() => openEdit(patch, "patch")}>
           <PencilIcon size={15} strokeWidth={1.8} aria-hidden="true" />
@@ -635,7 +644,7 @@
         </button>
         <button
           class="btn btn-primary btn-sm"
-          disabled={submittingPatch}
+          disabled={submittingPatch || (tokenBalance !== null && tokenBalance.balance < proposalDeposit)}
           onclick={() => (showSubmitDialog = true)}
         >
           {$translator(submittingPatch ? "patch.submitting" : "patch.submit")}
@@ -643,6 +652,14 @@
         <button class="btn btn-danger btn-sm" onclick={() => { pendingCommentDelete = null; showDeleteDialog = true; }}>
           {$translator("common.delete")}
         </button>
+        {#if !loadingTokenInfo}
+          <span class="deposit-hint" class:deposit-warning={tokenBalance !== null && tokenBalance.balance < proposalDeposit}>
+            {$translator("tokens.depositHint", { amount: proposalDeposit })}
+            {#if tokenBalance !== null && tokenBalance.balance < proposalDeposit}
+              · {$translator("tokens.insufficient")}
+            {/if}
+          </span>
+        {/if}
       {/if}
     </div>
   {/if}
@@ -716,11 +733,6 @@
         ></textarea>
         <div class="composer-footer">
           <span>{$translator("common.markdownSupported")}</span>
-          <WritingAssist
-            body={replyText}
-            context="comment"
-            onApply={(value) => (replyText = value.body)}
-          />
           <button class="btn btn-primary btn-sm" disabled={submittingReply || !replyText.trim()} onclick={submitReply}>
             {submittingReply ? $translator("common.sending") : $translator("patch.joinDiscussion")}
           </button>
@@ -752,7 +764,7 @@
 <ConfirmDialog
   bind:open={showSubmitDialog}
   title={$translator("patch.submitConfirmTitle")}
-  description={$translator("patch.submitConfirmDescription")}
+  description={`${$translator("patch.submitConfirmDescription")} ${$translator("tokens.depositHint", { amount: proposalDeposit })}`}
   confirmText={$translator("patch.submit")}
   tone="primary"
   onConfirm={handleSubmit}
@@ -826,6 +838,15 @@
     min-width: 0;
     align-items: center;
     gap: 0.75rem;
+  }
+
+  .deposit-hint {
+    color: var(--vercel-text-tertiary);
+    font-size: 0.75rem;
+  }
+
+  .deposit-hint.deposit-warning {
+    color: var(--vercel-danger);
   }
 
   .patch-pr-link {

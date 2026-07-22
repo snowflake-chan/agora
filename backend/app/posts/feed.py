@@ -1,5 +1,4 @@
 from datetime import datetime, timezone
-from hashlib import blake2b
 from math import exp, log1p
 from typing import Literal
 from uuid import UUID
@@ -66,20 +65,21 @@ def recommendation_score(
         if item.status in {"passed", "merged"}
         else 0.0
     )
-    return (
+    base = (
         freshness * 0.40
         + engagement * 0.25
         + relationship * 0.20
         + affinity * 0.10
         + governance * 0.05
     )
+    return base * item.boost_weight
 
 
 def trending_score(item: FeedItem, *, now: datetime) -> float:
     age_days = _age_hours(item.created_at, now) / 24
     activity = 1 + _engagement_points(item)
     governance = 0.25 if item.status == "voting" else 0.0
-    return log1p(activity) / ((age_days + 1.5) ** 0.72) + governance
+    return (log1p(activity) / ((age_days + 1.5) ** 0.72) + governance) * item.boost_weight
 
 
 def _recommendation_reason(
@@ -125,11 +125,6 @@ def _diversify(items: list[FeedItem]) -> list[FeedItem]:
     return ranked
 
 
-def _rotation_jitter(item: FeedItem, seed: int) -> float:
-    digest = blake2b(f"{seed}:{item.id}".encode(), digest_size=8).digest()
-    return int.from_bytes(digest, "big") / (2**64 - 1)
-
-
 def rank_feed_items(
     items: list[FeedItem],
     *,
@@ -137,7 +132,6 @@ def rank_feed_items(
     following_author_ids: set[UUID] | None = None,
     interest_tags: set[str] | None = None,
     now: datetime | None = None,
-    rotation_seed: int = 0,
 ) -> list[FeedItem]:
     following = following_author_ids or set()
     interests = {tag.casefold() for tag in interest_tags or set()}
@@ -190,7 +184,7 @@ def rank_feed_items(
                 now=current,
                 following_author_ids=following,
                 interest_tags=interests,
-            ) + _rotation_jitter(item, rotation_seed) * 0.08,
+            ),
             item.created_at,
         ),
         reverse=True,

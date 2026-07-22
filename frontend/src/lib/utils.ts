@@ -3,7 +3,6 @@ import type { Locale } from "./i18n";
 function activeLocale(): Locale {
   if (typeof document === "undefined") return "en";
   if (document.documentElement.lang.startsWith("ja")) return "ja";
-  if (document.documentElement.lang.startsWith("zh-Hans")) return "zh-CN";
   if (document.documentElement.lang.startsWith("zh")) return "zh-TW";
   return "en";
 }

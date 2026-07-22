@@ -21,6 +21,7 @@ from app.admin import router as admin_router
 from app.notifications import router as notifications_router
 from app.public import router as public_router
 from app.ai.routes import router as ai_router
+from app.tokens import router as tokens_router
 
 if not logging.getLogger().handlers:
     logging.basicConfig(
@@ -74,3 +75,4 @@ app.include_router(admin_router, prefix="/api/v1/admin", tags=["admin"])
 app.include_router(notifications_router, prefix="/api/v1/notifications", tags=["notifications"])
 app.include_router(public_router, prefix="/api/v1/public", tags=["public"])
 app.include_router(ai_router, prefix="/api/v1/ai", tags=["ai"])
+app.include_router(tokens_router, prefix="/api/v1/tokens", tags=["tokens"])

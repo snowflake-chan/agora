@@ -7,7 +7,7 @@ export type Motion = "system" | "comfortable" | "reduced";
 export type ColorMode = "light" | "dark";
 export type HomeLayout = "split" | "pages";
 export const AI_TRANSLATION_LANGUAGES = [
-  "en", "ja", "zh-CN", "zh-TW", "ko", "es", "fr", "de", "pt-BR",
+  "en", "ja", "zh-TW", "ko", "es", "fr", "de", "pt-BR",
   "it", "ru", "ar", "hi", "id", "th", "vi", "tr",
 ] as const;
 export type AITranslationLanguage = typeof AI_TRANSLATION_LANGUAGES[number];

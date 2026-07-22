@@ -26,6 +26,7 @@ from app.schemas.guild import (
     GuildMemberRead, GuildDiscussionCreate, GuildDiscussionRead,
     UserGuildBadge,
 )
+from app.tokens import service as token_service
 from app.users.deps import current_user, optional_current_user
 from app.utils import calc_guild_level
 
@@ -57,7 +58,7 @@ async def _guild_to_read(g: Guild, session: AsyncSession) -> GuildRead:
         president_id=g.president_id,
         president_username=g.president.username if g.president else "",
         member_count=mc,
-        level=g.level or calc_guild_level(mc),
+        level=g.level or calc_guild_level(g.proposal_score),
         created_at=g.created_at,
     )
 
@@ -91,6 +92,13 @@ async def create_guild(
     )).scalar_one_or_none()
     if duplicate_name:
         raise HTTPException(409, detail="GUILD_NAME_TAKEN")
+
+    # Token economy: charge one-time guild creation fee
+    fee = await token_service.get_param(session, "guild_create_fee")
+    try:
+        await token_service.spend(session, user.id, fee, "guild_create")
+    except ValueError:
+        raise HTTPException(402, detail=f"INSUFFICIENT_AGC_NEED_{fee}")
 
     g = Guild(
         name=body.name,
@@ -339,7 +347,7 @@ async def _set_member_role(
                 )
             )
         ).scalar() or 0
-        guild_level = guild_row.level or calc_guild_level(member_count)
+        guild_level = guild_row.level or calc_guild_level(guild_row.proposal_score)
         max_vp = _MAX_VP.get(guild_level, 1)
         if vp_count >= max_vp:
             raise HTTPException(409, detail="GUILD_VP_LIMIT_REACHED")
@@ -389,6 +397,11 @@ async def approve_request(
         raise HTTPException(404)
     m.role = "member"
     m.status = "approved"
+
+    # Guild leveling: lock the new member's uncounted passed proposals
+    from app.guilds.leveling import lock_user_proposals
+    await lock_user_proposals(session, guild_id, m.user_id)
+
     await session.commit()
     return {"ok": True}
 
@@ -802,6 +815,52 @@ async def my_guild(
     return UserGuildBadge(
         guild_id=m.guild_id,
         guild_name=m.guild.name,
-        guild_level=m.guild.level or calc_guild_level(mc),
+        guild_level=m.guild.level or calc_guild_level(m.guild.proposal_score),
         role=m.role,
     )
+
+
+# ── Guild Proposal Contributions & Leveling ──
+
+
+@router.get("/{guild_id}/proposals")
+async def guild_proposals(
+    guild_id: UUID,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    session: AsyncSession = Depends(get_session),
+):
+    from app.guilds.leveling import guild_proposal_contributions
+    items, total = await guild_proposal_contributions(session, guild_id, page, page_size)
+    return {"items": items, "total": total, "page": page, "page_size": page_size}
+
+
+@router.get("/{guild_id}/level")
+async def guild_level_detail(
+    guild_id: UUID,
+    session: AsyncSession = Depends(get_session),
+):
+    guild = await session.get(Guild, guild_id)
+    if not guild:
+        raise HTTPException(404, detail="GUILD_NOT_FOUND")
+
+    score = guild.proposal_score
+    current_level = guild.level or calc_guild_level(score)
+
+    thresholds = {2: 5, 3: 15, 4: 30, 5: 50}
+    next_level = None
+    next_threshold = None
+    for lv in range(current_level + 1, 6):
+        if lv in thresholds:
+            next_level = lv
+            next_threshold = thresholds[lv]
+            break
+
+    return {
+        "guild_id": str(guild_id),
+        "proposal_score": score,
+        "current_level": current_level,
+        "next_level": next_level,
+        "next_threshold": next_threshold,
+        "progress_to_next": score / next_threshold if next_threshold else None,
+    }

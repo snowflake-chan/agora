@@ -240,5 +240,12 @@ class FeedItem(BaseModel):
     against_count: int = 0
     abstain_count: int = 0
 
+    # Promotion boost applied to feed ranking
+    boost_weight: float = 1.0
+
     # Ranking explanation
     ranking_reason: str | None = None
+
+
+class ContentBoostCreate(BaseModel):
+    tier: str  # "low" | "mid" | "high"

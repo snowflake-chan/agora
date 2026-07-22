@@ -7,11 +7,10 @@ import {
 } from "./language.ts";
 
 describe("local translation language detection", () => {
-  it("recognizes clear English, Japanese, Simplified, and Traditional Chinese text", () => {
+  it("recognizes clear English, Japanese, and Traditional Chinese text", () => {
     assert.equal(detectSupportedLocale("A concise release note"), "en");
     assert.equal(detectSupportedLocale("\u3053\u308c\u306f\u516c\u958b\u524d\u306e\u6587\u7ae0\u3067\u3059"), "ja");
     assert.equal(detectSupportedLocale("\u9019\u662f\u4e00\u7bc7\u7e41\u9ad4\u4e2d\u6587\u5167\u5bb9"), "zh-TW");
-    assert.equal(detectSupportedLocale("\u8fd9\u662f\u4e00\u7bc7\u7b80\u4f53\u4e2d\u6587\u5185\u5bb9"), "zh-CN");
   });
 
   it("keeps ambiguous Han-only and non-linguistic text eligible for translation", () => {

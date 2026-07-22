@@ -1,7 +1,7 @@
 <script lang="ts">
   import { renderMarkdown } from "../../lib/markdown";
   import { translator } from "../../lib/i18n";
-  import { createEventDispatcher } from "svelte";
+  import { createEventDispatcher, onMount } from "svelte";
   import { fly } from "svelte/transition";
   import { GITHUB_REPO } from "../../lib/config";
   import { createPatch } from "../../lib/patches";
@@ -9,6 +9,7 @@
   import { appleEase } from "../../lib/motion";
   import { modal } from "../../lib/modal";
   import WritingAssist from "../posts/WritingAssist.svelte";
+  import { getBalance, getTokenParams, type TokenBalance } from "../../lib/tokens";
 
   const dispatch = createEventDispatcher();
 
@@ -17,6 +18,21 @@
   let content = "";
   let submitting = false;
   let mobilePane: "edit" | "preview" = "edit";
+  let proposalDeposit = $state(50);
+  let tokenBalance = $state<TokenBalance | null>(null);
+  let loadingTokenInfo = $state(true);
+
+  onMount(async () => {
+    try {
+      const [params, balance] = await Promise.all([getTokenParams(), getBalance()]);
+      proposalDeposit = params.proposal_deposit;
+      tokenBalance = balance;
+    } catch {
+      // Leave defaults so the form remains usable.
+    } finally {
+      loadingTokenInfo = false;
+    }
+  });
 
   function close() {
     dispatch("close");
@@ -83,7 +99,7 @@
       <button
         class="btn btn-primary btn-sm"
         onclick={handleSubmit}
-        disabled={submitting || !title.trim() || !content.trim() || !prNumber}
+        disabled={submitting || !title.trim() || !content.trim() || !prNumber || (tokenBalance !== null && tokenBalance.balance < proposalDeposit)}
       >
         {submitting ? $translator("common.creating") : $translator("common.create")}
       </button>
@@ -116,6 +132,23 @@
           }}
         />
       </div>
+    </div>
+
+    <!-- Deposit hint -->
+    <div class="deposit-hint">
+      {#if loadingTokenInfo}
+        <span class="deposit-hint-text">{$translator("common.loading")}</span>
+      {:else if tokenBalance && tokenBalance.balance < proposalDeposit}
+        <span class="deposit-hint-text deposit-hint-warning">
+          {$translator("tokens.depositHint", { amount: proposalDeposit })}
+          · {$translator("tokens.insufficient")}
+          ({tokenBalance.balance} / {proposalDeposit} AGC)
+        </span>
+      {:else}
+        <span class="deposit-hint-text">
+          {$translator("tokens.depositHint", { amount: proposalDeposit })}
+        </span>
+      {/if}
     </div>
 
     <!-- Split pane: edit | preview -->
@@ -158,6 +191,9 @@
   .editor-pane { border-right:1px solid var(--vercel-border); }
   .composer-tabs { display:none; }
   .composer-ai-tools { min-width:0; margin-left:auto; }
+  .deposit-hint { display:flex; align-items:center; gap:.5rem; padding:.5rem 1.5rem; border-bottom:1px solid var(--vercel-border); background:color-mix(in srgb,var(--vercel-accent) 4%,var(--vercel-card)); }
+  .deposit-hint-text { color:var(--vercel-text-secondary); font-size:.75rem; }
+  .deposit-hint-warning { color:var(--vercel-danger); }
   @media (max-width: 48rem) {
     .composer-backdrop { padding:.5rem; }
     .composer-dialog { height:calc(100dvh - 1rem); border-radius:.875rem; }

@@ -4,11 +4,13 @@
   import type { DisplayTranslation } from "../../lib/ai";
   import { translator } from "../../lib/i18n";
   import { stripMarkdown } from "../../lib/utils";
-  import AuthorMeta from "../AuthorMeta.svelte";
-  import PollCard from "./PollCard.svelte";
-  import ModerationNotice from "./ModerationNotice.svelte";
-  import PostAiTools from "./PostAiTools.svelte";
-  import { hasModerationNotice, isModerationRestricted } from "../../lib/moderation";
+import { currentUser } from "../../stores/auth";
+import AuthorMeta from "../AuthorMeta.svelte";
+import PollCard from "./PollCard.svelte";
+import ModerationNotice from "./ModerationNotice.svelte";
+import PostAiTools from "./PostAiTools.svelte";
+import TipBoostActions from "./TipBoostActions.svelte";
+import { hasModerationNotice, isModerationRestricted } from "../../lib/moderation";
 
   let { post }: { post: Post } = $props();
 
@@ -27,10 +29,6 @@
     post.revision_number;
     displayTranslation = null;
   });
-
-  function openPoll() {
-    window.location.assign(`/posts/${post.id}`);
-  }
 
   $effect(() => {
     const nextStatus = post.moderation_status;
@@ -88,7 +86,6 @@
       moderationTargetHref={`/posts/${post.id}`}
       onModerationQueued={() => (moderationQueued = true)}
       translationRequested={displayTranslation !== null}
-      onOpen={openPoll}
     />
   {/if}
 
@@ -109,7 +106,14 @@
       {/if}
     </div>
 
-    <AuthorMeta username={post.author_username ?? $translator("common.anonymous")} userId={post.author_id} createdAt={post.created_at} />
+    <div class="relative z-10 flex items-center gap-2">
+      <TipBoostActions
+        postId={post.id}
+        canBoost={$currentUser?.id === post.author_id}
+        compact
+      />
+      <AuthorMeta username={post.author_username ?? $translator("common.anonymous")} userId={post.author_id} createdAt={post.created_at} />
+    </div>
   </div>
 </article>
 

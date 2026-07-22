@@ -957,3 +957,120 @@ async def set_level_names(
     row.value = json.dumps(normalized, ensure_ascii=False)
     await session.commit()
     return {"ok": True}
+
+
+# ── Token economy admin ──
+
+@router.get("/tokens/supply")
+async def token_supply(
+    user: User = Depends(super_admin_required),
+    session: AsyncSession = Depends(get_session),
+):
+    from app.tokens.service import supply_stats
+    return await supply_stats(session)
+
+
+@router.get("/tokens/params")
+async def list_token_params(
+    user: User = Depends(super_admin_required),
+    session: AsyncSession = Depends(get_session),
+):
+    from app.tokens.service import get_all_params
+    return await get_all_params(session)
+
+
+@router.patch("/tokens/params")
+async def update_token_params(
+    updates: dict[str, int] = Body(...),
+    user: User = Depends(super_admin_required),
+    session: AsyncSession = Depends(get_session),
+):
+    from app.tokens.service import set_param
+    for key, value in updates.items():
+        await set_param(session, key, value, updated_by=user.id)
+    await session.commit()
+    from app.tokens.service import get_all_params
+    return {"ok": True, "params": await get_all_params(session)}
+
+
+@router.post("/tokens/mint")
+async def mint_tokens(
+    user_id: UUID = Body(..., embed=True),
+    amount: int = Body(..., embed=True),
+    user: User = Depends(super_admin_required),
+    session: AsyncSession = Depends(get_session),
+):
+    # Validate target user exists
+    from app.db.models import User as UserModel
+    target = await session.get(UserModel, user_id)
+    if target is None:
+        raise HTTPException(404, detail="USER_NOT_FOUND")
+    from app.tokens.service import earn
+    await earn(session, user_id, amount, "admin_mint", bypass_cap=True)
+    await session.commit()
+    return {"ok": True}
+
+
+@router.get("/tokens/params/history")
+async def token_params_history(
+    user: User = Depends(super_admin_required),
+    session: AsyncSession = Depends(get_session),
+):
+    from app.db.models import TokenParamHistory
+    rows = (
+        (await session.execute(
+            select(TokenParamHistory).order_by(TokenParamHistory.changed_at.desc()).limit(50)
+        ))
+        .scalars()
+        .all()
+    )
+    return {
+        "items": [
+            {
+                "key": r.key,
+                "old_value": r.old_value,
+                "new_value": r.new_value,
+                "changed_by": str(r.changed_by) if r.changed_by else None,
+                "changed_at": r.changed_at.isoformat(),
+            }
+	    for r in rows
+	        ]
+	    }
+
+
+# ── Monetary policy admin ──
+
+
+@router.get("/tokens/monetary")
+async def monetary_metrics(
+    user: User = Depends(super_admin_required),
+    session: AsyncSession = Depends(get_session),
+):
+    from app.tokens.monetary import get_monetary_metrics
+    return await get_monetary_metrics(session)
+
+
+@router.get("/tokens/supply/history")
+async def supply_history(
+    days: int = Query(90, ge=1, le=365),
+    user: User = Depends(super_admin_required),
+    session: AsyncSession = Depends(get_session),
+):
+    from app.tokens.monetary import get_supply_history, record_snapshot
+    # Ensure today's snapshot exists
+    await record_snapshot(session)
+    await session.commit()
+    return await get_supply_history(session, days=days)
+
+
+@router.post("/tokens/apply-policy")
+async def apply_policy(
+    dry_run: bool = Body(True, embed=True),
+    user: User = Depends(super_admin_required),
+    session: AsyncSession = Depends(get_session),
+):
+    from app.tokens.monetary import apply_auto_adjustment
+    result = await apply_auto_adjustment(session, dry_run=dry_run, updated_by=user.id)
+    if not dry_run:
+        await session.commit()
+    return result
