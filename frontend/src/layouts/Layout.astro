@@ -50,11 +50,17 @@ const { title = "Agora", titleKey = "" } = Astro.props;
           document.documentElement.dataset.motion =
             motion === "comfortable" || motion === "reduced" ? motion : "system";
           document.documentElement.lang =
-            locale === "ja" ? "ja" : locale === "zh-TW" ? "zh-Hant-TW" : "en";
+            locale === "ja"
+              ? "ja"
+              : locale === "zh-CN"
+                ? "zh-Hans-CN"
+                : locale === "zh-TW"
+                  ? "zh-Hant-TW"
+                  : "en";
           document.documentElement.dataset.homeLayout =
             homeLayout === "pages" ? "pages" : "split";
           document.documentElement.dataset.uiReady =
-            locale === "ja" || locale === "zh-TW" || homeLayout === "pages"
+            locale === "ja" || locale === "zh-CN" || locale === "zh-TW" || homeLayout === "pages"
               ? "false"
               : "true";
         } catch {}

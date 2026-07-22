@@ -1,6 +1,6 @@
 import { derived, writable } from "svelte/store";
 
-export type Locale = "en" | "ja" | "zh-TW";
+export type Locale = "en" | "ja" | "zh-CN" | "zh-TW";
 export type TranslationParams = Record<string, string | number>;
 export type Translator = (key: string, params?: TranslationParams) => string;
 
@@ -8,7 +8,7 @@ export const locale = writable<Locale>("en");
 
 const STORAGE_KEY = "agora:locale";
 
-export const messages: Record<Locale, Record<string, string>> = {
+const baseMessages: Record<Exclude<Locale, "zh-CN">, Record<string, string>> = {
   en: {
     "common.appName": "Agora",
     "common.cancel": "Cancel",
@@ -183,6 +183,17 @@ export const messages: Record<Locale, Record<string, string>> = {
     "auth.emailTaken": "That email address is already registered.",
     "auth.usernameTaken": "That username is already in use.",
     "auth.passwordTooShort": "Password must be at least 8 characters.",
+    "rules.pageTitle": "Community rules",
+    "rules.title": "A place for candid, responsible discussion",
+    "rules.lead": "Strong disagreement and difficult questions are welcome. Harm, exploitation, and manipulation are not.",
+    "rules.respect": "Debate ideas without targeted harassment, threats, or hateful attacks.",
+    "rules.safety": "Do not post pornography, explicit sexual content, sexual exploitation, or anything involving minors.",
+    "rules.privacy": "Do not doxx people, share private material, run scams, or impersonate others.",
+    "rules.integrity": "Do not facilitate serious wrongdoing, spam, or manipulate votes, AI, or moderation.",
+    "rules.review": "Edits are reviewed again. Content may be held for human review when safety systems are uncertain.",
+    "rules.readMore": "Read the full community rules",
+    "auth.rulesTitle": "Before you join",
+    "auth.rulesAgreement": "By continuing, you agree to follow these community rules.",
     "common.confirm": "Confirm",
     "common.delete": "Delete",
     "common.loading": "Loading...",
@@ -2090,6 +2101,72 @@ export const messages: Record<Locale, Record<string, string>> = {
   },
 };
 
+const supplementalMessages: Partial<Record<Locale, Record<string, string>>> = {
+  ja: {
+    "rules.pageTitle": "コミュニティルール",
+    "rules.title": "率直に、責任をもって話せる場",
+    "rules.lead": "強い意見の違いや難しい問いは歓迎します。危害、搾取、操作は認めません。",
+    "rules.respect": "標的を定めた嫌がらせ、脅迫、ヘイトをせず、考えを議論してください。",
+    "rules.safety": "ポルノ、露骨な性的内容、性的搾取、未成年者に関する性的内容を投稿しないでください。",
+    "rules.privacy": "個人情報の晒し、私的資料の共有、詐欺、なりすましをしないでください。",
+    "rules.integrity": "重大な不正行為の助長、スパム、投票・AI・モデレーションの操作は禁止です。",
+    "rules.review": "編集後も再審査されます。安全性が不確かな場合は人による確認まで保留されることがあります。",
+    "rules.readMore": "コミュニティルールを読む",
+    "auth.rulesTitle": "参加する前に",
+    "auth.rulesAgreement": "続行すると、これらのコミュニティルールに従うことに同意したものとみなされます。",
+  },
+  "zh-TW": {
+    "rules.pageTitle": "社群規則",
+    "rules.title": "坦率討論，也要對彼此負責",
+    "rules.lead": "歡迎強烈分歧與困難問題；不歡迎傷害、剝削與操弄。",
+    "rules.respect": "可以辯論觀點，但不得針對個人騷擾、威脅或仇恨攻擊。",
+    "rules.safety": "不得發布色情、露骨性內容、性剝削，或任何涉及未成年人的性內容。",
+    "rules.privacy": "不得人肉、散布私人資料、詐騙或冒充他人。",
+    "rules.integrity": "不得協助嚴重違法行為、散播垃圾內容，或操弄投票、AI 與審核。",
+    "rules.review": "編輯後會再次審查；安全系統無法確定時，內容可能暫時交由人工複核。",
+    "rules.readMore": "閱讀完整社群規則",
+    "auth.rulesTitle": "加入之前",
+    "auth.rulesAgreement": "繼續操作即表示你同意遵守這些社群規則。",
+  },
+  "zh-CN": {
+    "common.language": "语言",
+    "nav.login": "登录",
+    "auth.signIn": "登录",
+    "auth.createAccount": "创建账号",
+    "auth.email": "邮箱",
+    "auth.password": "密码",
+    "auth.username": "用户名",
+    "auth.register": "创建账号",
+    "auth.noAccount": "还没有账号？",
+    "auth.haveAccount": "已有账号？",
+    "auth.signingIn": "正在登录…",
+    "auth.creatingAccount": "正在创建账号…",
+    "rules.pageTitle": "社区规则",
+    "rules.title": "可以坦率讨论，也要彼此负责",
+    "rules.lead": "欢迎强烈分歧和困难问题；不欢迎伤害、剥削与操纵。",
+    "rules.respect": "可以讨论观点，但不得针对个人骚扰、威胁或仇恨攻击。",
+    "rules.safety": "不得发布色情、露骨性内容、性剥削，或任何涉及未成年人的性内容。",
+    "rules.privacy": "不得人肉、传播私人资料、诈骗或冒充他人。",
+    "rules.integrity": "不得协助严重违法行为、发布垃圾内容，或操纵投票、AI 和审核。",
+    "rules.review": "编辑后会再次审核；安全系统无法确定时，内容可能暂时进入人工复核。",
+    "rules.readMore": "阅读完整社区规则",
+    "auth.rulesTitle": "加入之前",
+    "auth.rulesAgreement": "继续操作即表示你同意遵守这些社区规则。",
+  },
+};
+
+for (const localeKey of ["ja", "zh-TW"] as const) {
+  Object.assign(baseMessages[localeKey], supplementalMessages[localeKey]);
+}
+
+export const messages: Record<Locale, Record<string, string>> = {
+  ...baseMessages,
+  "zh-CN": {
+    ...baseMessages["zh-TW"],
+    ...supplementalMessages["zh-CN"],
+  },
+};
+
 function formatMessage(template: string, params?: TranslationParams): string {
   if (!params) return template;
   return template.replace(/\{(\w+)\}/g, (match, key) =>
@@ -2246,7 +2323,13 @@ export function localizeNotification(
 }
 
 export function getLocaleLabel(value: Locale): string {
-  return ({ en: "English", ja: "日本語", "zh-TW": "繁體中文" })[value];
+  return ({ en: "English", ja: "日本語", "zh-CN": "简体中文", "zh-TW": "繁体中文" })[value];
+}
+
+function documentLanguage(value: Locale): string {
+  if (value === "zh-CN") return "zh-Hans-CN";
+  if (value === "zh-TW") return "zh-Hant-TW";
+  return value;
 }
 
 export function initI18n() {
@@ -2255,9 +2338,9 @@ export function initI18n() {
   try {
     saved = window.localStorage.getItem(STORAGE_KEY) as Locale | null;
   } catch {}
-  const next: Locale = saved === "ja" || saved === "zh-TW" ? saved : "en";
+  const next: Locale = saved === "ja" || saved === "zh-CN" || saved === "zh-TW" ? saved : "en";
   locale.set(next);
-  document.documentElement.lang = next === "zh-TW" ? "zh-Hant-TW" : next;
+  document.documentElement.lang = documentLanguage(next);
   updateDocumentTitle(next);
 }
 
@@ -2267,7 +2350,7 @@ export function setLocale(next: Locale) {
     try {
       window.localStorage.setItem(STORAGE_KEY, next);
     } catch {}
-    document.documentElement.lang = next === "zh-TW" ? "zh-Hant-TW" : next;
+    document.documentElement.lang = documentLanguage(next);
     updateDocumentTitle(next);
   }
 }

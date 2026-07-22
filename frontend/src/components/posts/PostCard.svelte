@@ -28,6 +28,10 @@
     displayTranslation = null;
   });
 
+  function openPoll() {
+    window.location.assign(`/posts/${post.id}`);
+  }
+
   $effect(() => {
     const nextStatus = post.moderation_status;
     if (nextStatus !== "published") moderationQueued = false;
@@ -84,6 +88,7 @@
       moderationTargetHref={`/posts/${post.id}`}
       onModerationQueued={() => (moderationQueued = true)}
       translationRequested={displayTranslation !== null}
+      onOpen={openPoll}
     />
   {/if}
 

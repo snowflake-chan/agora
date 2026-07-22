@@ -289,6 +289,7 @@
           sourceRevisionNumber={revisionNumber}
           {moderationTargetHref}
           onModerationQueued={() => (moderationQueued = true)}
+          translationRequested={displayTranslation !== null}
         />
       {/if}
       {#if aiText && !moderationRestricted}
