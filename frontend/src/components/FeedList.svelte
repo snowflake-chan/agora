@@ -40,6 +40,7 @@
   let refreshPending = false;
   let removedIds = new Set<string>();
   let loaded = new Set<number>();
+  const recommendationSeed = Math.floor(Math.random() * 2_147_483_647);
 
   $effect(() => {
     const currentItems = items;
@@ -90,7 +91,7 @@
     busy = true;
     try {
       error = null;
-      const next = await getFeed(requestedPage, mode);
+      const next = await getFeed(requestedPage, mode, mode === "recommended" ? recommendationSeed : 0);
       if (next.length === 0) { hasMore = false; return; }
       items = mergeUnique(items, next);
       page++;
@@ -145,7 +146,7 @@
     }
     refreshing = true;
     try {
-      const next = await getFeed(1, mode);
+      const next = await getFeed(1, mode, mode === "recommended" ? recommendationSeed : 0);
       const nextIds = new Set(next.map((item) => item.id));
       const retained = items.filter(
         (item) => !nextIds.has(item.id) && !removedIds.has(item.id),

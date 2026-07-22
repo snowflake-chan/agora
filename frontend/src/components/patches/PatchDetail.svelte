@@ -25,7 +25,7 @@
   import { onModerationUpdateForPath } from "../../lib/moderation";
   import { renderMarkdown } from "../../lib/markdown";
   import { getPatch, deletePatch, submitPatch, votePatch, listVotes, listPatchComments, createPatchComment, updatePatch, listPatchHistory, type Patch, type Vote } from "../../lib/patches";
-  import { deleteContent, likePost, unlikePost, updateContent, listContentHistory, type Comment } from "../../lib/posts";
+  import { deleteContent, getPostLikeState, likePost, unlikePost, updateContent, listContentHistory, type Comment } from "../../lib/posts";
   import { toaster } from "../../stores/toaster";
   import { currentUser } from "../../stores/auth";
   import { GITHUB_REPO } from "../../lib/config";
@@ -293,8 +293,14 @@
       comments = comments.map((item) =>
         item.id === comment.id ? { ...item, ...state } : item
       );
-    } catch (e: any) {
-      toaster.error($translator("common.operationFailed"), $translator("common.tryAgain"));
+    } catch {
+      try {
+        const state = await getPostLikeState(comment.id);
+        comments = comments.map((item) => item.id === comment.id ? { ...item, ...state } : item);
+        if (state.liked_by_me === comment.liked_by_me) throw new Error("LIKE_NOT_APPLIED");
+      } catch {
+        toaster.error($translator("common.operationFailed"), $translator("common.tryAgain"));
+      }
     } finally {
       likingId = null;
     }

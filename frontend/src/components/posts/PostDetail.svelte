@@ -9,7 +9,7 @@
     onModerationUpdateForPath,
   } from "../../lib/moderation";
   import { createReport } from "../../lib/admin";
-  import { getPost, listComments, createComment, deleteContent, likePost, unlikePost, updateContent, listContentHistory, type Post, type Comment, type Poll } from "../../lib/posts";
+  import { getPost, listComments, createComment, deleteContent, getPostLikeState, likePost, unlikePost, updateContent, listContentHistory, type Post, type Comment, type Poll } from "../../lib/posts";
   import { toaster } from "../../stores/toaster";
   import { currentUser } from "../../stores/auth";
   import TimelineItem from "./TimelineItem.svelte";
@@ -134,8 +134,15 @@
           comment.id === id ? { ...comment, ...state } : comment
         );
       }
-    } catch (e: any) {
-      toaster.error($translator("common.operationFailed"), $translator("common.tryAgain"));
+    } catch {
+      try {
+        const state = await getPostLikeState(id);
+        if (post?.id === id) post = { ...post, ...state };
+        else comments = comments.map((comment) => comment.id === id ? { ...comment, ...state } : comment);
+        if (state.liked_by_me !== !liked) throw new Error("LIKE_NOT_APPLIED");
+      } catch {
+        toaster.error($translator("common.operationFailed"), $translator("common.tryAgain"));
+      }
     } finally {
       likingId = null;
     }

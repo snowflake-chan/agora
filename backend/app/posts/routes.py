@@ -476,6 +476,7 @@ async def get_feed(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     mode: FeedMode = Query("recommended"),
+    rotation_seed: int = Query(0, ge=0, le=2_147_483_647),
     session: AsyncSession = Depends(get_session),
     user: User | None = Depends(optional_current_user),
 ):
@@ -655,6 +656,7 @@ async def get_feed(
         mode=mode,
         following_author_ids=following_author_ids,
         interest_tags=interest_tags,
+        rotation_seed=rotation_seed,
     )
     return ranked[offset:offset + page_size]
 
@@ -866,6 +868,22 @@ async def _post_like_state(
         )
     )
     return PostLikeRead(like_count=like_count or 0, liked_by_me=liked_by_me)
+
+
+@router.get("/{post_id}/like", response_model=PostLikeRead)
+async def get_post_like_state(
+    post_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(current_user),
+):
+    """Read the caller's current like state after an interrupted write response."""
+    content = await session.scalar(
+        select(ContentModel).where(
+            ContentModel.id == post_id, ContentModel.type.in_(("post", "comment"))
+        )
+    )
+    await require_content_visible(content, user, session)
+    return await _post_like_state(session, post_id, user.id)
 
 
 @router.put("/{post_id}/like", response_model=PostLikeRead)

@@ -157,6 +157,8 @@ const baseMessages: Record<Exclude<Locale, "zh-CN">, Record<string, string>> = {
     "feed.reasonRecent": "Recently worth reading",
     "feed.reasonLatest": "Just published",
     "feed.reasonTrending": "Trending · {count} interactions",
+    "feed.continueReading": "Continue reading",
+    "feed.continueReadingDescription": "Return to where you stopped reading",
     "notifications.title": "Notifications",
     "notifications.empty": "No notifications",
     "notifications.related": "Related to you",
@@ -2114,6 +2116,8 @@ const supplementalMessages: Partial<Record<Locale, Record<string, string>>> = {
     "rules.readMore": "コミュニティルールを読む",
     "auth.rulesTitle": "参加する前に",
     "auth.rulesAgreement": "続行すると、これらのコミュニティルールに従うことに同意したものとみなされます。",
+    "feed.continueReading": "続きを読む",
+    "feed.continueReadingDescription": "前回読んでいた位置に戻る",
   },
   "zh-TW": {
     "rules.pageTitle": "社群規則",
@@ -2127,6 +2131,8 @@ const supplementalMessages: Partial<Record<Locale, Record<string, string>>> = {
     "rules.readMore": "閱讀完整社群規則",
     "auth.rulesTitle": "加入之前",
     "auth.rulesAgreement": "繼續操作即表示你同意遵守這些社群規則。",
+    "feed.continueReading": "繼續閱讀",
+    "feed.continueReadingDescription": "回到上次閱讀的位置",
   },
   "zh-CN": {
     "common.language": "语言",
@@ -2152,6 +2158,8 @@ const supplementalMessages: Partial<Record<Locale, Record<string, string>>> = {
     "rules.readMore": "阅读完整社区规则",
     "auth.rulesTitle": "加入之前",
     "auth.rulesAgreement": "继续操作即表示你同意遵守这些社区规则。",
+    "feed.continueReading": "继续阅读",
+    "feed.continueReadingDescription": "回到上次阅读的位置",
   },
 };
 
