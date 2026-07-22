@@ -28,6 +28,7 @@
     moderationTargetHref = null,
     onModerationQueued = null,
     translationRequested = false,
+    onOpen = null,
   }: {
     postId: string;
     poll: Poll;
@@ -38,6 +39,7 @@
     moderationTargetHref?: string | null;
     onModerationQueued?: (() => void) | null;
     translationRequested?: boolean;
+    onOpen?: (() => void) | null;
   } = $props();
 
   let currentPoll = $state<Poll>(poll);
@@ -259,6 +261,13 @@
     event.stopPropagation();
   }
 
+  function openPoll(event: MouseEvent) {
+    if (!compact || !onOpen) return;
+    const target = event.target as HTMLElement;
+    if (target.closest("button, a, input, select, textarea, label")) return;
+    onOpen();
+  }
+
   function choose(optionId: string) {
     if (isClosed || readOnly) return;
     if (!$currentUser) {
@@ -296,7 +305,7 @@
   class:compact
   class="poll-card"
   aria-label={$translator("poll.label")}
-  onclick={containInteraction}
+  onclick={openPoll}
 >
   <div class="poll-heading">
     <span class="poll-kicker">

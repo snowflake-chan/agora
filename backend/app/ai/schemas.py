@@ -13,9 +13,9 @@ from pydantic import (
 )
 
 
-Locale = Literal["en", "ja", "zh-TW"]
+Locale = Literal["en", "ja", "zh-CN", "zh-TW"]
 TranslationLocale = Literal[
-    "en", "ja", "zh-TW", "ko", "es", "fr", "de", "pt-BR",
+    "en", "ja", "zh-CN", "zh-TW", "ko", "es", "fr", "de", "pt-BR",
     "it", "ru", "ar", "hi", "id", "th", "vi", "tr",
 ]
 PoliticalStatus = Literal["non_political", "political", "uncertain"]

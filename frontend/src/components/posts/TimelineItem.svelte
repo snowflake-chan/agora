@@ -195,6 +195,21 @@
         {/if}
       </div>
 
+      {#if onEdit}
+        <button
+          type="button"
+          class="btn-icon timeline-menu-trigger"
+          onclick={(event) => {
+            event.stopPropagation();
+            onEdit();
+          }}
+          aria-label={$translator("common.edit")}
+          title={$translator("common.edit")}
+        >
+          <PencilIcon size={16} strokeWidth={1.8} aria-hidden="true" />
+        </button>
+      {/if}
+
       {#if onDelete || onEdit || onHistory || (!moderationRestricted && (onReply || onReport))}
         <div class="timeline-menu relative">
           <button
@@ -289,6 +304,7 @@
           sourceRevisionNumber={revisionNumber}
           {moderationTargetHref}
           onModerationQueued={() => (moderationQueued = true)}
+          translationRequested={displayTranslation !== null}
         />
       {/if}
       {#if aiText && !moderationRestricted}

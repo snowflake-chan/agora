@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from hashlib import blake2b
 from math import exp, log1p
 from typing import Literal
 from uuid import UUID
@@ -124,6 +125,11 @@ def _diversify(items: list[FeedItem]) -> list[FeedItem]:
     return ranked
 
 
+def _rotation_jitter(item: FeedItem, seed: int) -> float:
+    digest = blake2b(f"{seed}:{item.id}".encode(), digest_size=8).digest()
+    return int.from_bytes(digest, "big") / (2**64 - 1)
+
+
 def rank_feed_items(
     items: list[FeedItem],
     *,
@@ -131,6 +137,7 @@ def rank_feed_items(
     following_author_ids: set[UUID] | None = None,
     interest_tags: set[str] | None = None,
     now: datetime | None = None,
+    rotation_seed: int = 0,
 ) -> list[FeedItem]:
     following = following_author_ids or set()
     interests = {tag.casefold() for tag in interest_tags or set()}
@@ -183,7 +190,7 @@ def rank_feed_items(
                 now=current,
                 following_author_ids=following,
                 interest_tags=interests,
-            ),
+            ) + _rotation_jitter(item, rotation_seed) * 0.08,
             item.created_at,
         ),
         reverse=True,

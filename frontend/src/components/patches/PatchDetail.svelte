@@ -25,7 +25,7 @@
   import { onModerationUpdateForPath } from "../../lib/moderation";
   import { renderMarkdown } from "../../lib/markdown";
   import { getPatch, deletePatch, submitPatch, votePatch, listVotes, listPatchComments, createPatchComment, updatePatch, listPatchHistory, type Patch, type Vote } from "../../lib/patches";
-  import { deleteContent, likePost, unlikePost, updateContent, listContentHistory, type Comment } from "../../lib/posts";
+  import { deleteContent, getPostLikeState, likePost, unlikePost, updateContent, listContentHistory, type Comment } from "../../lib/posts";
   import { toaster } from "../../stores/toaster";
   import { currentUser } from "../../stores/auth";
   import { GITHUB_REPO } from "../../lib/config";
@@ -36,6 +36,7 @@
   import VotingWindowMeta from "./VotingWindowMeta.svelte";
   import PostAiTools from "../posts/PostAiTools.svelte";
   import ContentEditModal from "../content/ContentEditModal.svelte";
+  import WritingAssist from "../posts/WritingAssist.svelte";
   import RevisionHistoryModal, { type RevisionSnapshot } from "../content/RevisionHistoryModal.svelte";
 
   let { patchId = "", embedded = false }: { patchId: string; embedded?: boolean } = $props();
@@ -292,8 +293,14 @@
       comments = comments.map((item) =>
         item.id === comment.id ? { ...item, ...state } : item
       );
-    } catch (e: any) {
-      toaster.error($translator("common.operationFailed"), $translator("common.tryAgain"));
+    } catch {
+      try {
+        const state = await getPostLikeState(comment.id);
+        comments = comments.map((item) => item.id === comment.id ? { ...item, ...state } : item);
+        if (state.liked_by_me === comment.liked_by_me) throw new Error("LIKE_NOT_APPLIED");
+      } catch {
+        toaster.error($translator("common.operationFailed"), $translator("common.tryAgain"));
+      }
     } finally {
       likingId = null;
     }
@@ -709,6 +716,11 @@
         ></textarea>
         <div class="composer-footer">
           <span>{$translator("common.markdownSupported")}</span>
+          <WritingAssist
+            body={replyText}
+            context="comment"
+            onApply={(value) => (replyText = value.body)}
+          />
           <button class="btn btn-primary btn-sm" disabled={submittingReply || !replyText.trim()} onclick={submitReply}>
             {submittingReply ? $translator("common.sending") : $translator("patch.joinDiscussion")}
           </button>

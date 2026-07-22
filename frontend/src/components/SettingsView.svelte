@@ -40,7 +40,7 @@
     type Theme,
   } from "../lib/preferences";
 
-  const locales: Locale[] = ["en", "ja", "zh-TW"];
+  const locales: Locale[] = ["en", "ja", "zh-CN", "zh-TW"];
   const themes: Theme[] = ["default", "tiktok", "claude", "apple", "google"];
   const colorModes: ColorMode[] = ["light", "dark"];
   const homeLayouts: HomeLayout[] = ["split", "pages"];

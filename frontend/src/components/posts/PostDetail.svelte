@@ -9,10 +9,11 @@
     onModerationUpdateForPath,
   } from "../../lib/moderation";
   import { createReport } from "../../lib/admin";
-  import { getPost, listComments, createComment, deleteContent, likePost, unlikePost, updateContent, listContentHistory, type Post, type Comment, type Poll } from "../../lib/posts";
+  import { getPost, listComments, createComment, deleteContent, getPostLikeState, likePost, unlikePost, updateContent, listContentHistory, type Post, type Comment, type Poll } from "../../lib/posts";
   import { toaster } from "../../stores/toaster";
   import { currentUser } from "../../stores/auth";
   import TimelineItem from "./TimelineItem.svelte";
+  import WritingAssist from "./WritingAssist.svelte";
   import ConfirmDialog from "../ConfirmDialog.svelte";
   import ReportDialog from "../moderation/ReportDialog.svelte";
   import ContentEditModal from "../content/ContentEditModal.svelte";
@@ -133,8 +134,15 @@
           comment.id === id ? { ...comment, ...state } : comment
         );
       }
-    } catch (e: any) {
-      toaster.error($translator("common.operationFailed"), $translator("common.tryAgain"));
+    } catch {
+      try {
+        const state = await getPostLikeState(id);
+        if (post?.id === id) post = { ...post, ...state };
+        else comments = comments.map((comment) => comment.id === id ? { ...comment, ...state } : comment);
+        if (state.liked_by_me !== !liked) throw new Error("LIKE_NOT_APPLIED");
+      } catch {
+        toaster.error($translator("common.operationFailed"), $translator("common.tryAgain"));
+      }
     } finally {
       likingId = null;
     }
@@ -466,7 +474,12 @@
           style="min-height: 80px; resize: vertical;"
           placeholder={$translator("post.replyPlaceholder")}
         ></textarea>
-        <div class="mt-2 flex justify-end">
+        <div class="mt-2 flex items-center justify-between gap-2">
+          <WritingAssist
+            body={replyText}
+            context="comment"
+            onApply={(value) => (replyText = value.body)}
+          />
           <button
             class="btn btn-primary btn-sm"
             onclick={handleSubmitReply}
