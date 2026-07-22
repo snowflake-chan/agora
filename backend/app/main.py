@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
@@ -20,6 +21,12 @@ from app.admin import router as admin_router
 from app.notifications import router as notifications_router
 from app.public import router as public_router
 from app.ai.routes import router as ai_router
+
+if not logging.getLogger().handlers:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
 
 
 @asynccontextmanager

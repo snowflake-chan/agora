@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
@@ -10,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import lazyload
 
 from app.config import settings
+from app.bg import spawn
 from app.db import get_session
 from app.db.models.patch import Patch as PatchModel, PatchRevision
 from app.db.models.content import Content as ContentModel
@@ -51,10 +53,30 @@ from app.deps import (
 from app.users.deps import current_user, optional_current_user
 
 router = APIRouter()
+logger = logging.getLogger("agora.patches")
 
 STANDARD_VOTING_PERIOD_HOURS = 72
 ACTIVE_CREATOR_VOTING_PERIOD_HOURS = 24
 ACTIVE_CREATOR_LOOKBACK_DAYS = 90
+
+
+def _deadline_passed(
+    voting_ends_at: datetime | None,
+    *,
+    now: datetime | None = None,
+) -> bool:
+    """Compare persisted deadlines safely, including legacy naive timestamps."""
+    if voting_ends_at is None:
+        return False
+    if voting_ends_at.tzinfo is None:
+        voting_ends_at = voting_ends_at.replace(tzinfo=timezone.utc)
+    return voting_ends_at <= (now or datetime.now(timezone.utc))
+
+
+def _decide_vote_outcome(counts: dict[str, int]) -> str:
+    """Return the strict-majority outcome, counting abstentions in the total."""
+    total = counts["for"] + counts["against"] + counts["abstain"]
+    return "passed" if total > 0 and counts["for"] > total / 2 else "rejected"
 
 
 # ── Helpers ──
@@ -122,21 +144,11 @@ async def _tally(session: AsyncSession, patch: PatchModel) -> bool:
     # waiting for the row lock. Keep its already-loaded ORM instance truthful.
     patch.status = locked_patch.status
     patch.voting_ends_at = locked_patch.voting_ends_at
-    if (
-        locked_patch.status != "voting"
-        or locked_patch.voting_ends_at is None
-        or locked_patch.voting_ends_at
-        > datetime.now(locked_patch.voting_ends_at.tzinfo)
-    ):
+    if locked_patch.status != "voting" or not _deadline_passed(locked_patch.voting_ends_at):
         return False
 
     counts = await _get_vote_counts(session, locked_patch.id)
-    total = counts["for"] + counts["against"] + counts["abstain"]
-
-    if total > 0 and counts["for"] > total / 2:
-        patch.status = "passed"
-    else:
-        patch.status = "rejected"
+    patch.status = _decide_vote_outcome(counts)
 
     patch_id = str(locked_patch.id)
     patch_title = locked_patch.title
@@ -145,9 +157,7 @@ async def _tally(session: AsyncSession, patch: PatchModel) -> bool:
     await session.commit()
 
     if patch_status == "passed":
-        asyncio.create_task(
-            _do_merge_and_deploy(patch_id, pr_number, patch_title)
-        )
+        spawn(_do_merge_and_deploy(patch_id, pr_number, patch_title), name=f"merge:{patch_id}")
 
     await publish_feed_event(
         "updated",
@@ -155,9 +165,7 @@ async def _tally(session: AsyncSession, patch: PatchModel) -> bool:
         item_id=patch_id,
     )
     # Notify voters + author (fire-and-forget)
-    asyncio.create_task(
-        _notify_patch_voters(patch_id, patch_title, patch_status)
-    )
+    spawn(_notify_patch_voters(patch_id, patch_title, patch_status), name=f"notify:{patch_id}")
 
     return True
 
@@ -189,8 +197,8 @@ async def _notify_patch_voters(patch_id: str, patch_title: str, result: str) -> 
                 title=title, message=message,
                 link=f"/patches/{patch_id}",
             )
-    except Exception as e:
-        print(f"[notif] patch voters error: {e}")
+    except Exception:
+        logger.exception("patch voter notification failed for %s", patch_id)
 
 
 async def _do_merge_and_deploy(patch_id: str, pr_number: int, patch_title: str | None = None) -> None:
@@ -214,8 +222,9 @@ async def _do_merge_and_deploy(patch_id: str, pr_number: int, patch_title: str |
             pr_number = patch.pr_number
             expected_head_sha = patch.submitted_head_sha
             if not expected_head_sha:
-                print(
-                    f"[merge] Refusing PR #{pr_number}: governed head SHA is missing"
+                logger.error(
+                    "refusing PR #%s because governed head SHA is missing",
+                    pr_number,
                 )
                 patch.status = "failed"
                 await session.commit()
@@ -239,9 +248,10 @@ async def _do_merge_and_deploy(patch_id: str, pr_number: int, patch_title: str |
                             "PULL_REQUEST_READINESS_PENDING",
                             "PULL_REQUEST_CHECKS_PENDING",
                         ):
-                            print(
-                                f"[merge] PR #{pr_number} is temporarily pending: "
-                                f"{readiness_error}"
+                            logger.info(
+                                "PR #%s is temporarily pending: %s",
+                                pr_number,
+                                readiness_error,
                             )
                             return
                         if readiness_error:
@@ -254,18 +264,22 @@ async def _do_merge_and_deploy(patch_id: str, pr_number: int, patch_title: str |
                 except GitHubPullRequestError as exc:
                     # A transient lookup failure has no truthful terminal result.
                     # Leave the proposal passed so startup reconciliation can retry.
-                    print(f"[merge] GitHub lookup unavailable for PR #{pr_number}: {exc}")
+                    logger.warning(
+                        "GitHub lookup unavailable for PR #%s: %s",
+                        pr_number,
+                        exc,
+                    )
                     return
                 except GitHubMergeUncertainError as exc:
-                    print(f"[merge] Outcome unknown for PR #{pr_number}: {exc}")
+                    logger.warning("merge outcome unknown for PR #%s: %s", pr_number, exc)
                     return
                 except Exception as exc:
-                    print(f"[merge] ERROR merging PR #{pr_number}: {exc}")
+                    logger.exception("merge failed for PR #%s", pr_number)
                     patch.status = "failed"
                 await session.commit()
                 outcome = patch.status
     except Exception as status_exc:
-        print(f"[merge] ERROR recording outcome for PR #{pr_number}: {status_exc}")
+        logger.exception("could not record merge outcome for PR #%s", pr_number)
         return
 
     await publish_feed_event(
@@ -273,8 +287,9 @@ async def _do_merge_and_deploy(patch_id: str, pr_number: int, patch_title: str |
         item_type="patch",
         item_id=patch_id,
     )
-    asyncio.create_task(
-        _notify_patch_voters(patch_id, patch_title or "Unknown", outcome)
+    spawn(
+        _notify_patch_voters(patch_id, patch_title or "Unknown", outcome),
+        name=f"notify:{patch_id}",
     )
     if outcome != "merged":
         return
@@ -284,14 +299,14 @@ async def _do_merge_and_deploy(patch_id: str, pr_number: int, patch_title: str |
     try:
         await _trigger_deploy()
     except Exception as deploy_exc:
-        print(f"[deploy] ERROR after merging PR #{pr_number}: {deploy_exc}")
+        logger.exception("deployment launch failed after PR #%s merged", pr_number)
 
 
 async def _auto_tally(session: AsyncSession, patch: PatchModel) -> bool:
     """If voting period has ended, tally and merge. Returns True if status changed."""
     if patch.status != "voting" or not patch.voting_ends_at:
         return False
-    if patch.voting_ends_at > datetime.now(patch.voting_ends_at.tzinfo):
+    if not _deadline_passed(patch.voting_ends_at):
         return False
     return await _tally(session, patch)
 
@@ -305,20 +320,19 @@ async def _auto_tally_patch(patch_id: str) -> None:
             stmt = select(PatchModel).where(PatchModel.id == patch_id)
             result = await session.execute(stmt)
             patch = result.scalar_one_or_none()
-            if patch and patch.status == "voting" and patch.voting_ends_at:
-                if patch.voting_ends_at <= datetime.now(patch.voting_ends_at.tzinfo):
-                    await _tally(session, patch)
-    except Exception as e:
-        print(f"[tally] background tally error for {patch_id}: {e}")
+            if patch and patch.status == "voting" and _deadline_passed(patch.voting_ends_at):
+                await _tally(session, patch)
+    except Exception:
+        logger.exception("background tally error for %s", patch_id)
 
 
 async def _trigger_deploy() -> None:
     """Launch the detached deployment helper and verify it started."""
     if not settings.DEPLOY_ENABLED:
-        print("[deploy] Disabled by configuration")
+        logger.info("deploy disabled by configuration")
         return
 
-    print("[deploy] Launching detached deployment helper...")
+    logger.info("launching detached deployment helper")
     process = await asyncio.create_subprocess_exec(
         "/bin/bash", "/repo/deploy.sh",
         env={**os.environ, "REPO_DIR": settings.REPO_DIR},
@@ -329,13 +343,13 @@ async def _trigger_deploy() -> None:
     output = stdout.decode(errors="replace").strip()
     error = stderr.decode(errors="replace").strip()
     if output:
-        print(output)
+        logger.info("deploy helper output: %s", output)
     if process.returncode != 0:
         raise RuntimeError(
             f"deployment helper failed to start (exit {process.returncode}): "
             f"{error or output or 'no output'}"
         )
-    print("[deploy] Detached deployment helper started")
+    logger.info("detached deployment helper started")
 
 
 def _patch_to_read(
@@ -410,7 +424,7 @@ async def list_patches(
             and p.voting_ends_at is not None
             and p.voting_ends_at <= now
         ):
-            asyncio.create_task(_auto_tally_patch(str(p.id)))
+            spawn(_auto_tally_patch(str(p.id)), name=f"auto_tally:{p.id}")
 
     # Get vote counts
     patch_ids = [str(p.id) for p in patches]
@@ -784,7 +798,7 @@ async def vote_patch(
         raise HTTPException(status_code=422, detail="PATCH_NOT_VOTING")
 
     # Reject if voting period has ended
-    if patch.voting_ends_at and patch.voting_ends_at < datetime.now(patch.voting_ends_at.tzinfo):
+    if _deadline_passed(patch.voting_ends_at):
         raise HTTPException(status_code=422, detail="VOTING_ALREADY_ENDED")
 
     # Upsert vote

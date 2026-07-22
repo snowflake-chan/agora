@@ -1,6 +1,7 @@
 """Startup and periodic reconciliation for governance transitions."""
 
 import asyncio
+import logging
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -8,6 +9,8 @@ from sqlalchemy import select
 from app.config import settings
 from app.db import async_session
 from app.db.models.patch import Patch as PatchModel
+
+logger = logging.getLogger("agora.reconcile")
 
 
 async def tally_expired_once() -> None:
@@ -54,16 +57,16 @@ async def merge_passed_once() -> None:
 
 async def reconcile() -> None:
     """Recover passed proposals and tally expired votes once at startup."""
-    print("[reconcile] Checking patches...")
+    logger.info("reconcile: checking patches")
     try:
         # Both online tallying and startup recovery use the same row-locking
         # merge path, so a restart cannot race an already-running worker.
         await merge_passed_once()
         await tally_expired_once()
-    except Exception as exc:
-        print(f"[reconcile] Error: {exc}")
+    except Exception:
+        logger.exception("reconcile: error during startup reconciliation")
 
-    print("[reconcile] Done.")
+    logger.info("reconcile: done")
 
 
 async def run_scheduler() -> None:
@@ -76,5 +79,5 @@ async def run_scheduler() -> None:
             await tally_expired_once()
         except asyncio.CancelledError:
             raise
-        except Exception as exc:
-            print(f"[reconcile] Periodic tally error: {exc}")
+        except Exception:
+            logger.exception("reconcile: periodic tally error")
