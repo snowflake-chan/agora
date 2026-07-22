@@ -3,16 +3,25 @@
     EllipsisIcon,
     FlagIcon,
     HeartIcon,
+    HistoryIcon,
     MessageCircleIcon,
+    PencilIcon,
     ReplyIcon,
     Share2Icon,
     Trash2Icon,
   } from "@lucide/svelte";
   import { onMount } from "svelte";
   import { getUserGuild, type UserGuildBadge } from "../../lib/guilds";
+  import type { DisplayTranslation, TranslationContext } from "../../lib/ai";
   import { translator } from "../../lib/i18n";
   import { renderMarkdown } from "../../lib/markdown";
-  import { avatarInitial, displayName, timeAgo } from "../../lib/utils";
+  import { isModerationRestricted, type ModerationStatus } from "../../lib/moderation";
+  import type { Poll } from "../../lib/posts";
+  import { avatarInitial, displayName } from "../../lib/utils";
+  import RelativeTime from "../RelativeTime.svelte";
+  import PollCard from "./PollCard.svelte";
+  import PostAiTools from "./PostAiTools.svelte";
+  import ModerationNotice from "./ModerationNotice.svelte";
 
   let {
     username,
@@ -24,6 +33,8 @@
     replyingToUsername = null,
     onReply = null,
     onDelete = null,
+    onEdit = null,
+    onHistory = null,
     onReport = null,
     liked = false,
     likeCount = null,
@@ -35,6 +46,17 @@
     contentId = null,
     replyingToContent = null,
     replyingToId = null,
+    poll = null,
+    onPollUpdate = null,
+    aiText = null,
+    aiTitle = null,
+    aiContext = "comment",
+    moderationStatus = null,
+    moderationReason = null,
+    moderationReviewNote = null,
+    revisionNumber = 1,
+    moderationTargetHref = null,
+    onTranslationChange = null,
   }: {
     username: string;
     userId: string | null;
@@ -45,6 +67,8 @@
     replyingToUsername: string | null;
     onReply: (() => void) | null;
     onDelete: (() => void) | null;
+    onEdit?: (() => void) | null;
+    onHistory?: (() => void) | null;
     onReport?: (() => void) | null;
     liked?: boolean;
     likeCount?: number | null;
@@ -56,15 +80,46 @@
     contentId?: string | null;
     replyingToContent?: string | null;
     replyingToId?: string | null;
+    poll?: Poll | null;
+    onPollUpdate?: ((poll: Poll) => void) | null;
+    aiText?: string | null;
+    aiTitle?: string | null;
+    aiContext?: TranslationContext;
+    moderationStatus?: ModerationStatus | null;
+    moderationReason?: string | null;
+    moderationReviewNote?: string | null;
+    revisionNumber?: number;
+    moderationTargetHref?: string | null;
+    onTranslationChange?: ((translation: DisplayTranslation | null) => void) | null;
   } = $props();
 
   let menuOpen = $state(false);
   let menuButton = $state<HTMLButtonElement | null>(null);
   let guild = $state<UserGuildBadge | null>(null);
+  let moderationQueued = $state(false);
+  let displayTranslation = $state<DisplayTranslation | null>(null);
+  let displayedContent = $derived(displayTranslation?.body ?? content);
   let profileHref = $derived(userId ? `/users/${userId}` : "#");
   let menuId = $derived(
     `timeline-actions-${(contentId ?? `${userId ?? "anonymous"}-${createdAt}`).replace(/[^a-zA-Z0-9_-]/g, "-")}`,
   );
+  let effectiveModerationStatus = $derived(
+    moderationQueued ? "pending_review" : moderationStatus,
+  );
+  let moderationRestricted = $derived(isModerationRestricted(effectiveModerationStatus));
+
+  $effect(() => {
+    content;
+    title;
+    revisionNumber;
+    displayTranslation = null;
+    onTranslationChange?.(null);
+  });
+
+  $effect(() => {
+    const nextStatus = moderationStatus;
+    if (nextStatus !== "published") moderationQueued = false;
+  });
 
   onMount(async () => {
     if (!userId) return;
@@ -92,6 +147,11 @@
   function runMenuAction(action: () => void) {
     menuOpen = false;
     action();
+  }
+
+  function handleTranslationChange(translation: DisplayTranslation | null) {
+    displayTranslation = translation;
+    onTranslationChange?.(translation);
   }
 </script>
 
@@ -121,10 +181,21 @@
             Lv.{guild.guild_level} {guild.guild_name}
           </a>
         {/if}
-        <span class="timeline-time text-xs">{timeAgo(createdAt)}</span>
+        <RelativeTime value={createdAt} className="timeline-time text-xs" />
+        {#if revisionNumber > 1}
+          <button
+            type="button"
+            class="edited-marker"
+            onclick={onHistory ?? undefined}
+            disabled={!onHistory}
+            title={$translator("revision.viewHistory")}
+          >
+            {$translator("revision.edited")}
+          </button>
+        {/if}
       </div>
 
-      {#if onReply || onDelete || onReport}
+      {#if onDelete || onEdit || onHistory || (!moderationRestricted && (onReply || onReport))}
         <div class="timeline-menu relative">
           <button
             bind:this={menuButton}
@@ -148,13 +219,25 @@
               class="menu-dropdown timeline-menu-dropdown absolute right-0 top-full mt-1"
               aria-label={$translator("common.moreActions")}
             >
-              {#if onReply}
+              {#if onReply && !moderationRestricted}
                 <button type="button" class="menu-item" onclick={() => runMenuAction(onReply)}>
                   <ReplyIcon size={15} strokeWidth={1.8} aria-hidden="true" />
                   <span>{$translator("common.reply")}</span>
                 </button>
               {/if}
-              {#if onReport}
+              {#if onEdit}
+                <button type="button" class="menu-item" onclick={() => runMenuAction(onEdit)}>
+                  <PencilIcon size={15} strokeWidth={1.8} aria-hidden="true" />
+                  <span>{$translator("common.edit")}</span>
+                </button>
+              {/if}
+              {#if onHistory}
+                <button type="button" class="menu-item" onclick={() => runMenuAction(onHistory)}>
+                  <HistoryIcon size={15} strokeWidth={1.8} aria-hidden="true" />
+                  <span>{$translator("revision.viewHistory")}</span>
+                </button>
+              {/if}
+              {#if onReport && !moderationRestricted}
                 <button type="button" class="menu-item" onclick={() => runMenuAction(onReport)}>
                   <FlagIcon size={15} strokeWidth={1.8} aria-hidden="true" />
                   <span>{$translator("common.report")}</span>
@@ -174,6 +257,11 @@
 
     <!-- Body -->
     <div class="px-4 py-3 text-sm" style="color: var(--vercel-text-secondary);">
+      <ModerationNotice
+        status={effectiveModerationStatus}
+        reason={moderationQueued ? null : moderationReason}
+        reviewNote={moderationReviewNote}
+      />
       {#if replyingToUsername}
         <a href={replyingToId ? `#${replyingToId}` : undefined} class="reply-trace">
           <span>{$translator("common.replyingTo", { name: replyingToUsername })}</span>
@@ -183,7 +271,7 @@
         </a>
       {/if}
       <div class="markdown-body">
-        {@html renderMarkdown(content)}
+        {@html renderMarkdown(displayedContent)}
       </div>
       {#if tags && tags.length > 0}
         <div class="mt-3 flex flex-wrap gap-2">
@@ -192,9 +280,33 @@
           {/each}
         </div>
       {/if}
+      {#if poll && contentId}
+        <PollCard
+          postId={contentId}
+          {poll}
+          onUpdate={onPollUpdate}
+          readOnly={moderationRestricted}
+          sourceRevisionNumber={revisionNumber}
+          {moderationTargetHref}
+          onModerationQueued={() => (moderationQueued = true)}
+        />
+      {/if}
+      {#if aiText && !moderationRestricted}
+        <PostAiTools
+          text={aiText}
+          title={aiTitle}
+          context={aiContext}
+          compact={title === null}
+          sourceContentId={contentId}
+          sourceRevisionNumber={revisionNumber}
+          {moderationTargetHref}
+          onModerationQueued={() => (moderationQueued = true)}
+          onTranslationChange={handleTranslationChange}
+        />
+      {/if}
     </div>
 
-    {#if likeCount !== null && replyCount !== null}
+    {#if likeCount !== null && replyCount !== null && !moderationRestricted}
       <div class="post-actions" aria-label={$translator("post.actions")}>
         <button
           type="button"
@@ -246,10 +358,31 @@
     white-space: nowrap;
   }
 
-  .timeline-time {
+  :global(.timeline-time) {
     flex: 0 0 auto;
     color: var(--vercel-text-tertiary);
     white-space: nowrap;
+  }
+
+  .edited-marker {
+    flex: 0 0 auto;
+    padding: 0;
+    border: 0;
+    color: var(--vercel-text-tertiary);
+    background: transparent;
+    font-size: 0.68rem;
+    text-decoration: underline;
+    text-decoration-color: transparent;
+    text-underline-offset: 0.16rem;
+  }
+
+  .edited-marker:not(:disabled) {
+    cursor: pointer;
+  }
+
+  .edited-marker:not(:disabled):hover {
+    color: var(--vercel-text-secondary);
+    text-decoration-color: currentColor;
   }
 
   .timeline-menu-trigger {
@@ -296,6 +429,7 @@
 
   .content-node {
     scroll-margin-top: 5rem;
+    container-type: inline-size;
   }
 
   .reply-trace {
@@ -323,6 +457,7 @@
 
   .post-action {
     display: inline-flex;
+    min-width: 0;
     min-height: 2.5rem;
     align-items: center;
     justify-content: center;
@@ -360,6 +495,16 @@
 
   .action-count {
     font-variant-numeric: tabular-nums;
+  }
+
+  @container (max-width: 22rem) {
+    .post-action > span:not(.action-count) {
+      display: none;
+    }
+
+    .post-action {
+      gap: 0.25rem;
+    }
   }
 
   @media (max-width: 30rem) {

@@ -1,4 +1,5 @@
 import { API_BASE } from "./config";
+import type { ModerationFields } from "./moderation";
 
 export interface Guild {
   id: string;
@@ -22,7 +23,7 @@ export interface GuildMember {
   joined_at: string;
 }
 
-export interface GuildDiscussion {
+export interface GuildDiscussion extends ModerationFields {
   id: string;
   title: string | null;
   content: string;

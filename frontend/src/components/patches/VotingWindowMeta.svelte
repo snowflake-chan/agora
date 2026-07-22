@@ -57,7 +57,7 @@
     gap: 0.25rem;
     padding: 0.2rem 0.4rem;
     border: 1px solid var(--vercel-border);
-    border-radius: 0.375rem;
+    border-radius: var(--vercel-radius-sm);
     color: var(--vercel-text-secondary);
     background: var(--vercel-surface-muted);
     font-size: 0.6875rem;

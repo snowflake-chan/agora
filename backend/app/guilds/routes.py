@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from uuid import UUID
 
 from sqlalchemy import and_, func, select, or_
@@ -7,7 +8,13 @@ from sqlalchemy.orm import lazyload
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.deps import check_not_banned
+from app.deps import check_not_banned, require_content_visible
+from app.content_moderation import (
+    assess_content_moderation_after_read,
+    content_visibility_clause,
+    moderation_metadata_for,
+    notify_content_pending,
+)
 from app.db import get_session
 from app.db.models.content import Content as ContentModel
 from app.db.models.guild import Guild, GuildMember
@@ -594,6 +601,7 @@ async def list_guild_patches(
                     select(ContentModel.patch_id, func.count(ContentModel.id)).where(
                         ContentModel.patch_id.in_(patch_ids),
                         ContentModel.type == "comment",
+                        content_visibility_clause(user),
                     ).group_by(ContentModel.patch_id)
                 )
             ).all()
@@ -613,6 +621,7 @@ async def list_guild_patches(
             against_count=counts_map.get(str(p.id), {}).get("against", 0),
             abstain_count=counts_map.get(str(p.id), {}).get("abstain", 0),
             comment_count=comment_counts.get(p.id, 0),
+            revision_number=p.revision_number,
             created_at=p.created_at, updated_at=p.updated_at,
         )
         for p in patches
@@ -633,6 +642,7 @@ async def list_discussions(
     user: User = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ):
+    allow_staff = user.role in ("moderator", "super_admin")
     if user.role not in ("moderator", "super_admin"):
         member = (await session.execute(
             select(GuildMember).where(
@@ -644,7 +654,11 @@ async def list_discussions(
     rows = (
         await session.execute(
             select(ContentModel)
-            .where(ContentModel.guild_id == guild_id, ContentModel.type == "guild_post")
+            .where(
+                ContentModel.guild_id == guild_id,
+                ContentModel.type == "guild_post",
+                content_visibility_clause(user, allow_staff=allow_staff),
+            )
             .order_by(ContentModel.created_at.desc())
         )
     ).scalars().all()
@@ -654,7 +668,10 @@ async def list_discussions(
             id=r.id, title=r.title, content=r.content,
             author_id=r.author_id,
             author_username=r.author.username if r.author else "",
+            **moderation_metadata_for(r, user, allow_staff=allow_staff),
+            revision_number=r.revision_number,
             created_at=r.created_at,
+            updated_at=r.updated_at,
         )
         for r in rows
     ]
@@ -675,21 +692,54 @@ async def create_discussion(
     _guild_forbidden(member)
     await check_not_banned(user.id, session, "mute_post")
 
+    moderation = await assess_content_moderation_after_read(
+        session,
+        body.title or "",
+        body.content,
+    )
+
+    # Membership can change while semantic review is in flight. Lock and
+    # recheck it, plus posting restrictions, in the write transaction.
+    member = (
+        await session.execute(
+            select(GuildMember.id, GuildMember.status)
+            .where(
+                GuildMember.guild_id == guild_id,
+                GuildMember.user_id == user.id,
+            )
+            .with_for_update()
+        )
+    ).one_or_none()
+    _guild_forbidden(member)
+    await check_not_banned(user.id, session, "mute_post")
+
     c = ContentModel(
         type="guild_post",
         title=body.title,
         content=body.content,
         author_id=user.id,
         guild_id=guild_id,
+        moderation_status=moderation.status,
+        moderation_reason=moderation.reason,
+        published_at=(
+            datetime.now(timezone.utc)
+            if moderation.status == "published"
+            else None
+        ),
     )
     session.add(c)
     await session.commit()
     await session.refresh(c)
+    if c.moderation_status == "pending_review":
+        await notify_content_pending(c)
     return GuildDiscussionRead(
         id=c.id, title=c.title, content=c.content,
         author_id=c.author_id,
         author_username=user.username,
+        **moderation_metadata_for(c, user),
+        revision_number=c.revision_number,
         created_at=c.created_at,
+        updated_at=c.updated_at,
     )
 
 
@@ -703,17 +753,25 @@ async def delete_discussion(
     user: User = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    c = (await session.execute(
-        select(ContentModel).where(
+    locked_content_id = await session.scalar(
+        select(ContentModel.id).where(
             ContentModel.id == post_id,
             ContentModel.guild_id == guild_id,
             ContentModel.type == "guild_post",
+        ).with_for_update()
+    )
+    c = (
+        await session.scalar(
+            select(ContentModel).where(ContentModel.id == locked_content_id)
         )
-    )).scalar_one_or_none()
-    if not c:
-        raise HTTPException(404)
+        if locked_content_id is not None
+        else None
+    )
+    await require_content_visible(c, user, session)
     if c.author_id != user.id:
         raise HTTPException(403, detail="GUILD_DISCUSSION_AUTHOR_REQUIRED")
+    if c.revision_number > 1:
+        raise HTTPException(409, detail="AUDITED_CONTENT_DELETE_LOCKED")
     await session.delete(c)
     await session.commit()
     return {"ok": True}

@@ -13,11 +13,18 @@
   } from "../../lib/auth";
   import { deleteContent } from "../../lib/posts";
   import { deletePatch } from "../../lib/patches";
-  import { avatarInitial, displayName, stripMarkdown, timeAgo } from "../../lib/utils";
+  import { avatarInitial, displayName, stripMarkdown } from "../../lib/utils";
   import { currentUser } from "../../stores/auth";
   import { toaster } from "../../stores/toaster";
   import ConfirmDialog from "../ConfirmDialog.svelte";
   import VotingWindowMeta from "../patches/VotingWindowMeta.svelte";
+  import ModerationNotice from "../posts/ModerationNotice.svelte";
+  import RelativeTime from "../RelativeTime.svelte";
+  import {
+    hasModerationNotice,
+    isModerationRestricted,
+    onModerationUpdate,
+  } from "../../lib/moderation";
 
   let { userId }: { userId: string } = $props();
 
@@ -40,17 +47,24 @@
     filter === "all" ? items : items.filter((item) => item.type === filter)
   );
 
-  onMount(async () => {
+  async function loadProfile(showError = true) {
     try {
       [user, items] = await Promise.all([
         getUser(userId),
         getUserContent(userId),
       ]);
     } catch {
-      error = "PROFILE_LOAD_FAILED";
+      if (showError) error = "PROFILE_LOAD_FAILED";
     } finally {
       loading = false;
     }
+  }
+
+  onMount(() => {
+    void loadProfile();
+    return onModerationUpdate(() => {
+      if ($currentUser?.id === userId) void loadProfile(false);
+    });
   });
 
   async function toggleFollow() {
@@ -160,20 +174,33 @@
       <div class="empty-state">{$translator("profile.empty")}</div>
     {:else}
       {#each visibleItems as item (item.id)}
+        {@const moderationRestricted = isModerationRestricted(item.moderation_status)}
+        {@const moderationVisible = hasModerationNotice(item.moderation_status)}
         <article class="profile-item">
           <div class="item-rail">
             <span>{$translator(item.type === "post" ? "common.post" : item.type === "patch" ? "common.change" : "common.comment")}</span>
-            <time>{timeAgo(item.created_at)}</time>
+            <RelativeTime value={item.created_at} />
           </div>
 
-          {#if item.type === "comment" && item.root_id}
+          {#if moderationVisible}
+            <div class="item-status">
+              <ModerationNotice
+                status={item.moderation_status}
+                reason={item.moderation_reason}
+                reviewNote={item.moderation_review_note}
+                compact
+              />
+            </div>
+          {/if}
+
+          {#if item.type === "comment" && item.root_id && !moderationRestricted}
             <a class="context-root" href={itemHref(item)}>
               <span>{$translator("profile.repliedTo")}</span>
               <strong>{item.root_title ?? $translator(item.root_type === "post" ? "common.post" : "common.change")}</strong>
             </a>
           {/if}
 
-          {#if item.replying_to_username}
+          {#if item.replying_to_username && !moderationRestricted}
             <a class="context-reply" href={itemHref(item)}>
               <span>↳ @{item.replying_to_username}</span>
               {#if item.replying_to_content}
@@ -182,27 +209,35 @@
             </a>
           {/if}
 
-          <a class="item-main" href={itemHref(item)}>
+          <a
+            class="item-main"
+            class:private-item={moderationRestricted}
+            href={itemHref(item)}
+          >
             {#if item.title}<h2>{item.title}</h2>{/if}
             <p>{stripMarkdown(item.content)}</p>
           </a>
 
           <footer class="item-footer">
-            <div class="item-counts">
-              {#if item.type !== "patch"}<span>♡ {item.like_count}</span>{/if}
-              <a href={itemHref(item)}>↳ {item.reply_count}</a>
-              {#if item.pr_number}<span>PR #{item.pr_number}</span>{/if}
-              {#if item.status}<span>{$translator(`status.${item.status}`)}</span>{/if}
-              {#if item.type === "patch"}
-                <VotingWindowMeta
-                  status={item.status}
-                  votingWindowKind={item.voting_window_kind}
-                  votingPeriodHours={item.voting_period_hours}
-                  votingStartedAt={item.voting_started_at}
-                  votingEndsAt={item.voting_ends_at}
-                />
-              {/if}
-            </div>
+            {#if !moderationRestricted}
+              <div class="item-counts">
+                {#if item.type !== "patch"}<span>♡ {item.like_count}</span>{/if}
+                <a href={itemHref(item)}>↳ {item.reply_count}</a>
+                {#if item.pr_number}<span>PR #{item.pr_number}</span>{/if}
+                {#if item.status}<span>{$translator(`status.${item.status}`)}</span>{/if}
+                {#if item.type === "patch"}
+                  <VotingWindowMeta
+                    status={item.status}
+                    votingWindowKind={item.voting_window_kind}
+                    votingPeriodHours={item.voting_period_hours}
+                    votingStartedAt={item.voting_started_at}
+                    votingEndsAt={item.voting_ends_at}
+                  />
+                {/if}
+              </div>
+            {:else}
+              <span></span>
+            {/if}
             {#if item.can_delete}
               <button class="delete-item" onclick={() => requestDelete(item)}>{$translator("common.delete")}</button>
             {/if}
@@ -292,6 +327,7 @@
     display: flex; min-width: 0; gap: .4rem; color: var(--vercel-text-tertiary);
     font-size: .7rem;
   }
+  .item-status { margin-bottom: .25rem; }
   .context-root strong { overflow: hidden; color: var(--vercel-text-secondary); text-overflow: ellipsis; white-space: nowrap; }
   .context-reply {
     flex-direction: column; padding: .5rem .65rem; border-left: 2px solid var(--vercel-border-hover);

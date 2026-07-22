@@ -87,31 +87,11 @@ else
     exit 1
 fi
 
-if [ "${DEPLOY_DRY_RUN:-0}" = "1" ]; then
-    log "Dry run completed; Git and Compose are available"
-    exit 0
-fi
+upgrade_script="$REPO_DIR/scripts/upgrade.sh"
+[ -f "$upgrade_script" ] || {
+    log "ERROR: upgrade helper is missing: $upgrade_script"
+    exit 1
+}
 
-git config --global --add safe.directory "$REPO_DIR"
-cd "$REPO_DIR"
-
-if [ "${DEPLOY_SKIP_PULL:-0}" = "1" ]; then
-    log "Skipping git pull for local deployment verification"
-else
-    log "Pulling the latest code with fast-forward only"
-    git pull --ff-only
-fi
-
-log "Building updated service images"
-"${compose[@]}" \
-    --project-name "$COMPOSE_PROJECT_NAME" \
-    --project-directory "$REPO_DIR" \
-    build
-
-log "Recreating the Compose project"
-"${compose[@]}" \
-    --project-name "$COMPOSE_PROJECT_NAME" \
-    --project-directory "$REPO_DIR" \
-    up --detach --remove-orphans
-
-log "Deployment completed"
+log "Handing deployment to the idempotent upgrade helper"
+exec /bin/bash "$upgrade_script"

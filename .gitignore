@@ -40,3 +40,5 @@ pip_full.log
 .idea/
 
 .vscode/settings.json
+.agora-backups/
+.agora-upgrade.lock/

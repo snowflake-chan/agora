@@ -76,6 +76,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Validate upgrade package
+        run: |
+          bash -n deploy.sh scripts/upgrade.sh
+          docker compose config --quiet
+
       - name: Build backend image
         run: docker build -t agora-backend ./backend
 

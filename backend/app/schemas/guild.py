@@ -1,7 +1,9 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+from app.schemas.content_input import validate_moderation_input_size
 
 
 # ── Guild ──
@@ -103,6 +105,11 @@ class GuildDiscussionCreate(BaseModel):
         normalized = str(value).strip()
         return normalized or None
 
+    @model_validator(mode="after")
+    def validate_ai_input_size(self):
+        validate_moderation_input_size([self.title, self.content])
+        return self
+
 
 class GuildDiscussionRead(BaseModel):
     id: uuid.UUID
@@ -110,7 +117,12 @@ class GuildDiscussionRead(BaseModel):
     content: str
     author_id: uuid.UUID
     author_username: str = ""
+    moderation_status: str = "published"
+    moderation_reason: str | None = None
+    moderation_review_note: str | None = None
+    revision_number: int = 1
     created_at: datetime
+    updated_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 

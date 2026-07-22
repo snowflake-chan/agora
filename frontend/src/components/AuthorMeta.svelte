@@ -2,7 +2,8 @@
   import { onMount } from "svelte";
   import { getUserGuild, type UserGuildBadge } from "../lib/guilds";
   import { translator } from "../lib/i18n";
-  import { avatarInitial, displayName, timeAgo } from "../lib/utils";
+  import { avatarInitial, displayName } from "../lib/utils";
+  import RelativeTime from "./RelativeTime.svelte";
 
   let { username, userId, createdAt }: { username: string; userId?: string; createdAt: string } = $props();
 
@@ -44,7 +45,7 @@
     {/if}
   </span>
   <span class="author-separator" aria-hidden="true">&middot;</span>
-  <span class="author-time">{timeAgo(createdAt)}</span>
+  <RelativeTime className="author-time" value={createdAt} />
 </div>
 
 <style>

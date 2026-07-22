@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { LoaderCircle } from "@lucide/svelte";
   import { translator } from "../lib/i18n";
   import { modal } from "../lib/modal";
   let {
@@ -14,16 +15,26 @@
     description: string;
     confirmText: string;
     tone?: "primary" | "danger";
-    onConfirm: () => void;
+    onConfirm: () => void | Promise<void>;
   } = $props();
 
-  function handleConfirm() {
-    onConfirm();
-    open = false;
+  let pending = $state(false);
+
+  async function handleConfirm() {
+    if (pending) return;
+    pending = true;
+    try {
+      await onConfirm();
+      open = false;
+    } catch {
+      // The caller owns user-facing error feedback; keep the dialog open for retry.
+    } finally {
+      pending = false;
+    }
   }
 
   function handleBackdropClick(e: MouseEvent) {
-    if (e.target === e.currentTarget) {
+    if (!pending && e.target === e.currentTarget) {
       open = false;
     }
   }
@@ -40,10 +51,11 @@
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
-      use:modal={{ onClose: () => (open = false) }}
+      use:modal={{ onClose: () => { if (!pending) open = false; } }}
       class="dialog-panel-confirm"
       role="alertdialog"
       aria-modal="true"
+      aria-busy={pending}
       aria-labelledby="confirm-dialog-title"
       aria-describedby={description ? "confirm-dialog-description" : undefined}
       tabindex="-1"
@@ -56,17 +68,33 @@
         <p id="confirm-dialog-description" class="dialog-desc">{description}</p>
       {/if}
       <div class="dialog-actions">
-        <button class="btn btn-ghost btn-sm" onclick={() => (open = false)}>{$translator("common.cancel")}</button>
+        <button class="btn btn-ghost btn-sm" disabled={pending} onclick={() => (open = false)}>{$translator("common.cancel")}</button>
         <button
           data-autofocus
           class="btn btn-sm"
           class:btn-primary={tone === "primary"}
           class:btn-danger={tone === "danger"}
+          disabled={pending}
           onclick={handleConfirm}
         >
+          {#if pending}<LoaderCircle class="confirm-spinner" size={14} aria-hidden="true" />{/if}
           {confirmText || $translator("common.confirm")}
         </button>
       </div>
     </div>
   </div>
 {/if}
+
+<style>
+  :global(.confirm-spinner) {
+    animation: confirm-spin 0.8s linear infinite;
+  }
+
+  @keyframes confirm-spin {
+    to { transform: rotate(360deg); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :global(.confirm-spinner) { animation: none; }
+  }
+</style>

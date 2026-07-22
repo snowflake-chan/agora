@@ -4,7 +4,21 @@
   import { listPatches, type Patch } from "../../lib/patches";
   import PatchCard from "./PatchCard.svelte";
 
-  let { initialStatus = undefined as string | undefined }: { initialStatus?: string } = $props();
+  let {
+    initialStatus = undefined,
+    onSelect = null,
+    selectedId = null,
+    onFirstItem = null,
+    onItemsUpdated = null,
+    onStateChange = null,
+  }: {
+    initialStatus?: string;
+    onSelect?: ((patch: Patch) => void) | null;
+    selectedId?: string | null;
+    onFirstItem?: ((patch: Patch) => void) | null;
+    onItemsUpdated?: ((patches: Patch[]) => void) | null;
+    onStateChange?: ((state: "loading" | "ready" | "empty" | "error") => void) | null;
+  } = $props();
 
   // ---- reactive state (all use $state for Svelte 5 runes mode) ----
   let patches = $state<Patch[]>([]);
@@ -33,13 +47,19 @@
 
     loading = true;
     error = null;
+    onStateChange?.("loading");
 
     try {
       patches = await listPatches(1, activeFilter || undefined, abortCtrl.signal);
+      onItemsUpdated?.(patches);
+      if (patches[0]) onFirstItem?.(patches[0]);
+      onStateChange?.(patches.length > 0 ? "ready" : "empty");
     } catch (e: any) {
       if (e?.name === "AbortError") return; // cancelled, leaving previous state
       patches = [];
+      onItemsUpdated?.([]);
       error = "PATCH_LOAD_FAILED";
+      onStateChange?.("error");
     } finally {
       // Only clear loading if this is still the active controller.
       if (abortCtrl && !abortCtrl.signal.aborted) {
@@ -55,7 +75,7 @@
 </script>
 
 <!-- Filter tabs -->
-<div class="flex gap-1 px-4 pt-2 border-b" style="border-color: var(--vercel-border);">
+<div class="patch-filters" style="border-color: var(--vercel-border);">
   {#each FILTERS as f}
     <button
       class="filter-tab"
@@ -84,6 +104,28 @@
   </div>
 {:else}
   {#each patches as patch (patch.id)}
-    <PatchCard {patch} />
+    <PatchCard
+      {patch}
+      selected={selectedId === patch.id}
+      onSelect={onSelect}
+    />
   {/each}
 {/if}
+
+<style>
+  .patch-filters {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.15rem;
+    padding: 0.4rem 0.5rem 0;
+    border-bottom: 1px solid var(--vercel-border);
+  }
+
+  .patch-filters :global(.filter-tab) {
+    min-width: 0;
+    padding-inline: 0.25rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+</style>

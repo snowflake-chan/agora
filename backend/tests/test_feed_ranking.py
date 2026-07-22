@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
 from app.posts.feed import rank_feed_items
-from app.schemas.post import FeedItem
+from app.schemas.post import FeedItem, PollOptionRead, PollRead
 
 
 NOW = datetime(2026, 7, 20, tzinfo=timezone.utc)
@@ -14,9 +14,23 @@ def _item(
     hours_old: int = 1,
     likes: int = 0,
     replies: int = 0,
+    poll_votes: int = 0,
     tags: list[str] | None = None,
     title: str = "Item",
 ) -> FeedItem:
+    poll = None
+    if poll_votes:
+        poll = PollRead(
+            id=uuid4(),
+            question="Which option?",
+            closes_at=NOW + timedelta(days=1),
+            is_closed=False,
+            total_votes=poll_votes,
+            options=[
+                PollOptionRead(id=uuid4(), text="First", vote_count=poll_votes),
+                PollOptionRead(id=uuid4(), text="Second", vote_count=0),
+            ],
+        )
     return FeedItem(
         id=uuid4(),
         type="post",
@@ -28,6 +42,7 @@ def _item(
         tags=tags,
         like_count=likes,
         reply_count=replies,
+        poll=poll,
     )
 
 
@@ -62,6 +77,20 @@ def test_trending_feed_rewards_recent_engagement():
     )
 
     assert ranked[0].id == engaged.id
+    assert ranked[0].ranking_reason == "trending:8"
+
+
+def test_trending_feed_counts_native_poll_votes_as_engagement():
+    poll = _item(hours_old=24, poll_votes=8, title="Active poll")
+    quiet = _item(hours_old=1, title="Quiet")
+
+    ranked = rank_feed_items(
+        [quiet, poll],
+        mode="trending",
+        now=NOW,
+    )
+
+    assert ranked[0].id == poll.id
     assert ranked[0].ranking_reason == "trending:8"
 
 
