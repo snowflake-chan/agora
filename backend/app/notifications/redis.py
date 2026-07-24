@@ -19,6 +19,7 @@ async def get_redis() -> aioredis.Redis:
                     settings.REDIS_URL,
                     decode_responses=True,
                     max_connections=10,
+                    protocol=2,
                 )
     return _redis
 

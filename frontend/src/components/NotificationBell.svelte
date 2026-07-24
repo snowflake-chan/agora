@@ -21,8 +21,8 @@
   import { currentUser, initAuth } from "../stores/auth";
   import RelativeTime from "./RelativeTime.svelte";
 
-  let open = false;
-  let initialized = false;
+  let open = $state(false);
+  let initialized = $state(false);
 
   onMount(async () => {
     await initAuth();
@@ -85,9 +85,10 @@
           <div class="notif-section-label">{$translator("notifications.related")}</div>
           {#each $notifications.filter((item) => !isFollowing(item.type)).slice(0, 6) as notif (notif.id)}
             {@const copy = localizeNotification(notif, $translator)}
+            {@const Icon = typeIcon(notif.type)}
             <button class="notif-item" onclick={() => handleNotifClick(notif.link)}>
               <div class="notif-icon">
-                <svelte:component this={typeIcon(notif.type)} class="size-3.5" />
+                <Icon class="size-3.5" />
               </div>
               <div class="notif-body">
                 <div class="notif-title">{copy.title}</div>
@@ -100,9 +101,10 @@
             <div class="notif-section-label secondary">{$translator("notifications.following")}</div>
             {#each $notifications.filter((item) => isFollowing(item.type)).slice(0, 4) as notif (notif.id)}
               {@const copy = localizeNotification(notif, $translator)}
+              {@const Icon = typeIcon(notif.type)}
               <button class="notif-item secondary-item" onclick={() => handleNotifClick(notif.link)}>
                 <div class="notif-icon">
-                  <svelte:component this={typeIcon(notif.type)} class="size-3.5" />
+                  <Icon class="size-3.5" />
                 </div>
                 <div class="notif-body">
                   <div class="notif-title">{copy.title}</div>

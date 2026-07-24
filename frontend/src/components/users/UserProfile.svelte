@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { PenLineIcon } from "@lucide/svelte";
+  import { PenLineIcon, StarIcon } from "@lucide/svelte";
   import { onMount } from "svelte";
   import { translator } from "../../lib/i18n";
   import { requestLogin } from "../../lib/login";
@@ -20,22 +20,28 @@
   import VotingWindowMeta from "../patches/VotingWindowMeta.svelte";
   import ModerationNotice from "../posts/ModerationNotice.svelte";
   import RelativeTime from "../RelativeTime.svelte";
+  import ProfileAchievements from "./ProfileAchievements.svelte";
+  import ProfileQA from "./ProfileQA.svelte";
   import {
     hasModerationNotice,
     isModerationRestricted,
     onModerationUpdate,
   } from "../../lib/moderation";
+  import { API_BASE } from "../../lib/config";
 
   let { userId }: { userId: string } = $props();
 
   let user = $state<UserPublic | null>(null);
   let items = $state<UserContentItem[]>([]);
+  let guildBadge = $state<{ guild_id: string; guild_name: string; guild_level: number; role: string } | null>(null);
   let loading = $state(true);
   let error = $state<string | null>(null);
   let followingBusy = $state(false);
   let filter = $state<"all" | "post" | "comment" | "patch">("all");
   let pendingDelete = $state<UserContentItem | null>(null);
   let showDeleteDialog = $state(false);
+  let tab = $state<"content" | "achievements" | "qa">("content");
+
   const filters = [
     { value: "all", key: "common.all" },
     { value: "post", key: "common.posts" },
@@ -53,6 +59,19 @@
         getUser(userId),
         getUserContent(userId),
       ]);
+
+      // Fetch guild badge
+      try {
+        const res = await fetch(`${API_BASE}/users/${userId}/guild`, { credentials: "include" });
+        if (res.ok) {
+          const data = await res.json();
+          guildBadge = data;
+        } else {
+          guildBadge = null;
+        }
+      } catch {
+        guildBadge = null;
+      }
     } catch {
       if (showError) error = "PROFILE_LOAD_FAILED";
     } finally {
@@ -128,6 +147,17 @@
         <p class="profile-kicker">{$translator("profile.kicker")}</p>
         <h1>{displayName(user.nickname, user.username)}</h1>
         <p class="profile-handle">@{user.username}</p>
+        <div class="profile-badges">
+          <span class="points-badge">
+            <StarIcon size={12} />
+            {user.points ?? 0} {$translator("profile.points")}
+          </span>
+          {#if guildBadge}
+            <a href="/guilds/{guildBadge.guild_id}" class="guild-badge" title="Lv.{guildBadge.guild_level} {guildBadge.guild_name}">
+              Lv.{guildBadge.guild_level} {guildBadge.guild_name}
+            </a>
+          {/if}
+        </div>
       </div>
     </div>
 
@@ -159,93 +189,117 @@
   </header>
 
   <nav class="content-filters" aria-label={$translator("profile.filters")}>
-    {#each filters as option}
-      <button
-        class:active={filter === option.value}
-        onclick={() => (filter = option.value)}
-      >
-        {$translator(option.key)}
-      </button>
-    {/each}
+    <button class:active={tab === "content"} onclick={() => (tab = "content")}>
+      {$translator("profile.content")}
+    </button>
+    <button class:active={tab === "achievements"} onclick={() => (tab = "achievements")}>
+      {$translator("profile.achievements")}
+    </button>
+    <button class:active={tab === "qa"} onclick={() => (tab = "qa")}>
+      {$translator("profile.qa")}
+    </button>
   </nav>
 
-  <section class="profile-stream" aria-label={$translator("profile.userContent")}>
-    {#if visibleItems.length === 0}
-      <div class="empty-state">{$translator("profile.empty")}</div>
-    {:else}
-      {#each visibleItems as item (item.id)}
-        {@const moderationRestricted = isModerationRestricted(item.moderation_status)}
-        {@const moderationVisible = hasModerationNotice(item.moderation_status)}
-        <article class="profile-item">
-          <div class="item-rail">
-            <span>{$translator(item.type === "post" ? "common.post" : item.type === "patch" ? "common.change" : "common.comment")}</span>
-            <RelativeTime value={item.created_at} />
-          </div>
-
-          {#if moderationVisible}
-            <div class="item-status">
-              <ModerationNotice
-                status={item.moderation_status}
-                reason={item.moderation_reason}
-                reviewNote={item.moderation_review_note}
-                compact
-              />
-            </div>
-          {/if}
-
-          {#if item.type === "comment" && item.root_id && !moderationRestricted}
-            <a class="context-root" href={itemHref(item)}>
-              <span>{$translator("profile.repliedTo")}</span>
-              <strong>{item.root_title ?? $translator(item.root_type === "post" ? "common.post" : "common.change")}</strong>
-            </a>
-          {/if}
-
-          {#if item.replying_to_username && !moderationRestricted}
-            <a class="context-reply" href={itemHref(item)}>
-              <span>↳ @{item.replying_to_username}</span>
-              {#if item.replying_to_content}
-                <span>{stripMarkdown(item.replying_to_content)}</span>
-              {/if}
-            </a>
-          {/if}
-
-          <a
-            class="item-main"
-            class:private-item={moderationRestricted}
-            href={itemHref(item)}
-          >
-            {#if item.title}<h2>{item.title}</h2>{/if}
-            <p>{stripMarkdown(item.content)}</p>
-          </a>
-
-          <footer class="item-footer">
-            {#if !moderationRestricted}
-              <div class="item-counts">
-                {#if item.type !== "patch"}<span>♡ {item.like_count}</span>{/if}
-                <a href={itemHref(item)}>↳ {item.reply_count}</a>
-                {#if item.pr_number}<span>PR #{item.pr_number}</span>{/if}
-                {#if item.status}<span>{$translator(`status.${item.status}`)}</span>{/if}
-                {#if item.type === "patch"}
-                  <VotingWindowMeta
-                    status={item.status}
-                    votingWindowKind={item.voting_window_kind}
-                    votingPeriodHours={item.voting_period_hours}
-                    votingStartedAt={item.voting_started_at}
-                    votingEndsAt={item.voting_ends_at}
-                  />
-                {/if}
-              </div>
-            {:else}
-              <span></span>
-            {/if}
-            {#if item.can_delete}
-              <button class="delete-item" onclick={() => requestDelete(item)}>{$translator("common.delete")}</button>
-            {/if}
-          </footer>
-        </article>
+  {#if tab === "content"}
+    <div class="content-subfilters">
+      {#each filters as option}
+        <button
+          class:active={filter === option.value}
+          onclick={() => (filter = option.value)}
+        >
+          {$translator(option.key)}
+        </button>
       {/each}
-    {/if}
-  </section>
+    </div>
+  {/if}
+
+  {#if tab === "content"}
+    <section class="profile-stream" aria-label={$translator("profile.userContent")}>
+      {#if visibleItems.length === 0}
+        <div class="empty-state">{$translator("profile.empty")}</div>
+      {:else}
+        {#each visibleItems as item (item.id)}
+          {@const moderationRestricted = isModerationRestricted(item.moderation_status)}
+          {@const moderationVisible = hasModerationNotice(item.moderation_status)}
+          <article class="profile-item">
+            <div class="item-rail">
+              <span>{$translator(item.type === "post" ? "common.post" : item.type === "patch" ? "common.change" : "common.comment")}</span>
+              <RelativeTime value={item.created_at} />
+            </div>
+
+            {#if moderationVisible}
+              <div class="item-status">
+                <ModerationNotice
+                  status={item.moderation_status}
+                  reason={item.moderation_reason}
+                  reviewNote={item.moderation_review_note}
+                  compact
+                />
+              </div>
+            {/if}
+
+            {#if item.type === "comment" && item.root_id && !moderationRestricted}
+              <a class="context-root" href={itemHref(item)}>
+                <span>{$translator("profile.repliedTo")}</span>
+                <strong>{item.root_title ?? $translator(item.root_type === "post" ? "common.post" : "common.change")}</strong>
+              </a>
+            {/if}
+
+            {#if item.replying_to_username && !moderationRestricted}
+              <a class="context-reply" href={itemHref(item)}>
+                <span>↳ @{item.replying_to_username}</span>
+                {#if item.replying_to_content}
+                  <span>{stripMarkdown(item.replying_to_content)}</span>
+                {/if}
+              </a>
+            {/if}
+
+            <a
+              class="item-main"
+              class:private-item={moderationRestricted}
+              href={itemHref(item)}
+            >
+              {#if item.title}<h2>{item.title}</h2>{/if}
+              <p>{stripMarkdown(item.content)}</p>
+            </a>
+
+            <footer class="item-footer">
+              {#if !moderationRestricted}
+                <div class="item-counts">
+                  {#if item.type !== "patch"}<span>♡ {item.like_count}</span>{/if}
+                  <a href={itemHref(item)}>↳ {item.reply_count}</a>
+                  {#if item.pr_number}<span>PR #{item.pr_number}</span>{/if}
+                  {#if item.status}<span>{$translator(`status.${item.status}`)}</span>{/if}
+                  {#if item.type === "patch"}
+                    <VotingWindowMeta
+                      status={item.status}
+                      votingWindowKind={item.voting_window_kind}
+                      votingPeriodHours={item.voting_period_hours}
+                      votingStartedAt={item.voting_started_at}
+                      votingEndsAt={item.voting_ends_at}
+                    />
+                  {/if}
+                </div>
+              {:else}
+                <span></span>
+              {/if}
+              {#if item.can_delete}
+                <button class="delete-item" onclick={() => requestDelete(item)}>{$translator("common.delete")}</button>
+              {/if}
+            </footer>
+          </article>
+        {/each}
+      {/if}
+    </section>
+  {:else if tab === "achievements"}
+    <div class="profile-tab-panel">
+      <ProfileAchievements {userId} />
+    </div>
+  {:else if tab === "qa"}
+    <div class="profile-tab-panel">
+      <ProfileQA {userId} username={user.username} />
+    </div>
+  {/if}
 {/if}
 
 <ConfirmDialog
@@ -277,6 +331,27 @@
   }
   .profile-header h1 { font-size: 1.5rem; font-weight: 650; letter-spacing: 0; }
   .profile-handle { color: var(--vercel-text-tertiary); font-size: .8rem; }
+  .profile-badges {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin-top: 0.4rem;
+  }
+  .points-badge {
+    display: inline-flex; align-items: center; gap: 0.3rem;
+    padding: 0.15rem 0.5rem;
+    background: rgba(250, 204, 21, 0.12);
+    border: 1px solid rgba(250, 204, 21, 0.2);
+    border-radius: 9999px;
+    color: #facc15; font-size: 0.6875rem; font-weight: 600;
+  }
+  .guild-badge {
+    display: inline-flex; align-items: center;
+    padding: 0.15rem 0.5rem;
+    background: rgba(59, 130, 246, 0.12);
+    border: 1px solid rgba(59, 130, 246, 0.2);
+    border-radius: 9999px;
+    color: #60a5fa; font-size: 0.6875rem; font-weight: 600;
+    text-decoration: none; transition: background 0.18s ease;
+  }
+  .guild-badge:hover { background: rgba(59, 130, 246, 0.2); }
   .profile-bio {
     grid-column: 1 / -1; max-width: 42rem; color: var(--vercel-text-secondary);
     font-size: .875rem; line-height: 1.65;
@@ -299,18 +374,30 @@
     min-width: 5.5rem;
   }
   .content-filters {
-    display: flex; gap: 1.25rem; overflow-x: auto;
-    border-bottom: 1px solid var(--vercel-border);
+    display: flex; gap: 0; padding: 0.375rem; border: 1px solid var(--vercel-border);
+    border-radius: var(--vercel-radius); background: var(--vercel-surface-muted);
+    margin-bottom: 0;
   }
   .content-filters button {
-    position: relative; padding: .9rem 0; color: var(--vercel-text-tertiary);
-    font-size: .78rem; white-space: nowrap;
+    flex: 1; padding: 0.35rem 0.5rem; border: 0; border-radius: calc(var(--vercel-radius) - 2px);
+    background: transparent; color: var(--vercel-text-tertiary); font-size: 0.75rem;
+    font-weight: 500; cursor: pointer; transition: background 0.15s, color 0.15s;
   }
-  .content-filters button.active { color: var(--vercel-text); }
-  .content-filters button.active::after {
-    position: absolute; right: 0; bottom: -1px; left: 0; height: 2px;
-    background: var(--vercel-text); content: "";
+  .content-filters button.active { background: var(--vercel-card); color: var(--vercel-text); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .content-filters button:hover:not(.active) { color: var(--vercel-text-secondary); }
+
+  .content-subfilters {
+    display: flex; gap: 0.5rem; padding: 0.5rem 0; margin-top: 0.25rem;
   }
+  .content-subfilters button {
+    padding: 0.2rem 0.6rem; border: 1px solid var(--vercel-border); border-radius: 999px;
+    background: transparent; color: var(--vercel-text-tertiary); font-size: 0.7rem;
+    cursor: pointer; transition: background 0.15s, color 0.15s;
+  }
+  .content-subfilters button.active { background: var(--vercel-accent); border-color: var(--vercel-accent); color: var(--vercel-accent-foreground); }
+  .content-subfilters button:hover:not(.active) { color: var(--vercel-text-secondary); }
+
+  .profile-tab-panel { padding: 1rem 0; }
   .profile-stream { border-bottom: 1px solid var(--vercel-border); }
   .profile-item {
     display: grid; grid-template-columns: 4.5rem minmax(0, 1fr);

@@ -1,6 +1,8 @@
 import asyncio
 import json
 
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -158,7 +160,7 @@ async def mark_all_read(
 
 @router.patch("/{notification_id}/read", status_code=204)
 async def mark_one_read(
-    notification_id: str,
+    notification_id: UUID,
     session: AsyncSession = Depends(get_session),
     user: User = Depends(current_user),
 ):

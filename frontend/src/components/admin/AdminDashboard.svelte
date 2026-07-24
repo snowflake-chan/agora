@@ -6,6 +6,7 @@
     Check,
     ChevronDown,
     ChevronUp,
+    Coins,
     Eye,
     ShieldAlert,
     Trash2,
@@ -51,12 +52,29 @@
     type Guild,
     type GuildMember,
   } from "../../lib/guilds";
+  import {
+    getTokenParamHistory,
+    getTokenParams,
+    getTokenSupply,
+    getMonetaryMetrics,
+    getSupplyHistory,
+    mintTokens,
+    updateTokenParams,
+    shortenPatchVote,
+    type TokenParamHistoryItem,
+    type TokenParams,
+    type TokenSupply,
+    type MonetaryMetrics,
+    type SupplySnapshot,
+  } from "../../lib/tokens";
   import { locale, translator, translateError } from "../../lib/i18n";
   import { currentUser, initAuth } from "../../stores/auth";
   import ConfirmDialog from "../ConfirmDialog.svelte";
   import GlassModal from "../GlassModal.svelte";
+  import TokenSupplyChart from "./TokenSupplyChart.svelte";
+  import TokenMonetaryPanel from "./TokenMonetaryPanel.svelte";
 
-  type Tab = "reports" | "moderation" | "posts" | "patches" | "ai" | "users" | "guilds";
+  type Tab = "reports" | "moderation" | "posts" | "patches" | "ai" | "users" | "guilds" | "tokens";
   type BanStatus = {
     id: string;
     type: string;
@@ -107,6 +125,27 @@
   let unbanUsername = $state("");
   let unbanStatuses = $state<BanStatus[]>([]);
 
+  let tokenSupply = $state<TokenSupply | null>(null);
+  let tokenParams = $state<TokenParams | null>(null);
+  let tokenParamDraft = $state<Partial<TokenParams>>({});
+  let tokenParamHistory = $state<TokenParamHistoryItem[]>([]);
+  let tokenLoading = $state(false);
+  let tokenSaving = $state(false);
+  let mintAmount = $state(0);
+  let mintRecipient = $state("");
+  let minting = $state(false);
+
+  let monetaryMetrics = $state<MonetaryMetrics | null>(null);
+  let supplyHistory = $state<SupplySnapshot[]>([]);
+
+  // shorten-vote modal
+  let shortenModal = $state(false);
+  let shortenPatchId = $state("");
+  let shortenPatchTitle = $state("");
+  let shortenHours = $state<number | null>(null);
+  let shortenSubmitting = $state(false);
+  let shortenResult = $state<{ action: string; new_voting_ends_at?: string; outcome?: string } | null>(null);
+
   let confirmOpen = $state(false);
   let confirmTitle = $state("");
   let confirmDescription = $state("");
@@ -123,6 +162,19 @@
     { value: "ban_user", key: "admin.ban.account" },
     { value: "mute_post", key: "admin.ban.posts" },
     { value: "mute_patch", key: "admin.ban.patches" },
+  ];
+
+  const tokenParamOrder: Array<keyof TokenParams> = [
+    "like_reward",
+    "vote_reward",
+    "proposal_pass_reward",
+    "daily_login_base",
+    "proposal_deposit",
+    "boost_price_low",
+    "boost_price_mid",
+    "boost_price_high",
+    "guild_create_fee",
+    "daily_user_cap",
   ];
 
   onMount(async () => {
@@ -152,12 +204,86 @@
           listGuilds(),
           getAISettings(),
         ]);
+        await loadTokenEconomy();
       }
     } catch (error) {
       showNotice(
         translateError(error, $translator, "admin.loadFailed"),
         "error",
       );
+    }
+  }
+
+  async function loadTokenEconomy() {
+    tokenLoading = true;
+    try {
+      const [supply, params, history] = await Promise.all([
+        getTokenSupply(),
+        getTokenParams(),
+        getTokenParamHistory(),
+      ]);
+      tokenSupply = supply;
+      tokenParams = params;
+      tokenParamDraft = { ...params };
+      tokenParamHistory = history.items ?? [];
+    } catch (error) {
+      showNotice(
+        translateError(error, $translator, "tokens.loadFailed"),
+        "error",
+      );
+    } finally {
+      tokenLoading = false;
+    }
+  }
+
+  async function loadMonetaryMetrics() {
+    try {
+      monetaryMetrics = await getMonetaryMetrics();
+    } catch (error) {
+      showNotice(
+        translateError(error, $translator, "common.operationFailed"),
+        "error",
+      );
+    }
+  }
+
+  async function saveTokenParams() {
+    if (!tokenParams || tokenSaving) return;
+    const updates: Partial<TokenParams> = {};
+    for (const key of Object.keys(tokenParams) as Array<keyof TokenParams>) {
+      const next = Number(tokenParamDraft[key]);
+      if (!Number.isNaN(next) && next !== tokenParams[key]) {
+        updates[key] = next;
+      }
+    }
+    if (Object.keys(updates).length === 0) return;
+    tokenSaving = true;
+    try {
+      const result = await updateTokenParams(updates);
+      tokenParams = result.params;
+      tokenParamDraft = { ...result.params };
+      await loadTokenEconomy();
+      showNotice($translator("tokens.admin.saveParams"));
+    } catch (error) {
+      showNotice(translateError(error, $translator, "common.operationFailed"), "error");
+    } finally {
+      tokenSaving = false;
+    }
+  }
+
+  async function submitMint() {
+    if (!mintRecipient.trim() || mintAmount <= 0 || minting) return;
+    minting = true;
+    try {
+      await mintTokens(mintRecipient.trim(), mintAmount);
+      mintAmount = 0;
+      mintRecipient = "";
+      await loadTokenEconomy();
+      showNotice($translator("tokens.admin.mintSuccess"));
+    } catch (error) {
+      showNotice(translateError(error, $translator, "common.operationFailed"), "error");
+    } finally {
+      minting = false;
     }
   }
 
@@ -173,6 +299,7 @@
         { value: "ai", key: "admin.tabs.ai" },
         { value: "users", key: "admin.tabs.users" },
         { value: "guilds", key: "admin.tabs.guilds" },
+        { value: "tokens", key: "tokens.admin.title" },
       );
     }
     return shared;
@@ -431,6 +558,29 @@
     confirmText = text;
     confirmAction = action;
     confirmOpen = true;
+  }
+
+  function openShortenModal(patch: AdminPatch) {
+    shortenPatchId = patch.id;
+    shortenPatchTitle = patch.title;
+    shortenHours = null;
+    shortenResult = null;
+    shortenModal = true;
+  }
+
+  async function handleShortenVote() {
+    shortenSubmitting = true;
+    shortenResult = null;
+    try {
+      const result = await shortenPatchVote(shortenPatchId, shortenHours ?? undefined);
+      shortenResult = result;
+      // Refresh the patches list so the status updates
+      patches = await listAdminPatches();
+    } catch (error) {
+      showNotice(translateError(error, $translator, "common.operationFailed"), "error");
+    } finally {
+      shortenSubmitting = false;
+    }
   }
 
   async function deletePost(post: AdminPost) {
@@ -769,6 +919,16 @@
                 </div>
               </div>
               <div class="row-actions">
+                {#if tab === "patches" && (item as AdminPatch).status === "voting"}
+                  {#if isSuperAdmin}
+                    <button
+                      class="btn btn-warning btn-sm"
+                      onclick={() => openShortenModal(item as AdminPatch)}
+                    >
+                      {$translator("admin.shortenVote")}
+                    </button>
+                  {/if}
+                {/if}
                 <a
                   href={tab === "posts" ? `/posts/${item.id}` : `/patches/${item.id}`}
                   target="_blank"
@@ -1021,6 +1181,114 @@
         </article>
       {/each}
     </section>
+
+  {:else if tab === "tokens"}
+    <section class="token-economy" aria-label={$translator("tokens.admin.title")}>
+      {#if tokenLoading}
+        <div class="empty-state"><div class="spinner"></div></div>
+      {:else}
+        <div class="token-section">
+          <h3 class="token-section-title"><Coins size={16} aria-hidden="true" /> {$translator("tokens.admin.supply")}</h3>
+          {#if tokenSupply}
+            <div class="supply-grid">
+              <div class="stat-card">
+                <span class="stat-label">{$translator("tokens.admin.circulating")}</span>
+                <span class="stat-value">{tokenSupply.circulating_supply.toLocaleString()}</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">{$translator("tokens.admin.totalIssued")}</span>
+                <span class="stat-value">{tokenSupply.total_issued.toLocaleString()}</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">{$translator("tokens.admin.totalBurned")}</span>
+                <span class="stat-value">{tokenSupply.total_burned.toLocaleString()}</span>
+              </div>
+            </div>
+          {:else}
+            <p class="row-meta">{$translator("common.loading")}</p>
+          {/if}
+        </div>
+
+        <div class="token-section">
+          <h3 class="token-section-title">{$translator("tokens.admin.monetaryTitle")}</h3>
+          <TokenMonetaryPanel onAdjusted={loadMonetaryMetrics} />
+        </div>
+
+        <div class="token-section">
+          <h3 class="token-section-title">{$translator("tokens.admin.supplyTrend")}</h3>
+          <TokenSupplyChart title={$translator("tokens.admin.supplyTrend")} />
+        </div>
+
+        <div class="token-section">
+          <h3 class="token-section-title">{$translator("tokens.admin.params")}</h3>
+          {#if tokenParams}
+            <div class="param-grid">
+              {#each tokenParamOrder as key (key)}
+                <label>
+                  <span>{$translator(`tokens.admin.param.${key}`)}</span>
+                  <input class="input" type="number" min="0" bind:value={tokenParamDraft[key]} />
+                  <span class="param-desc-note">{$translator(`tokens.admin.param.${key}_desc`)}</span>
+                </label>
+              {/each}
+            </div>
+            <div class="token-actions">
+              <button class="btn btn-primary btn-sm" onclick={saveTokenParams} disabled={tokenSaving}>
+                {$translator(tokenSaving ? "common.saving" : "tokens.admin.saveParams")}
+              </button>
+            </div>
+          {:else}
+            <p class="row-meta">{$translator("common.loading")}</p>
+          {/if}
+        </div>
+
+        <div class="token-section">
+          <h3 class="token-section-title">{$translator("tokens.admin.mint")}</h3>
+          <div class="mint-grid">
+            <label>
+              <span>{$translator("tokens.admin.mintRecipient")}</span>
+              <input
+                class="input"
+                type="email"
+                placeholder={$translator("tokens.admin.mintRecipientPlaceholder")}
+                bind:value={mintRecipient}
+              />
+            </label>
+            <label>
+              <span>{$translator("tokens.admin.mintAmount")}</span>
+              <input class="input" type="number" min="1" bind:value={mintAmount} />
+            </label>
+          </div>
+          <div class="token-actions">
+            <button
+              class="btn btn-primary btn-sm"
+              onclick={submitMint}
+              disabled={minting || !mintRecipient.trim() || mintAmount <= 0}
+            >
+              {$translator(minting ? "common.saving" : "tokens.admin.mint")}
+            </button>
+          </div>
+        </div>
+
+        <div class="token-section">
+          <h3 class="token-section-title">{$translator("tokens.admin.history")}</h3>
+          {#if tokenParamHistory.length === 0}
+            <p class="row-meta">{$translator("tokens.admin.historyEmpty")}</p>
+          {:else}
+            <ul class="param-history">
+              {#each tokenParamHistory as item (item.changed_at + item.key)}
+                <li class="param-history-row">
+                  <span class="param-history-key">{$translator(`tokens.admin.param.${item.key}`)}</span>
+                  <span class="param-history-change">{item.old_value} → {item.new_value}</span>
+                  <span class="param-history-meta">
+                    {item.changed_by ?? $translator("common.anonymous")} · {formatDate(item.changed_at)}
+                  </span>
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        </div>
+      {/if}
+    </section>
   {/if}
 {/if}
 
@@ -1127,11 +1395,68 @@
   </div>
 </GlassModal>
 
-<GlassModal
-  show={unbanModal}
-  title={$translator("admin.unbanTitle", { name: unbanUsername })}
-  onclose={() => (unbanModal = false)}
->
+	<!-- Shorten vote modal -->
+	<GlassModal
+	  show={shortenModal}
+	  title={$translator("admin.shortenVote")}
+	  onclose={() => (shortenModal = false)}
+	>
+	  <div class="shorten-modal">
+	    <p class="shorten-patch-title">{shortenPatchTitle}</p>
+
+	    {#if shortenResult}
+	      <div class="shorten-result">
+	        {#if shortenResult.action === "shortened"}
+	          <p>{$translator("admin.voteShortened", { hours: String(shortenHours ?? 0) })}</p>
+	        {:else}
+	          <p>{$translator("admin.voteEnded", { outcome: shortenResult.outcome ?? "" })}</p>
+	        {/if}
+	      </div>
+	      <div class="shorten-actions">
+	        <button class="btn btn-primary btn-sm" onclick={() => (shortenModal = false)}>
+	          {$translator("common.close")}
+	        </button>
+	      </div>
+	    {:else}
+	      <div class="shorten-form">
+	        <label class="shorten-label">
+	          {$translator("admin.shortenVoteModal")}
+	          <input
+	            class="input"
+	            type="number"
+	            min="1"
+	            max="168"
+	            placeholder="{$translator("admin.shortenVoteModal")}"
+	            bind:value={shortenHours}
+	          />
+	        </label>
+	        <p class="field-note">{$translator("common.optional")}</p>
+	      </div>
+	      <div class="shorten-actions">
+<button
+          class="btn btn-primary btn-sm"
+          onclick={() => { shortenHours = null; handleShortenVote(); }}
+          disabled={shortenSubmitting}
+        >
+          {$translator("admin.endVoteNow")}
+        </button>
+	        <button
+	          class="btn btn-warning btn-sm"
+	          onclick={handleShortenVote}
+	          disabled={shortenSubmitting || !shortenHours}
+	        >
+	          {shortenSubmitting ? $translator("common.processing") : $translator("admin.shortenVote")}
+	        </button>
+	      </div>
+	    {/if}
+	  </div>
+	</GlassModal>
+
+	<GlassModal
+	  show={unbanModal}
+	  title={$translator("admin.unbanTitle", { name: unbanUsername })}
+	  onclose={() => (unbanModal = false)}
+	>
   {#if unbanStatuses.length === 0}
     <p>{$translator("admin.noRestrictions")}</p>
   {:else}
@@ -1590,6 +1915,124 @@
     font-size: 0.8125rem;
   }
 
+  .token-economy {
+    display: grid;
+    gap: 1.5rem;
+  }
+
+  .token-section {
+    padding: 1rem;
+    border: 1px solid var(--vercel-border);
+    border-radius: var(--vercel-radius);
+    background: var(--vercel-surface);
+  }
+
+  .token-section-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0 0 0.75rem;
+    font-size: 0.875rem;
+    color: var(--vercel-text);
+  }
+
+  .supply-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.75rem;
+  }
+
+  .stat-card {
+    display: grid;
+    gap: 0.25rem;
+    padding: 0.75rem;
+    border: 1px solid var(--vercel-border);
+    border-radius: var(--vercel-radius-sm);
+    background: var(--vercel-background);
+  }
+
+  .stat-label {
+    color: var(--vercel-text-tertiary);
+    font-size: 0.75rem;
+  }
+
+  .stat-value {
+    color: var(--vercel-text);
+    font-size: 1.125rem;
+    font-weight: 600;
+  }
+
+  .param-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .param-grid label,
+  .mint-grid label {
+    display: grid;
+    gap: 0.35rem;
+  }
+
+  .param-grid label > span,
+  .mint-grid label > span {
+    color: var(--vercel-text-tertiary);
+    font-size: 0.75rem;
+  }
+
+  .param-desc-note {
+    color: var(--vercel-text-tertiary);
+    font-size: 0.65rem;
+    line-height: 1.3;
+    opacity: 0.75;
+  }
+
+  .mint-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .token-actions {
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .param-history {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .param-history-row {
+    display: grid;
+    gap: 0.15rem;
+    padding: 0.625rem 0;
+    border-top: 1px solid var(--vercel-border);
+    font-size: 0.8125rem;
+  }
+
+  .param-history-row:first-child {
+    border-top: 0;
+    padding-top: 0;
+  }
+
+  .param-history-key {
+    color: var(--vercel-text-secondary);
+  }
+
+  .param-history-change {
+    color: var(--vercel-text);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .param-history-meta {
+    color: var(--vercel-text-tertiary);
+    font-size: 0.75rem;
+  }
+
   @media (max-width: 42rem) {
     .admin-row {
       grid-template-columns: 1fr;
@@ -1606,6 +2049,11 @@
     .description-field {
       grid-column: 1 / -1;
     }
+
+    .supply-grid,
+    .param-grid {
+      grid-template-columns: 1fr 1fr;
+    }
   }
 
   @media (max-width: 28rem) {
@@ -1621,6 +2069,12 @@
 
     .description-field {
       grid-column: auto;
+    }
+
+    .supply-grid,
+    .param-grid,
+    .mint-grid {
+      grid-template-columns: 1fr;
     }
   }
 </style>

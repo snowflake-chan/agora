@@ -1,3 +1,5 @@
+import logging
+
 from sqlalchemy import select
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -7,9 +9,12 @@ from fastapi_users.password import PasswordHelper
 from app.config import settings
 from app.schemas.user import LoginRequest, UserCreate, UserRead
 from app.db.models.user import User, get_user_db
+from app.tokens import service as token_service
 from app.users.backend import auth_backend, transport as cookie_transport
 from app.users.deps import optional_current_user
 from app.users.rate_limit import client_ip, enforce_rate_limit
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 password_helper = PasswordHelper()
@@ -83,6 +88,16 @@ async def register(
 
     token = await strategy.write_token(user)
     _set_auth_cookie(response, token)
+
+    # Welcome bonus: 60 AGC for new users. Best-effort; must not block registration.
+    try:
+        await token_service.earn(
+            user_db.session, user.id, 60, "register_bonus",
+            bypass_cap=True, bypass_new_user_rate=True,
+        )
+        await user_db.session.commit()
+    except Exception:
+        logger.exception("Failed to grant register bonus to user %s", user.id)
 
     return UserRead.model_validate(user)
 

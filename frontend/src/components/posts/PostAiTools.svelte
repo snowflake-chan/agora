@@ -16,11 +16,6 @@
   import { requestLogin } from "../../lib/login";
   import { dispatchModerationUpdate } from "../../lib/moderation";
   import {
-    publishTranslation,
-    sharedTranslations,
-    translationStateKey,
-  } from "../../lib/translation-state";
-  import {
     aiTranslationLanguage,
     autoTranslate,
     initPreferences,
@@ -64,8 +59,6 @@
   let summary = $state<LocalizedOutput | null>(null);
   let translation = $state<DisplayTranslation | null>(null);
   let translationVisible = $state(false);
-  let streamedTitle = $state("");
-  let streamedBody = $state("");
   let notice = $state<Notice>(null);
   let errorMessage = $state<string | null>(null);
   let cachedLocale = $state<Locale>($locale);
@@ -84,19 +77,6 @@
       ? { contentId: sourceContentId, revisionNumber: sourceRevisionNumber }
       : null,
   );
-  let sharedTranslationKey = $derived(
-    sourceReference
-      ? translationStateKey(context, sourceReference.contentId, sourceReference.revisionNumber, translationTarget)
-      : null,
-  );
-
-  $effect(() => {
-    const shared = sharedTranslationKey ? $sharedTranslations[sharedTranslationKey] : null;
-    if (!shared || shared.locale !== translationTarget || translation === shared) return;
-    translation = shared;
-    translationVisible = true;
-    onTranslationChange?.(shared);
-  });
 
   $effect(() => {
     const nextLocale = $locale;
@@ -110,8 +90,6 @@
       cachedTranslationLocale = nextTranslationLocale;
       translation = null;
       translationVisible = false;
-      streamedTitle = "";
-      streamedBody = "";
       if (active === "translation") active = null;
       onTranslationChange?.(null);
     }
@@ -259,7 +237,6 @@
     if (translation?.locale === translationTarget) {
       translationVisible = true;
       onTranslationChange?.(translation);
-      rememberTranslation(true);
       return;
     }
     notice = null;
@@ -268,8 +245,6 @@
     const targetLocale = translationTarget;
     if (translation?.locale === targetLocale) return;
     loading = "translation";
-    streamedTitle = "";
-    streamedBody = "";
     try {
       const streamed = new Map<string, string>();
       const output = await translateFields(
@@ -279,8 +254,7 @@
         sourceReference,
         (field) => {
           streamed.set(field.key, field.translation);
-          streamedTitle = streamed.get("title") ?? "";
-          streamedBody = streamed.get("body") ?? "";
+          const streamedBody = streamed.get("body");
           if (!streamedBody || translationTarget !== targetLocale) return;
           const nextTranslation: DisplayTranslation = {
             locale: targetLocale,
@@ -291,7 +265,6 @@
           translation = nextTranslation;
           translationVisible = true;
           onTranslationChange?.(nextTranslation);
-          if (sharedTranslationKey) publishTranslation(sharedTranslationKey, nextTranslation);
         },
       );
       if (output.skipped) {
@@ -310,11 +283,7 @@
         };
         translation = nextTranslation;
         translationVisible = true;
-        streamedTitle = translatedTitle ?? "";
-        streamedBody = translatedBody;
         onTranslationChange?.(nextTranslation);
-        rememberTranslation(true);
-        if (sharedTranslationKey) publishTranslation(sharedTranslationKey, nextTranslation);
       }
     } catch (error) {
       handleError(error);
@@ -408,19 +377,6 @@
       </section>
     {/if}
 
-    {#if loading === "translation" && (streamedTitle || streamedBody)}
-      <section class="ai-result" aria-label={$translator("ai.translate")} aria-live="polite">
-        <div class="ai-result-heading">
-          <LanguagesIcon size={13} strokeWidth={1.8} aria-hidden="true" />
-          <span>{$translator("ai.translate")}</span>
-        </div>
-        <div class="ai-result-copy">
-          {#if streamedTitle}<h4>{streamedTitle}</h4>{/if}
-          {#if streamedBody}<p>{streamedBody}<span class="stream-cursor" aria-hidden="true"></span></p>{/if}
-        </div>
-      </section>
-    {/if}
-
     {#if translation?.locale === translationTarget}
       <div class="translation-status" aria-live="polite">
         <span>
@@ -455,20 +411,6 @@
 
   .ai-tools.compact {
     margin-top: 0.45rem;
-  }
-
-  .stream-cursor {
-    display: inline-block;
-    width: 0.35rem;
-    height: 0.95em;
-    margin-left: 0.14rem;
-    vertical-align: -0.14em;
-    background: currentColor;
-    animation: cursor-blink 800ms steps(2, start) infinite;
-  }
-
-  @keyframes cursor-blink {
-    to { visibility: hidden; }
   }
 
   .ai-toolbar-label.visually-compact {

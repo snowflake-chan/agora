@@ -1,15 +1,24 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import {
+    CoinsIcon,
     ExternalLink,
     LockKeyhole,
     LogOut,
+    StarIcon,
     UserRound,
   } from "@lucide/svelte";
   import { translateError, translator } from "../../lib/i18n";
   import { initAuth, currentUser, updateProfile, logout } from "../../stores/auth";
   import type { UserUpdateData } from "../../lib/auth";
-  import { avatarInitial, displayName } from "../../lib/utils";
+  import { avatarInitial, displayName, timeAgo } from "../../lib/utils";
+  import {
+    claimDailyLogin,
+    getBalance,
+    listTransactions,
+    type TokenBalance,
+    type TokenTransaction,
+  } from "../../lib/tokens";
 
   let saving = $state(false);
   let message = $state<{ type: "success" | "error"; text: string } | null>(null);
@@ -17,7 +26,25 @@
   let newPassword = $state("");
   let confirmPassword = $state("");
 
-  onMount(() => initAuth());
+  // Token economy state
+  let tokenBalance = $state<TokenBalance | null>(null);
+  let tokenLoading = $state(true);
+  let tokenError = $state<string | null>(null);
+  let dailyReward = $state<number | null>(null);
+  let dailyStreak = $state(0);
+  let dailyClaimed = $state(false);
+  let claimingDaily = $state(false);
+  let transactions = $state<TokenTransaction[]>([]);
+  let transactionPage = $state(1);
+  let transactionTotal = $state(0);
+  let loadingTransactions = $state(false);
+
+  onMount(async () => {
+    await initAuth();
+    if ($currentUser) {
+      loadTokenBalance();
+    }
+  });
 
   $effect(() => {
     if ($currentUser) {
@@ -99,7 +126,80 @@
     await logout();
     window.location.href = "/";
   }
-</script>
+
+  async function loadTokenBalance() {
+    tokenLoading = true;
+    tokenError = null;
+    try {
+      const [balance, txList] = await Promise.all([
+        getBalance(),
+        listTransactions(1, 20),
+      ]);
+      tokenBalance = balance;
+      transactions = txList.items;
+      transactionTotal = txList.total;
+      transactionPage = 1;
+    } catch (error) {
+      tokenError = translateError(error, $translator, "tokens.loadFailed");
+    } finally {
+      tokenLoading = false;
+      loadingTransactions = false;
+    }
+  }
+
+  async function loadMoreTransactions() {
+    if (loadingTransactions || transactions.length >= transactionTotal) return;
+    loadingTransactions = true;
+    try {
+      const next = transactionPage + 1;
+      const txList = await listTransactions(next, 20);
+      transactions = [...transactions, ...txList.items];
+      transactionPage = next;
+      transactionTotal = txList.total;
+    } catch (error) {
+      tokenError = translateError(error, $translator, "tokens.loadFailed");
+    } finally {
+      loadingTransactions = false;
+    }
+  }
+
+  async function handleClaimDaily() {
+    if (claimingDaily || dailyClaimed) return;
+    claimingDaily = true;
+    try {
+      const result = await claimDailyLogin();
+      dailyReward = result.reward;
+      dailyStreak = result.streak;
+      dailyClaimed = result.already_claimed;
+      if (tokenBalance) {
+        tokenBalance = { ...tokenBalance, balance: result.balance };
+      }
+      message = {
+        type: "success",
+        text: $translator("tokens.dailyLoginClaimed"),
+      };
+      // Refresh transactions to show the earn record.
+      const txList = await listTransactions(1, 20);
+      transactions = txList.items;
+      transactionTotal = txList.total;
+      transactionPage = 1;
+    } catch (error) {
+      message = {
+        type: "error",
+        text: translateError(error, $translator, "tokens.loadFailed"),
+      };
+    } finally {
+      claimingDaily = false;
+    }
+  }
+
+  function transactionSign(amount: number, type: string): string {
+    if (type === "spend") return `-${amount}`;
+    if (type === "earn" || type === "receive") return `+${amount}`;
+    return String(amount);
+  }
+
+  </script>
 
 {#if !$currentUser}
   <div class="empty-state signed-out">
@@ -135,6 +235,10 @@
         <p class="settings-kicker">{$translator("profile.accountEyebrow")}</p>
         <h1>{$translator("profile.settingsTitle")}</h1>
         <p>{$translator("profile.settingsDescription")}</p>
+        <div class="points-badge">
+          <StarIcon size={14} />
+          <span>{$currentUser.points ?? 0} {$translator("profile.points")}</span>
+        </div>
       </div>
 
       <a class="public-profile-link" href="/users/{$currentUser.id}">
@@ -158,6 +262,7 @@
       <nav class="settings-index" aria-label={$translator("profile.sectionNav")}>
         <a href="#identity"><UserRound size={16} />{$translator("profile.publicIdentity")}</a>
         <a href="#security"><LockKeyhole size={16} />{$translator("profile.security")}</a>
+        <a href="#tokens"><CoinsIcon size={16} />{$translator("tokens.title")}</a>
         <a href="#session"><LogOut size={16} />{$translator("profile.session")}</a>
       </nav>
 
@@ -260,9 +365,103 @@
           </div>
         </section>
 
-        <section id="session" class="settings-section session-section">
+        <section id="tokens" class="settings-section token-section">
           <div class="section-copy">
             <span class="section-number">03</span>
+            <div>
+              <h2>{$translator("tokens.title")}</h2>
+              <p>{$translator("tokens.description")}</p>
+            </div>
+          </div>
+
+          <div class="token-content">
+            {#if tokenLoading}
+              <p class="token-status">{$translator("common.loading")}</p>
+            {:else if tokenError}
+              <p class="token-status token-status-error">{tokenError}</p>
+            {:else}
+              <div class="token-balance-grid">
+                <div class="token-stat">
+                  <span class="token-stat-label">{$translator("tokens.balance")}</span>
+                  <span class="token-stat-value">{tokenBalance?.balance ?? 0}</span>
+                </div>
+                <div class="token-stat">
+                  <span class="token-stat-label">{$translator("tokens.earned")}</span>
+                  <span class="token-stat-value token-stat-positive">{tokenBalance?.total_earned ?? 0}</span>
+                </div>
+                <div class="token-stat">
+                  <span class="token-stat-label">{$translator("tokens.spent")}</span>
+                  <span class="token-stat-value token-stat-negative">{tokenBalance?.total_spent ?? 0}</span>
+                </div>
+              </div>
+
+              <div class="daily-login">
+                <div class="daily-login-copy">
+                  <strong>{$translator("tokens.dailyLogin")}</strong>
+                  {#if dailyStreak > 0}
+                    <small>{$translator("tokens.streak", { count: dailyStreak })}</small>
+                  {/if}
+                </div>
+                <button
+                  type="button"
+                  class="btn btn-primary btn-sm"
+                  disabled={claimingDaily || dailyClaimed}
+                  onclick={handleClaimDaily}
+                >
+                  {#if claimingDaily}
+                    {$translator("common.processing")}
+                  {:else if dailyClaimed}
+                    {$translator("tokens.dailyLoginClaimed")}
+                  {:else}
+                    {$translator("tokens.claimDailyLogin")}
+                  {/if}
+                </button>
+              </div>
+
+              <div class="transaction-list">
+                <h3>{$translator("tokens.transactions")}</h3>
+                {#if transactions.length === 0}
+                  <p class="token-empty">{$translator("tokens.emptyTransactions")}</p>
+                {:else}
+                  <ul>
+                    {#each transactions as tx (tx.id)}
+                      <li class="transaction-item">
+                        <div class="transaction-main">
+                          <span class="transaction-source">{tx.source}</span>
+                          <span
+                            class="transaction-amount"
+                            class:positive={tx.type !== "spend"}
+                            class:negative={tx.type === "spend"}
+                          >
+                            {transactionSign(tx.amount, tx.type)} AGC
+                          </span>
+                        </div>
+                        <div class="transaction-meta">
+                          <span>{timeAgo(tx.created_at)}</span>
+                          <span>{$translator("tokens.balance")} {tx.balance_after}</span>
+                        </div>
+                      </li>
+                    {/each}
+                  </ul>
+                  {#if transactions.length < transactionTotal}
+                    <button
+                      type="button"
+                      class="btn btn-sm load-more"
+                      disabled={loadingTransactions}
+                      onclick={loadMoreTransactions}
+                    >
+                      {loadingTransactions ? $translator("common.loading") : $translator("common.loadMore")}
+                    </button>
+                  {/if}
+                {/if}
+              </div>
+            {/if}
+          </div>
+        </section>
+
+        <section id="session" class="settings-section session-section">
+          <div class="section-copy">
+            <span class="section-number">04</span>
             <div>
               <h2>{$translator("profile.session")}</h2>
               <p>{$translator("profile.sessionDescription")}</p>
@@ -290,6 +489,20 @@
   .profile-settings {
     --settings-line: var(--vercel-border);
     padding-bottom: 2rem;
+  }
+
+  .points-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-top: 0.35rem;
+    padding: 0.2rem 0.55rem;
+    background: rgba(250, 204, 21, 0.12);
+    border: 1px solid rgba(250, 204, 21, 0.2);
+    border-radius: 9999px;
+    color: #facc15;
+    font-size: 0.6875rem;
+    font-weight: 600;
   }
 
   .profile-heading {
@@ -561,6 +774,168 @@
     margin-top: 4rem;
   }
 
+  .token-section {
+    align-items: start;
+  }
+
+  .token-content {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .token-status {
+    margin: 0;
+    color: var(--vercel-text-tertiary);
+    font-size: 0.8125rem;
+  }
+
+  .token-status-error {
+    color: var(--vercel-danger);
+  }
+
+  .token-balance-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.75rem;
+  }
+
+  .token-stat {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 0.875rem;
+    border: 1px solid var(--vercel-border);
+    border-radius: var(--vercel-radius);
+    background: var(--vercel-card);
+  }
+
+  .token-stat-label {
+    color: var(--vercel-text-tertiary);
+    font-size: 0.6875rem;
+    font-weight: 550;
+  }
+
+  .token-stat-value {
+    color: var(--vercel-text);
+    font-size: 1.25rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .token-stat-positive {
+    color: var(--vercel-success);
+  }
+
+  .token-stat-negative {
+    color: var(--vercel-danger);
+  }
+
+  .daily-login {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.875rem;
+    border: 1px solid var(--vercel-border);
+    border-radius: var(--vercel-radius);
+    background: var(--vercel-card);
+  }
+
+  .daily-login-copy {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .daily-login-copy strong {
+    color: var(--vercel-text);
+    font-size: 0.8125rem;
+    font-weight: 550;
+  }
+
+  .daily-login-copy small {
+    color: var(--vercel-text-tertiary);
+    font-size: 0.6875rem;
+  }
+
+  .transaction-list h3 {
+    margin: 0 0 0.5rem;
+    color: var(--vercel-text);
+    font-size: 0.8125rem;
+    font-weight: 550;
+  }
+
+  .transaction-list ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border-top: 1px solid var(--vercel-border);
+  }
+
+  .transaction-item {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.65rem 0;
+    border-bottom: 1px solid var(--vercel-border);
+  }
+
+  .transaction-main {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .transaction-source {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--vercel-text);
+    font-size: 0.8125rem;
+    font-weight: 500;
+  }
+
+  .transaction-amount {
+    flex: 0 0 auto;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .transaction-amount.positive {
+    color: var(--vercel-success);
+  }
+
+  .transaction-amount.negative {
+    color: var(--vercel-danger);
+  }
+
+  .transaction-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    color: var(--vercel-text-tertiary);
+    font-size: 0.6875rem;
+  }
+
+  .token-empty {
+    margin: 0;
+    color: var(--vercel-text-tertiary);
+    font-size: 0.8125rem;
+  }
+
+  .load-more {
+    margin-top: 0.75rem;
+  }
+
   @media (max-width: 52rem) {
     .profile-heading {
       grid-template-columns: minmax(0, 1fr) auto;
@@ -578,7 +953,7 @@
     .settings-index {
       position: static;
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       overflow: visible;
       padding-bottom: 0.35rem;
     }

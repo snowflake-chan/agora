@@ -110,6 +110,20 @@ def test_following_feed_filters_and_uses_chronological_order():
     assert [item.id for item in ranked] == [newest.id, older.id]
 
 
+def test_recommended_feed_boosts_promoted_posts():
+    quiet = _item(hours_old=48, likes=1, title="Quiet")
+    promoted = _item(hours_old=48, likes=1, title="Promoted")
+    promoted.boost_weight = 2.0
+
+    ranked = rank_feed_items(
+        [quiet, promoted],
+        mode="recommended",
+        now=NOW,
+    )
+
+    assert ranked[0].id == promoted.id
+
+
 def test_ranked_feeds_limit_same_author_to_two_consecutive_items():
     dominant_author = uuid4()
     dominant = [

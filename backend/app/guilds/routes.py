@@ -26,6 +26,7 @@ from app.schemas.guild import (
     GuildMemberRead, GuildDiscussionCreate, GuildDiscussionRead,
     UserGuildBadge,
 )
+from app.tokens import service as token_service
 from app.users.deps import current_user, optional_current_user
 from app.utils import calc_guild_level
 
@@ -57,7 +58,8 @@ async def _guild_to_read(g: Guild, session: AsyncSession) -> GuildRead:
         president_id=g.president_id,
         president_username=g.president.username if g.president else "",
         member_count=mc,
-        level=g.level or calc_guild_level(mc),
+        points=g.points,
+        level=g.level or calc_guild_level(g.points),
         created_at=g.created_at,
     )
 
@@ -92,6 +94,13 @@ async def create_guild(
     if duplicate_name:
         raise HTTPException(409, detail="GUILD_NAME_TAKEN")
 
+    # Token economy: charge one-time guild creation fee
+    fee = await token_service.get_param(session, "guild_create_fee")
+    try:
+        await token_service.spend(session, user.id, fee, "guild_create")
+    except ValueError:
+        raise HTTPException(402, detail=f"INSUFFICIENT_AGC_NEED_{fee}")
+
     g = Guild(
         name=body.name,
         logo=body.logo,
@@ -105,12 +114,57 @@ async def create_guild(
         await session.flush()
         m = GuildMember(guild_id=g.id, user_id=user.id, role="president")
         session.add(m)
+
+        # First guild for the creator: credit historical points.
+        if not user.first_guild_id:
+            user.first_guild_id = g.id
+            if user.points > 0:
+                from app.db.models.points import PointTransaction
+                g.points = (g.points or 0) + user.points
+                session.add(PointTransaction(
+                    user_id=user.id,
+                    guild_id=g.id,
+                    amount=user.points,
+                    reason="first_guild_credit",
+                    note=f"创建社团，历史积分 {user.points} 归属「{g.name}」",
+                ))
+
         await session.commit()
     except IntegrityError as exc:
         await session.rollback()
         raise HTTPException(409, detail="GUILD_NAME_TAKEN") from exc
     await session.refresh(g)
     return await _guild_to_read(g, session)
+
+
+# ── User Guild Badge ──
+
+
+@router.get("/-/my", response_model=UserGuildBadge | None)
+async def my_guild(
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    m = (await session.execute(
+        select(GuildMember)
+        .where(GuildMember.user_id == user.id, _approved_membership())
+        .order_by(GuildMember.joined_at)
+        .limit(1)
+    )).scalars().first()
+    if not m:
+        return None
+    mc = (await session.execute(
+        select(func.count(GuildMember.id)).where(
+            GuildMember.guild_id == m.guild_id,
+            _approved_membership(),
+        )
+    )).scalar() or 0
+    return UserGuildBadge(
+        guild_id=m.guild_id,
+        guild_name=m.guild.name,
+        guild_level=m.guild.level or calc_guild_level(m.guild.points),
+        role=m.role,
+    )
 
 
 # ── Single Guild ──
@@ -339,7 +393,7 @@ async def _set_member_role(
                 )
             )
         ).scalar() or 0
-        guild_level = guild_row.level or calc_guild_level(member_count)
+        guild_level = guild_row.level or calc_guild_level(guild_row.proposal_score)
         max_vp = _MAX_VP.get(guild_level, 1)
         if vp_count >= max_vp:
             raise HTTPException(409, detail="GUILD_VP_LIMIT_REACHED")
@@ -389,6 +443,27 @@ async def approve_request(
         raise HTTPException(404)
     m.role = "member"
     m.status = "approved"
+
+    # Guild leveling: lock the new member's uncounted passed proposals
+    from app.guilds.leveling import lock_user_proposals
+    await lock_user_proposals(session, guild_id, m.user_id)
+
+    # First-guild credit: if this is the user's first ever guild, credit all historical points
+    member_user = await session.get(User, m.user_id)
+    if member_user and not member_user.first_guild_id:
+        member_user.first_guild_id = guild_id
+        g = await session.get(Guild, guild_id)
+        if g and member_user.points > 0:
+            from app.db.models.points import PointTransaction
+            g.points = (g.points or 0) + member_user.points
+            session.add(PointTransaction(
+                user_id=member_user.id,
+                guild_id=guild_id,
+                amount=member_user.points,
+                reason="first_guild_credit",
+                note=f"用户首次加入社团，历史积分 {member_user.points} 归属「{g.name}」",
+            ))
+
     await session.commit()
     return {"ok": True}
 
@@ -586,14 +661,14 @@ async def list_guild_patches(
     comment_counts: dict = {}
     if patch_ids:
         rows = (await session.execute(
-            select(VoteModel.patch_id, VoteModel.choice, func.count(VoteModel.id))
+            select(VoteModel.patch_id, VoteModel.choice, func.sum(VoteModel.weight))
             .where(VoteModel.patch_id.in_(patch_ids))
             .group_by(VoteModel.patch_id, VoteModel.choice)
         )).all()
         for pid, choice, cnt in rows:
             key = str(pid)
             if key not in counts_map:
-                counts_map[key] = {"for": 0, "against": 0, "abstain": 0}
+                counts_map[key] = {"for": 0.0, "against": 0.0, "abstain": 0.0}
             counts_map[key][choice] = cnt
         comment_counts = dict(
             (
@@ -617,9 +692,9 @@ async def list_guild_patches(
             voting_ends_at=p.voting_ends_at,
             voting_period_hours=p.voting_period_hours,
             voting_window_kind=p.voting_window_kind,
-            for_count=counts_map.get(str(p.id), {}).get("for", 0),
-            against_count=counts_map.get(str(p.id), {}).get("against", 0),
-            abstain_count=counts_map.get(str(p.id), {}).get("abstain", 0),
+            for_count=counts_map.get(str(p.id), {}).get("for", 0.0),
+            against_count=counts_map.get(str(p.id), {}).get("against", 0.0),
+            abstain_count=counts_map.get(str(p.id), {}).get("abstain", 0.0),
             comment_count=comment_counts.get(p.id, 0),
             revision_number=p.revision_number,
             created_at=p.created_at, updated_at=p.updated_at,
@@ -777,31 +852,47 @@ async def delete_discussion(
     return {"ok": True}
 
 
-# ── User Guild Badge ──
+# ── Guild Proposal Contributions & Leveling ──
 
 
-@router.get("/-/my", response_model=UserGuildBadge | None)
-async def my_guild(
-    user: User = Depends(current_user),
+@router.get("/{guild_id}/proposals")
+async def guild_proposals(
+    guild_id: UUID,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
     session: AsyncSession = Depends(get_session),
 ):
-    m = (await session.execute(
-        select(GuildMember)
-        .where(GuildMember.user_id == user.id, _approved_membership())
-        .order_by(GuildMember.joined_at)
-        .limit(1)
-    )).scalars().first()
-    if not m:
-        return None
-    mc = (await session.execute(
-        select(func.count(GuildMember.id)).where(
-            GuildMember.guild_id == m.guild_id,
-            _approved_membership(),
-        )
-    )).scalar() or 0
-    return UserGuildBadge(
-        guild_id=m.guild_id,
-        guild_name=m.guild.name,
-        guild_level=m.guild.level or calc_guild_level(mc),
-        role=m.role,
-    )
+    from app.guilds.leveling import guild_proposal_contributions
+    items, total = await guild_proposal_contributions(session, guild_id, page, page_size)
+    return {"items": items, "total": total, "page": page, "page_size": page_size}
+
+
+@router.get("/{guild_id}/level")
+async def guild_level_detail(
+    guild_id: UUID,
+    session: AsyncSession = Depends(get_session),
+):
+    guild = await session.get(Guild, guild_id)
+    if not guild:
+        raise HTTPException(404, detail="GUILD_NOT_FOUND")
+
+    score = guild.points
+    current_level = guild.level or calc_guild_level(score)
+
+    thresholds = {2: 20, 3: 50, 4: 100, 5: 200, 6: 350, 7: 500, 8: 700, 9: 1000, 10: 1500}
+    next_level = None
+    next_threshold = None
+    for lv in range(current_level + 1, 11):
+        if lv in thresholds:
+            next_level = lv
+            next_threshold = thresholds[lv]
+            break
+
+    return {
+        "guild_id": str(guild_id),
+        "points": score,
+        "current_level": current_level,
+        "next_level": next_level,
+        "next_threshold": next_threshold,
+        "progress_to_next": score / next_threshold if next_threshold else None,
+    }

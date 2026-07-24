@@ -28,6 +28,8 @@ function connectSSE() {
     try {
       const data = JSON.parse(event.data);
       // Bump unread count
+      // Only increment if notifications panel is not open
+      // (if open, markAllRead will handle it)
       unreadCount.update((n) => n + 1);
       // Prepend to notifications list (max 50)
       notifications.update((list) => {
@@ -54,7 +56,14 @@ function connectSSE() {
   });
 
   eventSource.onerror = () => {
-    // EventSource auto-reconnects; no action needed
+    if (eventSource.readyState === EventSource.CLOSED) {
+      // Connection permanently closed (e.g. 401/403). Stop reconnecting.
+      eventSource.close();
+      eventSource = null;
+      return;
+    }
+    // For transient errors, EventSource auto-reconnects.
+    // Reset unread count from server on next successful connection.
   };
 }
 

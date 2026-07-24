@@ -4,7 +4,9 @@
     getGuild, joinGuild, leaveGuild,
     getMyMembership, listMembers, listGuildPatches, listDiscussions,
     createDiscussion, deleteDiscussion,
+    getGuildLevel, listGuildProposals,
     type Guild, type GuildMember, type GuildDiscussion,
+    type GuildLevelDetail, type GuildProposalContribution,
   } from "../../lib/guilds";
   import { createReport } from "../../lib/admin";
   import { translator, translateError } from "../../lib/i18n";
@@ -56,6 +58,14 @@
   let reportReason = $state("");
   let reporting = $state(false);
 
+  let levelDetail = $state<GuildLevelDetail | null>(null);
+  let contributions = $state<GuildProposalContribution[]>([]);
+  let contributionsTotal = $state(0);
+  let contributionsLoading = $state(false);
+  let contributionsError = $state(false);
+
+  let contributors = $derived(topContributors(contributions));
+
   onMount(() => {
     void (async () => {
       await initAuth();
@@ -74,15 +84,19 @@
     patchesError = false;
     discussionsError = false;
     discussions = [];
+    contributionsError = false;
     try {
-      const [g, m, mine] = await Promise.all([
+      const [g, m, mine, lvl] = await Promise.all([
         getGuild(guildId),
         listMembers(guildId),
         $currentUser ? getMyMembership(guildId) : Promise.resolve(null),
+        getGuildLevel(guildId),
       ]);
       guild = g;
       members = m;
       myMembership = mine;
+      levelDetail = lvl;
+      await loadContributions();
       try {
         patches = await listGuildPatches(guildId);
       } catch {
@@ -96,6 +110,23 @@
       loadError = translateError(e, $translator, "guild.loadFailed");
     } finally {
       loading = false;
+      contributionsLoading = false;
+    }
+  }
+
+  async function loadContributions() {
+    contributionsLoading = true;
+    contributionsError = false;
+    try {
+      const result = await listGuildProposals(guildId);
+      contributions = result.items;
+      contributionsTotal = result.total;
+    } catch {
+      contributions = [];
+      contributionsTotal = 0;
+      contributionsError = true;
+    } finally {
+      contributionsLoading = false;
     }
   }
 
@@ -235,6 +266,16 @@
     confirmAction = action;
     confirmOpen = true;
   }
+
+  function topContributors(items: GuildProposalContribution[], limit: number = 5) {
+    const counts = new Map<string, number>();
+    for (const item of items) {
+      counts.set(item.username, (counts.get(item.username) || 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, limit);
+  }
 </script>
 
 {#if loading}
@@ -262,8 +303,29 @@
     <div class="flex items-center justify-center gap-3 mt-3 text-xs" style="color: var(--vercel-text-tertiary);">
       <span>{$translator("guild.membersCount", { count: guild.member_count })}</span>
       <span>·</span>
+      <span>{$translator("tokens.guildScore")}: {levelDetail?.proposal_score ?? 0}</span>
+      <span>·</span>
       <span>{$translator("guild.presidentName", { name: guild.president_username })}</span>
     </div>
+
+    {#if levelDetail}
+      <div class="level-progress mx-auto mt-4 max-w-xs">
+        <div class="flex items-center justify-between text-xs mb-1" style="color: var(--vercel-text-secondary);">
+          <span>{$translator(guildLevelKey(levelDetail.current_level))}</span>
+          {#if levelDetail.next_level && levelDetail.next_threshold}
+            <span>{$translator("tokens.guildNextLevel", { level: levelDetail.next_level, score: levelDetail.next_threshold })}</span>
+          {:else}
+            <span>{$translator("guild.level.5")}</span>
+          {/if}
+        </div>
+        <div class="level-progress-track" style="background: var(--vercel-border);">
+          <div
+            class="level-progress-fill"
+            style="width: {Math.min(100, Math.round((levelDetail.progress_to_next ?? 0) * 100))}%; background: {guildLevelColor(levelDetail.current_level)};"
+          ></div>
+        </div>
+      </div>
+    {/if}
 
     {#if $currentUser}
       <div class="mt-4">
@@ -302,6 +364,42 @@
 
   {#if actionError}
     <div class="action-error mb-4" role="alert">{actionError}</div>
+  {/if}
+
+  {#if contributionsLoading}
+    <div class="card p-4 mb-4">
+      <div class="text-xs mb-2" style="color: var(--vercel-text-secondary);">{$translator("guild.proposalContributions")}</div>
+      <div class="empty-state py-6"><div class="spinner mb-2"></div></div>
+    </div>
+  {:else if contributionsError}
+    <div class="card p-4 mb-4">
+      <div class="text-xs mb-2" style="color: var(--vercel-text-secondary);">{$translator("guild.proposalContributions")}</div>
+      <div class="inline-error" role="alert">
+        <span>{$translator("guild.proposalContributionsLoadFailed")}</span>
+        <button class="btn btn-ghost btn-xs" type="button" onclick={loadContributions}>
+          <RefreshCw size={13} aria-hidden="true" />
+          {$translator("common.retry")}
+        </button>
+      </div>
+    </div>
+  {:else if contributions.length > 0}
+    <div class="card p-4 mb-4">
+      <div class="flex items-center justify-between mb-3">
+        <div class="text-xs font-medium" style="color: var(--vercel-text-secondary);">{$translator("guild.proposalContributions")}</div>
+        <div class="text-xs" style="color: var(--vercel-text-tertiary);">{contributionsTotal} {$translator("common.proposals")}</div>
+      </div>
+      <div class="contributor-list">
+        {#each contributors as [username, count], index (username)}
+          <div class="contributor-row flex items-center justify-between py-1.5" class:border-b={index < contributors.length - 1}>
+            <div class="flex items-center gap-2 text-sm" style="color: var(--vercel-text);">
+              <span class="contributor-rank w-5 text-xs text-center" style="color: var(--vercel-text-tertiary);">{index + 1}</span>
+              <span class="truncate">{username}</span>
+            </div>
+            <span class="text-xs" style="color: var(--vercel-text-tertiary);">{count} {$translator("common.proposals")}</span>
+          </div>
+        {/each}
+      </div>
+    </div>
   {/if}
 
   <div class="guild-tabs flex gap-1 border-b mb-4" style="border-color: var(--vercel-border);">
@@ -582,6 +680,47 @@
 
   .inline-error .btn {
     flex-shrink: 0;
+  }
+
+  .level-progress-track {
+    height: 0.375rem;
+    border-radius: 9999px;
+    overflow: hidden;
+  }
+
+  .level-progress-fill {
+    height: 100%;
+    border-radius: inherit;
+    transition: width 300ms ease;
+  }
+
+  .contributor-list {
+    display: grid;
+    gap: 0;
+  }
+
+  .contributor-row {
+    border-color: var(--vercel-border);
+  }
+
+  .contributor-row:last-child {
+    border-bottom: none;
+  }
+
+  .contributor-rank {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .report-reason {
+    width: 100%;
+    resize: vertical;
+  }
+
+  .report-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 1rem;
   }
 
   @media (max-width: 40rem) {

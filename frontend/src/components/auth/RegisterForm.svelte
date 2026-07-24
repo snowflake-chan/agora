@@ -2,7 +2,6 @@
   import { translateError, translator } from "../../lib/i18n";
   import { register } from "../../stores/auth";
   import { toaster } from "../../stores/toaster";
-  import CommunityRulesNotice from "./CommunityRulesNotice.svelte";
 
   let email = "";
   let username = "";
@@ -38,7 +37,6 @@
     <span class="text-sm font-medium" style="color: var(--vercel-text-secondary);">{$translator("auth.password")}</span>
     <input type="password" bind:value={password} class="input" placeholder="8+ characters" required minlength="8" />
   </label>
-  <CommunityRulesNotice />
   <button type="submit" class="btn btn-primary" disabled={loading}>
     {loading ? $translator("auth.creatingAccount") : $translator("auth.register")}
   </button>

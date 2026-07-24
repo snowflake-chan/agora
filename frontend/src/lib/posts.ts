@@ -175,12 +175,6 @@ async function setPostLike(id: string, liked: boolean): Promise<PostLikeState> {
 export const likePost = (id: string) => setPostLike(id, true);
 export const unlikePost = (id: string) => setPostLike(id, false);
 
-export async function getPostLikeState(id: string): Promise<PostLikeState> {
-  const res = await fetch(`${API_BASE}/posts/${id}/like`, { credentials: "include" });
-  if (!res.ok) throw new ApiError("POST_LIKE_STATE_FAILED");
-  return res.json();
-}
-
 export async function voteOnPoll(postId: string, optionId: string): Promise<Poll> {
   const res = await fetch(`${API_BASE}/posts/${postId}/poll/vote`, {
     method: "PUT",
@@ -222,12 +216,10 @@ export type FeedMode = "recommended" | "trending" | "following" | "latest";
 export async function getFeed(
   page = 1,
   mode: FeedMode = "recommended",
-  rotationSeed = 0,
 ): Promise<FeedItem[]> {
   const params = new URLSearchParams({
     page: String(page),
     mode,
-    rotation_seed: String(rotationSeed),
   });
   const res = await fetch(`${API_BASE}/posts/-/feed?${params}`, {
     credentials: "include",

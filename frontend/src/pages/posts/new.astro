@@ -14,5 +14,5 @@ import LocalizedText from "../../components/LocalizedText.svelte";
       </p>
     </div>
   </main>
-  <PostForm client:load />
+  <PostForm client:load onClose={() => window.history.back()} />
 </Layout>

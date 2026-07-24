@@ -18,9 +18,9 @@ class PatchRead(BaseModel):
     voting_ends_at: datetime | None = None
     voting_period_hours: int | None = None
     voting_window_kind: str | None = None
-    for_count: int = 0
-    against_count: int = 0
-    abstain_count: int = 0
+    for_count: float = 0.0
+    against_count: float = 0.0
+    abstain_count: float = 0.0
     comment_count: int = 0
     revision_number: int = 1
     created_at: datetime
@@ -62,6 +62,8 @@ class VoteRead(BaseModel):
     voter_id: UUID
     choice: str
     voter_username: str | None = None
+    stake_amount: int = 0
+    weight: float = 1.0
     created_at: datetime
 
     model_config = {"from_attributes": True}

@@ -1,5 +1,6 @@
 import asyncio
-from datetime import datetime, timezone
+import logging
+from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -10,6 +11,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from app.db import get_session
 from app.db.models.content import Content as ContentModel, ContentRevision
+from app.db.models.content_boost import ContentBoost
 from app.db.models.follow import Follow
 from app.db.models.patch import Patch as PatchModel
 from app.db.models.post_like import PostLike
@@ -33,12 +35,14 @@ from app.content_moderation import (
 )
 from app.schemas.content_input import validate_moderation_input_size
 from app.notifications.redis import get_redis
+from app.notifications.service import create_notification
 from app.post_polls import create_post_poll, load_post_polls
 from app.posts.feed import FeedMode, rank_feed_items
 from app.posts.realtime import FEED_CHANNEL, publish_feed_event
 from app.schemas.post import (
     CommentCreate,
     CommentRead,
+    ContentBoostCreate,
     ContentEditRead,
     ContentRevisionRead,
     FeedItem,
@@ -49,7 +53,10 @@ from app.schemas.post import (
     PostRead,
     PostUpdate,
 )
+from app.tokens import service as token_service
 from app.users.deps import current_user, optional_current_user
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -206,6 +213,11 @@ async def create_post(
 ):
     """Create a new post."""
     await check_not_banned(user.id, session, "mute_post")
+
+    # Check for unpaid fines
+    from app.tokens.fines import has_unpaid_fines
+    if await has_unpaid_fines(session, user.id):
+        raise HTTPException(status_code=403, detail="UNPAID_FINES")
     if not data.title.strip():
         raise HTTPException(status_code=422, detail="Title is required")
     if not data.content.strip():
@@ -476,7 +488,6 @@ async def get_feed(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     mode: FeedMode = Query("recommended"),
-    rotation_seed: int = Query(0, ge=0, le=2_147_483_647),
     session: AsyncSession = Depends(get_session),
     user: User | None = Depends(optional_current_user),
 ):
@@ -530,6 +541,7 @@ async def get_feed(
             interest_tags.update(tag.casefold() for tag in tags or [])
 
     # Fetch a bounded candidate pool; ranking happens after all signals are attached.
+    now = datetime.now(timezone.utc)
     posts = (
         await session.execute(
             select(ContentModel)
@@ -565,6 +577,7 @@ async def get_feed(
     post_ids = [p.id for p in posts]
     reply_counts: dict = {}
     like_counts: dict = {}
+    boost_weights: dict[UUID, float] = {}
     if post_ids:
         count_stmt = (
             select(ContentModel.parent_id, func.count(ContentModel.id))
@@ -583,11 +596,21 @@ async def get_feed(
             .group_by(PostLike.post_id)
         )
         like_counts = dict(like_result.all())
-    polls_by_post = await load_post_polls(
-        session,
-        post_ids,
-        viewer_id=user.id if user else None,
-    )
+        
+        polls_by_post = await load_post_polls(
+            session,
+            post_ids,
+            viewer_id=user.id if user else None,
+        )
+        
+        boost_result = await session.execute(
+            select(ContentBoost.content_id, ContentBoost.weight)
+            .where(
+                ContentBoost.content_id.in_(post_ids),
+                ContentBoost.expires_at > now,
+            )
+        )
+        boost_weights = {row[0]: row[1] for row in boost_result.all()}
 
     patch_comment_counts: dict = {}
     patch_ids = [p.id for p in patches]
@@ -630,6 +653,7 @@ async def get_feed(
             reply_count=reply_counts.get(p.id, 0),
             like_count=like_counts.get(p.id, 0),
             poll=polls_by_post.get(p.id),
+            boost_weight=boost_weights.get(p.id, 1.0),
             **moderation_metadata_for(p, user),
             revision_number=p.revision_number,
         ))
@@ -656,7 +680,6 @@ async def get_feed(
         mode=mode,
         following_author_ids=following_author_ids,
         interest_tags=interest_tags,
-        rotation_seed=rotation_seed,
     )
     return ranked[offset:offset + page_size]
 
@@ -666,7 +689,12 @@ async def feed_stream():
     """SSE stream for home feed changes shared by all connected visitors."""
 
     async def event_generator():
-        redis = await get_redis()
+        try:
+            redis = await get_redis()
+        except Exception:
+            # Redis unavailable, yield heartbeat and close
+            yield ": redis unavailable\n\n"
+            return
         pubsub = redis.pubsub()
         await pubsub.subscribe(FEED_CHANNEL)
         try:
@@ -870,22 +898,6 @@ async def _post_like_state(
     return PostLikeRead(like_count=like_count or 0, liked_by_me=liked_by_me)
 
 
-@router.get("/{post_id}/like", response_model=PostLikeRead)
-async def get_post_like_state(
-    post_id: UUID,
-    session: AsyncSession = Depends(get_session),
-    user: User = Depends(current_user),
-):
-    """Read the caller's current like state after an interrupted write response."""
-    content = await session.scalar(
-        select(ContentModel).where(
-            ContentModel.id == post_id, ContentModel.type.in_(("post", "comment"))
-        )
-    )
-    await require_content_visible(content, user, session)
-    return await _post_like_state(session, post_id, user.id)
-
-
 @router.put("/{post_id}/like", response_model=PostLikeRead)
 async def like_post(
     post_id: UUID,
@@ -901,12 +913,50 @@ async def like_post(
     )
     content = await require_content_interactable(content, user, session)
 
+    # Check if already liked before inserting (to avoid duplicate token rewards)
+    already_liked = await session.scalar(
+        select(PostLike).where(
+            PostLike.post_id == content.id, PostLike.user_id == user.id
+        )
+    ) is not None
+
     await session.execute(
         insert(PostLike)
         .values(post_id=content.id, user_id=user.id)
         .on_conflict_do_nothing(constraint="uq_post_like_post_user")
     )
+
+    # Check if reward was already given (prevent farming)
+    from app.db.models import TokenTransaction
+    already_rewarded = (
+        await session.execute(
+            select(func.count()).select_from(TokenTransaction).where(
+                TokenTransaction.user_id == content.author_id,
+                TokenTransaction.source == "post_liked",
+                TokenTransaction.reference_id == content.id,
+            )
+        )
+    ).scalar_one() > 0
+
+    # Token economy: reward content author for receiving a like (not self-likes, first-time only)
+    if content.author_id != user.id and not already_liked and not already_rewarded:
+        like_reward = await token_service.get_param(session, "like_reward")
+        await token_service.earn(session, content.author_id, like_reward, "post_liked", post_id)
+
     await session.commit()
+
+    if content.author_id != user.id and not already_liked:
+        try:
+            await create_notification(
+                recipient_id=content.author_id,
+                type="like",
+                title="New like",
+                message="Someone liked your post",
+                link=f"/posts/{post_id}",
+            )
+        except Exception:
+            logger.exception("Failed to notify author %s of like", content.author_id)
+
     state = await _post_like_state(session, post_id, user.id)
     root_type = "post" if content.type == "post" else "patch" if content.patch_id else "post"
     root_id = content.id if content.type == "post" else content.patch_id or content.parent_id
@@ -1006,6 +1056,84 @@ async def delete_content(
             item_type=root_type,
             item_id=str(root_id),
         )
+
+
+# ── Content promotion boost ──
+
+_BOOST_TIERS: dict[str, tuple[str, float]] = {
+    "low": ("boost_price_low", 1.25),
+    "mid": ("boost_price_mid", 1.6),
+    "high": ("boost_price_high", 2.0),
+}
+
+
+@router.post("/{post_id}/boost", status_code=201)
+async def boost_post(
+    post_id: UUID,
+    data: ContentBoostCreate,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(current_user),
+):
+    """Promote a post for 24 hours by spending AGC."""
+    await check_not_banned(user.id, session, "mute_post")
+    from app.tokens.fines import has_unpaid_fines
+    if await has_unpaid_fines(session, user.id):
+        raise HTTPException(403, detail="UNPAID_FINES")
+    if data.tier not in _BOOST_TIERS:
+        raise HTTPException(status_code=422, detail="INVALID_BOOST_TIER")
+
+    content = await session.scalar(
+        select(ContentModel).where(
+            ContentModel.id == post_id, ContentModel.type == "post"
+        )
+    )
+    if not content:
+        raise HTTPException(status_code=404, detail="POST_NOT_FOUND")
+    if content.author_id != user.id:
+        raise HTTPException(status_code=403, detail="FORBIDDEN")
+
+    now = datetime.now(timezone.utc)
+    active = await session.scalar(
+        select(ContentBoost.id).where(
+            ContentBoost.content_id == post_id,
+            ContentBoost.expires_at > now,
+        )
+    )
+    if active:
+        raise HTTPException(status_code=409, detail="BOOST_ALREADY_ACTIVE")
+
+    price_param, weight = _BOOST_TIERS[data.tier]
+    price = await token_service.get_param(session, price_param)
+
+    try:
+        await token_service.spend(session, user.id, price, "content_boost", post_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=402, detail=f"INSUFFICIENT_AGC_NEED_{price}"
+        )
+
+    boost = ContentBoost(
+        content_id=post_id,
+        tier=data.tier,
+        weight=weight,
+        expires_at=now + timedelta(hours=24),
+    )
+    session.add(boost)
+    await session.commit()
+
+    await publish_feed_event(
+        "updated",
+        item_type="post",
+        item_id=str(post_id),
+    )
+
+    return {
+        "ok": True,
+        "tier": data.tier,
+        "weight": weight,
+        "expires_at": boost.expires_at.isoformat(),
+        "balance_after": (await token_service.get_balance(session, user.id)).balance,
+    }
 
 
 # ── Comments (nested under posts) ──

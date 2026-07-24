@@ -5,6 +5,7 @@ import NotificationBell from "./NotificationBell.svelte";
 import SettingsButton from "./SettingsButton.svelte";
 import AboutButton from "./AboutButton.svelte";
 import PublicFeedsButton from "./PublicFeedsButton.svelte";
+import TokenBalanceBadge from "./TokenBalanceBadge.svelte";
 ---
 
 <!-- Top header -->
@@ -14,8 +15,9 @@ import PublicFeedsButton from "./PublicFeedsButton.svelte";
       <img src="/favicon.svg" alt="" width="22" height="22" class="size-[22px]" />
       <span class="text-lg font-bold tracking-tight" style="color: var(--vercel-text);">Agora</span>
     </a>
-    <div class="flex items-center gap-1">
+    <div class="flex items-center gap-2">
       <PublicFeedsButton client:load />
+      <TokenBalanceBadge client:load />
       <AboutButton client:load />
       <SettingsButton client:load />
       <NotificationBell client:load />

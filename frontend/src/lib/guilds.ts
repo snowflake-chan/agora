@@ -9,6 +9,7 @@ export interface Guild {
   president_id: string;
   president_username: string;
   member_count: number;
+  points: number;
   level: number;
   created_at: string;
 }
@@ -37,6 +38,29 @@ export interface UserGuildBadge {
   guild_name: string;
   guild_level: number;
   role: string;
+}
+
+export interface GuildLevelDetail {
+  guild_id: string;
+  proposal_score: number;
+  current_level: number;
+  next_level: number | null;
+  next_threshold: number | null;
+  progress_to_next: number | null;
+}
+
+export interface GuildProposalContribution {
+  proposal_id: string;
+  title: string;
+  username: string;
+  counted_at: string;
+}
+
+export interface GuildProposalList {
+  items: GuildProposalContribution[];
+  total: number;
+  page: number;
+  page_size: number;
 }
 
 async function req(path: string, options?: RequestInit) {
@@ -129,4 +153,18 @@ export async function getUserGuild(userId: string): Promise<UserGuildBadge | nul
     userGuildCache.set(userId, request);
   }
   return request;
+}
+
+// ── Guild Leveling ──
+
+export async function getGuildLevel(guildId: string): Promise<GuildLevelDetail> {
+  return req(`/guilds/${guildId}/level`);
+}
+
+export async function listGuildProposals(
+  guildId: string,
+  page: number = 1,
+  pageSize: number = 20,
+): Promise<GuildProposalList> {
+  return req(`/guilds/${guildId}/proposals?page=${page}&page_size=${pageSize}`);
 }

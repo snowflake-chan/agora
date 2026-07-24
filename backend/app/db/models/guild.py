@@ -16,6 +16,8 @@ class Guild(Base):
     logo: Mapped[str | None] = mapped_column(String(500), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     level: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    proposal_score: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    points: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     president_id: Mapped[UUID] = mapped_column(ForeignKey("user.id", ondelete="RESTRICT"))
 
     created_at: Mapped[datetime] = mapped_column(
@@ -25,6 +27,7 @@ class Guild(Base):
     # ── Relationships ──
     president: Mapped["User"] = relationship("User", lazy="joined")  # type: ignore[name-defined]
     members: Mapped[list["GuildMember"]] = relationship("GuildMember", back_populates="guild", lazy="selectin", cascade="all, delete-orphan")
+    member_proposals: Mapped[list["GuildMemberProposal"]] = relationship("GuildMemberProposal", back_populates="guild", lazy="selectin", cascade="all, delete-orphan")
 
 
 class GuildMember(Base):

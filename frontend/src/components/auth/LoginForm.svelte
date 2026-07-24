@@ -4,7 +4,6 @@
   import { translator } from "../../lib/i18n";
   import { safeReturnTo } from "../../lib/returnTo";
   import { login } from "../../stores/auth";
-  import CommunityRulesNotice from "./CommunityRulesNotice.svelte";
 
   let {
     returnTo = "",
@@ -117,8 +116,6 @@
       <p id="login-error" class="form-error">{errorMessage}</p>
     {/if}
   </div>
-
-  <CommunityRulesNotice />
 
   <button type="submit" class="btn btn-primary submit-button" disabled={loading}>
     {#if loading}<span class="button-spinner" aria-hidden="true"></span>{/if}

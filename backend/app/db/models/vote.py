@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import ForeignKey, String, UniqueConstraint
+from sqlalchemy import ForeignKey, Integer, String, Float, UniqueConstraint
 from sqlalchemy.dialects.postgresql import TIMESTAMP
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -19,6 +19,9 @@ class Vote(Base):
         ForeignKey("user.id", ondelete="CASCADE"), index=True, nullable=False
     )
     choice: Mapped[str] = mapped_column(String(10), nullable=False)
+    # Token-weighted voting: AGC consumed to boost vote weight (NOT returned)
+    stake_amount: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    weight: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
 
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), default=datetime.now, nullable=False

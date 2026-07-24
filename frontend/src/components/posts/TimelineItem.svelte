@@ -14,14 +14,15 @@
   import { getUserGuild, type UserGuildBadge } from "../../lib/guilds";
   import type { DisplayTranslation, TranslationContext } from "../../lib/ai";
   import { translator } from "../../lib/i18n";
-  import { renderMarkdown } from "../../lib/markdown";
-  import { isModerationRestricted, type ModerationStatus } from "../../lib/moderation";
-  import type { Poll } from "../../lib/posts";
-  import { avatarInitial, displayName } from "../../lib/utils";
-  import RelativeTime from "../RelativeTime.svelte";
-  import PollCard from "./PollCard.svelte";
-  import PostAiTools from "./PostAiTools.svelte";
-  import ModerationNotice from "./ModerationNotice.svelte";
+import { renderMarkdown } from "../../lib/markdown";
+import { isModerationRestricted, type ModerationStatus } from "../../lib/moderation";
+import type { Poll } from "../../lib/posts";
+import { avatarInitial, displayName } from "../../lib/utils";
+import RelativeTime from "../RelativeTime.svelte";
+import PollCard from "./PollCard.svelte";
+import PostAiTools from "./PostAiTools.svelte";
+import ModerationNotice from "./ModerationNotice.svelte";
+import TipBoostActions from "./TipBoostActions.svelte";
 
   let {
     username,
@@ -57,6 +58,8 @@
     revisionNumber = 1,
     moderationTargetHref = null,
     onTranslationChange = null,
+    onTip = null,
+    canBoost = false,
   }: {
     username: string;
     userId: string | null;
@@ -91,6 +94,8 @@
     revisionNumber?: number;
     moderationTargetHref?: string | null;
     onTranslationChange?: ((translation: DisplayTranslation | null) => void) | null;
+    onTip?: (() => void) | null;
+    canBoost?: boolean;
   } = $props();
 
   let menuOpen = $state(false);
@@ -195,21 +200,6 @@
         {/if}
       </div>
 
-      {#if onEdit}
-        <button
-          type="button"
-          class="btn-icon timeline-menu-trigger"
-          onclick={(event) => {
-            event.stopPropagation();
-            onEdit();
-          }}
-          aria-label={$translator("common.edit")}
-          title={$translator("common.edit")}
-        >
-          <PencilIcon size={16} strokeWidth={1.8} aria-hidden="true" />
-        </button>
-      {/if}
-
       {#if onDelete || onEdit || onHistory || (!moderationRestricted && (onReply || onReport))}
         <div class="timeline-menu relative">
           <button
@@ -234,6 +224,12 @@
               class="menu-dropdown timeline-menu-dropdown absolute right-0 top-full mt-1"
               aria-label={$translator("common.moreActions")}
             >
+              {#if canBoost}
+                <div class="menu-item" role="menuitem">
+                  <TipBoostActions postId={contentId ?? ""} {canBoost} compact onOpen={() => (menuOpen = false)} />
+                  <span>{$translator("tokens.boost")}</span>
+                </div>
+              {/if}
               {#if onReply && !moderationRestricted}
                 <button type="button" class="menu-item" onclick={() => runMenuAction(onReply)}>
                   <ReplyIcon size={15} strokeWidth={1.8} aria-hidden="true" />
@@ -304,7 +300,6 @@
           sourceRevisionNumber={revisionNumber}
           {moderationTargetHref}
           onModerationQueued={() => (moderationQueued = true)}
-          translationRequested={displayTranslation !== null}
         />
       {/if}
       {#if aiText && !moderationRestricted}
@@ -323,7 +318,12 @@
     </div>
 
     {#if likeCount !== null && replyCount !== null && !moderationRestricted}
-      <div class="post-actions" aria-label={$translator("post.actions")}>
+      {@const actionCount = 3 + (onTip || canBoost ? 1 : 0)}
+      <div
+        class="post-actions"
+        aria-label={$translator("post.actions")}
+        style="grid-template-columns: repeat({actionCount}, minmax(0, 1fr));"
+      >
         <button
           type="button"
           class:active={liked}
@@ -346,6 +346,9 @@
           <Share2Icon size={16} strokeWidth={1.8} aria-hidden="true" />
           <span>{$translator("common.share")}</span>
         </button>
+        {#if onTip && contentId}
+          <TipBoostActions postId={contentId} canBoost={false} />
+        {/if}
       </div>
     {/if}
   </div>
@@ -438,7 +441,6 @@
 
   .post-actions {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
     border-top: 1px solid var(--vercel-border);
     padding: 0.25rem;
   }

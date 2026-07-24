@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 
 class UserRead(BaseModel):
@@ -11,6 +11,8 @@ class UserRead(BaseModel):
     bio: str | None = None
     role: str = "user"
     is_active: bool
+    points: int = 0
+    first_guild_id: uuid.UUID | None = None
 
     model_config = {"from_attributes": True}
 
@@ -24,6 +26,8 @@ class UserPublic(BaseModel):
     follower_count: int = 0
     following_count: int = 0
     is_following: bool = False
+    points: int = 0
+    first_guild_id: uuid.UUID | None = None
 
     model_config = {"from_attributes": True}
 
@@ -36,7 +40,7 @@ class UserCreate(BaseModel):
 
 class UserUpdate(BaseModel):
     email: EmailStr | None = None
-    username: str | None = None
+    username: str | None = Field(default=None, min_length=3, max_length=30, pattern=r"^[A-Za-z0-9_]+$")
     nickname: str | None = None
     bio: str | None = None
     password: str | None = None

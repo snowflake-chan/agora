@@ -25,10 +25,11 @@
   import { onModerationUpdateForPath } from "../../lib/moderation";
   import { renderMarkdown } from "../../lib/markdown";
   import { getPatch, deletePatch, submitPatch, votePatch, listVotes, listPatchComments, createPatchComment, updatePatch, listPatchHistory, type Patch, type Vote } from "../../lib/patches";
-  import { deleteContent, getPostLikeState, likePost, unlikePost, updateContent, listContentHistory, type Comment } from "../../lib/posts";
+  import { deleteContent, likePost, unlikePost, updateContent, listContentHistory, type Comment } from "../../lib/posts";
   import { toaster } from "../../stores/toaster";
   import { currentUser } from "../../stores/auth";
   import { GITHUB_REPO } from "../../lib/config";
+  import { getBalance, getTokenParams, type TokenBalance } from "../../lib/tokens";
   import AuthorMeta from "../AuthorMeta.svelte";
   import ConfirmDialog from "../ConfirmDialog.svelte";
   import ReportDialog from "../moderation/ReportDialog.svelte";
@@ -36,7 +37,6 @@
   import VotingWindowMeta from "./VotingWindowMeta.svelte";
   import PostAiTools from "../posts/PostAiTools.svelte";
   import ContentEditModal from "../content/ContentEditModal.svelte";
-  import WritingAssist from "../posts/WritingAssist.svelte";
   import RevisionHistoryModal, { type RevisionSnapshot } from "../content/RevisionHistoryModal.svelte";
 
   let { patchId = "", embedded = false }: { patchId: string; embedded?: boolean } = $props();
@@ -69,6 +69,9 @@
   let editKind = $state<"patch" | "comment">("patch");
   let historyPatch = $state<Patch | null>(null);
   let historyComment = $state<Comment | null>(null);
+  let proposalDeposit = $state(50);
+  let tokenBalance = $state<TokenBalance | null>(null);
+  let loadingTokenInfo = $state(true);
 
   const STATUS_TYPES: Record<string, string> = {
     draft: "neutral",
@@ -138,6 +141,18 @@
     return onModerationUpdateForPath(`/patches/${patchId}`, () => {
       void loadPatchDetail(false);
     });
+  });
+
+  onMount(async () => {
+    try {
+      const [params, balance] = await Promise.all([getTokenParams(), getBalance()]);
+      proposalDeposit = params.proposal_deposit;
+      tokenBalance = balance;
+    } catch {
+      // Leave defaults so the page remains usable.
+    } finally {
+      loadingTokenInfo = false;
+    }
   });
 
   onMount(() => {
@@ -223,7 +238,7 @@
       patch = await getPatch(patchId);
       toaster.success($translator("patch.voteSuccess"));
     } catch (e: any) {
-      toaster.error($translator("patch.voteFailed"), $translator("common.tryAgain"));
+      toaster.error($translator("patch.voteFailed"), e?.message ?? $translator("common.tryAgain"));
     } finally {
       submittingVote = false;
     }
@@ -293,14 +308,8 @@
       comments = comments.map((item) =>
         item.id === comment.id ? { ...item, ...state } : item
       );
-    } catch {
-      try {
-        const state = await getPostLikeState(comment.id);
-        comments = comments.map((item) => item.id === comment.id ? { ...item, ...state } : item);
-        if (state.liked_by_me === comment.liked_by_me) throw new Error("LIKE_NOT_APPLIED");
-      } catch {
-        toaster.error($translator("common.operationFailed"), $translator("common.tryAgain"));
-      }
+    } catch (e: any) {
+      toaster.error($translator("common.operationFailed"), $translator("common.tryAgain"));
     } finally {
       likingId = null;
     }
@@ -603,7 +612,7 @@
             {/if}
           </button>
         </div>
-        <p class="vote-change-hint">{$translator("patch.voteChangeHint")}</p>
+	        <p class="vote-change-hint">{$translator("patch.voteChangeHint")}</p>
       {:else if votingIsOpen}
         <a href="/login" class="text-sm transition-colors" style="color: var(--vercel-text-secondary);">{$translator("patch.loginToVote")}</a>
       {/if}
@@ -627,7 +636,7 @@
 
   <!-- Author actions -->
   {#if $currentUser?.id === patch.author_id}
-    <div class="mb-8 flex gap-2">
+    <div class="mb-8 flex flex-wrap items-center gap-2">
       {#if patch.status === "draft"}
         <button class="btn btn-ghost btn-sm" onclick={() => openEdit(patch, "patch")}>
           <PencilIcon size={15} strokeWidth={1.8} aria-hidden="true" />
@@ -635,7 +644,7 @@
         </button>
         <button
           class="btn btn-primary btn-sm"
-          disabled={submittingPatch}
+          disabled={submittingPatch || (tokenBalance !== null && tokenBalance.balance < proposalDeposit)}
           onclick={() => (showSubmitDialog = true)}
         >
           {$translator(submittingPatch ? "patch.submitting" : "patch.submit")}
@@ -643,6 +652,14 @@
         <button class="btn btn-danger btn-sm" onclick={() => { pendingCommentDelete = null; showDeleteDialog = true; }}>
           {$translator("common.delete")}
         </button>
+        {#if !loadingTokenInfo}
+          <span class="deposit-hint" class:deposit-warning={tokenBalance !== null && tokenBalance.balance < proposalDeposit}>
+            {$translator("tokens.depositHint", { amount: proposalDeposit })}
+            {#if tokenBalance !== null && tokenBalance.balance < proposalDeposit}
+              · {$translator("tokens.insufficient")}
+            {/if}
+          </span>
+        {/if}
       {/if}
     </div>
   {/if}
@@ -716,11 +733,6 @@
         ></textarea>
         <div class="composer-footer">
           <span>{$translator("common.markdownSupported")}</span>
-          <WritingAssist
-            body={replyText}
-            context="comment"
-            onApply={(value) => (replyText = value.body)}
-          />
           <button class="btn btn-primary btn-sm" disabled={submittingReply || !replyText.trim()} onclick={submitReply}>
             {submittingReply ? $translator("common.sending") : $translator("patch.joinDiscussion")}
           </button>
@@ -752,7 +764,7 @@
 <ConfirmDialog
   bind:open={showSubmitDialog}
   title={$translator("patch.submitConfirmTitle")}
-  description={$translator("patch.submitConfirmDescription")}
+  description={`${$translator("patch.submitConfirmDescription")} ${$translator("tokens.depositHint", { amount: proposalDeposit })}`}
   confirmText={$translator("patch.submit")}
   tone="primary"
   onConfirm={handleSubmit}
@@ -828,6 +840,15 @@
     gap: 0.75rem;
   }
 
+  .deposit-hint {
+    color: var(--vercel-text-tertiary);
+    font-size: 0.75rem;
+  }
+
+  .deposit-hint.deposit-warning {
+    color: var(--vercel-danger);
+  }
+
   .patch-pr-link {
     display: inline-flex;
     align-items: center;
@@ -875,15 +896,15 @@
   }
 
   .vote-bar-for {
-    background: var(--vercel-accent);
+    background: #22c55e;
   }
 
   .vote-bar-against {
-    background: color-mix(in srgb, var(--vercel-accent) 58%, var(--vercel-surface-muted));
+    background: #ef4444;
   }
 
   .vote-bar-abstain {
-    background: color-mix(in srgb, var(--vercel-accent) 22%, var(--vercel-surface-muted));
+    background: color-mix(in srgb, var(--vercel-text-tertiary) 50%, var(--vercel-surface-muted));
   }
 
   .vote-heading,
@@ -942,14 +963,16 @@
     font-size: 0.7rem;
   }
 
-  .vote-total.is-for strong,
-  .vote-total.is-against strong { color: var(--vercel-accent); }
+  .vote-total.is-for strong { color: #22c55e; }
+  .vote-total.is-against strong { color: #ef4444; }
 
   .vote-record-choice {
-    color: var(--vercel-accent);
     font-size: 0.75rem;
     font-weight: 650;
   }
+
+  .vote-record-choice.is-for { color: #22c55e; }
+  .vote-record-choice.is-against { color: #ef4444; }
 
   .vote-record-choice.is-abstain {
     color: var(--vercel-text-tertiary);
@@ -984,12 +1007,22 @@
     transform: translateY(-1px);
   }
 
-  .vote-choice.is-for,
-  .vote-choice.is-against,
+  .vote-choice.is-for {
+    border-color: color-mix(in srgb, #22c55e 55%, transparent);
+    color: #22c55e;
+    background: color-mix(in srgb, #22c55e 12%, transparent);
+  }
+
+  .vote-choice.is-against {
+    border-color: color-mix(in srgb, #ef4444 55%, transparent);
+    color: #ef4444;
+    background: color-mix(in srgb, #ef4444 12%, transparent);
+  }
+
   .vote-choice.is-abstain {
-    border-color: color-mix(in srgb, var(--vercel-accent) 55%, transparent);
-    color: var(--vercel-accent);
-    background: color-mix(in srgb, var(--vercel-accent) 12%, transparent);
+    border-color: color-mix(in srgb, var(--vercel-text-tertiary) 55%, transparent);
+    color: var(--vercel-text-secondary);
+    background: color-mix(in srgb, var(--vercel-text-tertiary) 12%, transparent);
   }
 
   .vote-choice.is-other {
@@ -1006,6 +1039,40 @@
     font-size: 0.75rem;
     line-height: 1.45;
     text-align: center;
+  }
+
+  .stake-input-section {
+    margin-top: 0.75rem;
+    padding: 0.6rem 0.75rem;
+    background: var(--vercel-surface-muted, #1a2332);
+    border: 1px solid var(--vercel-border, #334155);
+    border-radius: 6px;
+  }
+
+  .stake-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.75rem;
+    color: var(--vercel-text-secondary, #94a3b8);
+  }
+
+  .stake-input {
+    width: 6rem;
+    padding: 0.2rem 0.4rem;
+    border: 1px solid var(--vercel-border, #334155);
+    border-radius: 4px;
+    background: var(--vercel-surface, #1e293b);
+    color: var(--vercel-text, #f1f5f9);
+    font-size: 0.78rem;
+    text-align: right;
+  }
+
+  .stake-help {
+    margin: 0.3rem 0 0;
+    color: var(--vercel-text-tertiary, #64748b);
+    font-size: 0.65rem;
+    line-height: 1.35;
   }
 
   .vote-closed-note {

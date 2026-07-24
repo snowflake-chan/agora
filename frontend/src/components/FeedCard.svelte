@@ -120,14 +120,6 @@
       onSelect(item);
     }
   }
-
-  function openPoll() {
-    if (window.matchMedia("(min-width: 64rem)").matches && onSelect) {
-      onSelect(item);
-      return;
-    }
-    window.location.assign(href);
-  }
 </script>
 
 <article
@@ -209,7 +201,6 @@
       moderationTargetHref={`/posts/${item.id}`}
       onModerationQueued={() => (moderationQueued = true)}
       translationRequested={displayTranslation !== null}
-      onOpen={openPoll}
     />
   {/if}
 

@@ -15,7 +15,7 @@ import {
   normalizeTheme,
 } from "./preferences.ts";
 
-const locales = ["en", "ja", "zh-CN", "zh-TW"];
+const locales = ["en", "ja", "zh-TW"];
 
 function placeholders(value) {
   return [...value.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort();

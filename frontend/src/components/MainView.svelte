@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { fade, fly } from "svelte/transition";
-  import { Clock3Icon, FlameIcon, HistoryIcon, SparklesIcon, UsersIcon } from "@lucide/svelte";
+  import { Clock3Icon, FlameIcon, SparklesIcon, UsersIcon } from "@lucide/svelte";
   import { appleEase } from "../lib/motion";
   import { translator } from "../lib/i18n";
   import { requestLogin } from "../lib/login";
@@ -21,8 +21,6 @@
   let feedMode = $state<FeedMode>("recommended");
   let authReady = $state(false);
   let desktopSplit = $state(false);
-  let feedPanel = $state<HTMLElement | null>(null);
-  let hasSavedReadingPosition = $state(false);
   let splitActive = $derived($homeLayout === "split" && desktopSplit);
 
   const feedModes: FeedMode[] = ["recommended", "trending", "following", "latest"];
@@ -54,51 +52,10 @@
       try { localStorage.setItem("agora:feedMode", feedMode); } catch {}
     }
     authReady = true;
-    hasSavedReadingPosition = Boolean(readReadingPosition());
   });
-
-  onMount(() => {
-    const save = () => saveReadingPosition();
-    window.addEventListener("scroll", save, { passive: true });
-    return () => window.removeEventListener("scroll", save);
-  });
-
-  type ReadingPosition = { scrollTop: number; selectedId: string | null };
-
-  function readingPositionKey() {
-    return `agora:feed-reading-position:${feedMode}`;
-  }
-
-  function readReadingPosition(): ReadingPosition | null {
-    try {
-      const stored = JSON.parse(localStorage.getItem(readingPositionKey()) ?? "null") as ReadingPosition | null;
-      return stored && Number.isFinite(stored.scrollTop) ? stored : null;
-    } catch {
-      return null;
-    }
-  }
-
-  function saveReadingPosition() {
-    const scrollTop = splitActive ? feedPanel?.scrollTop ?? 0 : window.scrollY;
-    if (scrollTop < 8 && !selected) return;
-    try {
-      localStorage.setItem(readingPositionKey(), JSON.stringify({ scrollTop, selectedId: selected?.id ?? null }));
-      hasSavedReadingPosition = true;
-    } catch {}
-  }
-
-  function continueReading() {
-    const position = readReadingPosition();
-    if (!position) return;
-    requestAnimationFrame(() => {
-      if (splitActive) feedPanel?.scrollTo({ top: position.scrollTop, behavior: "smooth" });
-      else window.scrollTo({ top: position.scrollTop, behavior: "smooth" });
-    });
-  }
 
   function selectItem(item: FeedItem) {
     selected = item;
-    saveReadingPosition();
   }
 
   function syncSelection(items: FeedItem[]) {
@@ -127,17 +84,10 @@
         return;
       }
     }
-    saveReadingPosition();
     selected = null;
     feedState = "loading";
     feedMode = next;
     try { localStorage.setItem("agora:feedMode", next); } catch {}
-    hasSavedReadingPosition = Boolean(readReadingPosition());
-  }
-
-  function handleFeedState(state: "loading" | "ready" | "empty" | "error") {
-    feedState = state;
-    if (state === "ready" && hasSavedReadingPosition) continueReading();
   }
 </script>
 
@@ -176,20 +126,9 @@
               </button>
             {/each}
           </div>
-          {#if hasSavedReadingPosition}
-            <button
-              type="button"
-              class="continue-reading"
-              onclick={continueReading}
-              title={$translator("feed.continueReadingDescription")}
-            >
-              <HistoryIcon size={15} strokeWidth={1.8} aria-hidden="true" />
-              <span>{$translator("feed.continueReading")}</span>
-            </button>
-          {/if}
         </div>
         <div class="workspace-grid">
-          <section bind:this={feedPanel} class="stream-panel" aria-label={$translator("home.activity")} onscroll={saveReadingPosition}>
+          <section class="stream-panel" aria-label={$translator("home.activity")}>
             {#if authReady}
               {#key feedMode}
                 <FeedList
@@ -198,7 +137,7 @@
                   selectedId={splitActive ? selected?.id ?? null : null}
                   onFirstItem={splitActive ? (item) => selected ??= item : null}
                   onItemsUpdated={splitActive ? syncSelection : null}
-                  onStateChange={handleFeedState}
+                  onStateChange={(state) => feedState = state}
                 />
               {/key}
             {:else}
@@ -283,8 +222,6 @@
   .stream-heading { display: flex; align-items: end; justify-content: space-between; gap: 2rem; margin-bottom: 1.25rem; }
   .feed-toolbar { display: flex; min-height: 3rem; padding: .45rem .55rem; align-items: center; justify-content: flex-start; border-bottom: 1px solid var(--vercel-border); background: color-mix(in srgb, var(--vercel-surface) 72%, transparent); }
   .feed-tabs { display: inline-flex; align-items: center; gap: .2rem; padding: .2rem; border-radius: var(--vercel-radius-sm); background: var(--vercel-surface-muted); }
-  .continue-reading { display:inline-flex; min-height:2rem; margin-left:auto; align-items:center; gap:.38rem; padding:.35rem .6rem; border:0; border-radius:var(--vercel-radius-sm); color:var(--vercel-text-secondary); background:transparent; cursor:pointer; font:inherit; font-size:.75rem; font-weight:600; }
-  .continue-reading:hover { color:var(--vercel-text); background:var(--vercel-hover); }
   .feed-tabs button { display: inline-flex; min-height: 2rem; padding: .35rem .7rem; align-items: center; gap: .4rem; border: 0; border-radius: var(--vercel-radius-sm); background: transparent; color: var(--vercel-text-tertiary); cursor: pointer; font: inherit; font-size: .75rem; font-weight: 600; white-space: nowrap; transition: color .18s ease, background-color .18s ease, box-shadow .18s ease; }
   .feed-tabs button:hover { color: var(--vercel-text); background: var(--vercel-hover); }
   .feed-tabs button.active { color: var(--vercel-text); background: var(--vercel-hover-strong); box-shadow: inset 0 0 0 1px var(--vercel-border); }
@@ -310,7 +247,6 @@
     .stream-heading { align-items: start; flex-direction: column; gap: .5rem; }
     .view-description { text-align: left; }
     .feed-toolbar { overflow: hidden; }
-    .continue-reading span { display:none; }
     .feed-tabs { display: grid; width: 100%; grid-template-columns: repeat(4, minmax(0, 1fr)); }
     .feed-tabs button { min-width: 0; padding-inline: .15rem; justify-content: center; gap: .25rem; font-size: .6875rem; }
     .workspace-shell { height:auto; min-height:0; overflow:visible; }
