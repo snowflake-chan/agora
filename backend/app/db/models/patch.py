@@ -23,36 +23,6 @@ class Patch(Base):
             "updated_at",
             postgresql_where=text("status = 'merged'"),
         ),
-        CheckConstraint(
-            """
-            (
-                status != 'voting'
-                AND
-                voting_ends_at IS NULL
-                AND voting_started_at IS NULL
-                AND voting_period_hours IS NULL
-                AND voting_window_kind IS NULL
-            )
-            OR
-            (
-                status != 'draft'
-                AND
-                voting_ends_at IS NOT NULL
-                AND voting_started_at IS NOT NULL
-                AND voting_period_hours IS NOT NULL
-                AND voting_window_kind IS NOT NULL
-                AND voting_ends_at = (
-                    voting_started_at + voting_period_hours * INTERVAL '1 hour'
-                )
-                AND (
-                    (voting_window_kind = 'standard' AND voting_period_hours = 72)
-                    OR
-                    (voting_window_kind = 'active_creator' AND voting_period_hours = 24)
-                )
-            )
-            """,
-            name="ck_patch_voting_window_snapshot",
-        ),
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)

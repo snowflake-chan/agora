@@ -58,11 +58,11 @@ async def lock_user_proposals(
             guild_id=guild_id, user_id=user_id, proposal_id=pid
         ))
 
-    # Bump guild.proposal_score
-    guild = await session.get(Guild, guild_id)
+    # Bump guild.proposal_score (with row lock to prevent lost updates)
+    guild = await session.get(Guild, guild_id, with_for_update=True)
     if guild is not None:
         guild.proposal_score += len(proposal_ids)
-        # level is recalculated by the DB trigger
+        guild.level = calc_guild_level(guild.proposal_score)
 
     await session.flush()
     return len(proposal_ids)
@@ -80,7 +80,11 @@ async def count_proposal_for_guild(
     Returns True if the proposal was counted, False otherwise.
     """
     # Check if already counted
-    existing = await session.get(GuildMemberProposal, proposal_id)
+    existing = await session.scalar(
+        select(GuildMemberProposal).where(
+            GuildMemberProposal.proposal_id == proposal_id
+        )
+    )
     if existing is not None:
         return False
 
@@ -93,17 +97,17 @@ async def count_proposal_for_guild(
         )
     )
     result = await session.execute(q)
-    guild_id = result.scalar_one_or_none()
+    guild_id = result.scalars().first()
     if guild_id is None:
         return False
 
     session.add(GuildMemberProposal(
         guild_id=guild_id, user_id=author_id, proposal_id=proposal_id,
     ))
-    guild = await session.get(Guild, guild_id)
+    guild = await session.get(Guild, guild_id, with_for_update=True)
     if guild is not None:
         guild.proposal_score += 1
-        # level recalculated by DB trigger
+        guild.level = calc_guild_level(guild.proposal_score)
 
     await session.flush()
     return True

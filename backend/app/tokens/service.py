@@ -75,12 +75,18 @@ async def set_param(
 # ── Balance helpers ──
 
 async def get_balance(session: AsyncSession, user_id: UUID) -> TokenBalance:
-    """Return (or create) a token balance row for *user_id*."""
-    row = await session.get(TokenBalance, user_id)
+    """Return (or create) a token balance row for *user_id*.
+
+    Uses SELECT ... FOR UPDATE to lock the row, preventing lost updates
+    from concurrent earn/spend/tip operations.
+    """
+    row = await session.get(TokenBalance, user_id, with_for_update=True)
     if row is None:
         row = TokenBalance(user_id=user_id)
         session.add(row)
         await session.flush()
+        # Re-fetch with lock after insert
+        row = await session.get(TokenBalance, user_id, with_for_update=True)
     return row
 
 
@@ -134,16 +140,18 @@ async def earn(
     source: str,
     reference_id: UUID | None = None,
     bypass_cap: bool = False,
+    bypass_new_user_rate: bool = False,
 ) -> int:
     """Credit *amount* AGC to *user_id*.  Returns the new balance.
 
     Enforces the daily per-user cap unless *bypass_cap* is True.
-    Applies 50 % rate for users registered within the last 7 days.
+    Applies 50 % rate for users registered within the last 7 days unless
+    *bypass_new_user_rate* is True (used for one-time welcome bonuses).
     """
     if amount <= 0:
         return (await get_balance(session, user_id)).balance
 
-    if await _is_new_user(session, user_id):
+    if not bypass_new_user_rate and await _is_new_user(session, user_id):
         amount = max(1, amount // 2)
 
     if not bypass_cap:

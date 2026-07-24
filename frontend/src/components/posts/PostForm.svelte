@@ -1,6 +1,7 @@
 <script lang="ts">
   import { BarChart3Icon, CheckIcon, LoaderCircleIcon, PlusIcon, SparklesIcon, Trash2Icon, XIcon } from "@lucide/svelte";
-  import { createEventDispatcher, onMount } from "svelte";
+  import { onMount } from "svelte";
+  import { fly } from "svelte/transition";
   import { generatePoll, getAiStatus, refreshAiStatus, type GeneratedPoll } from "../../lib/ai";
   import { createAiInputSignature, getPollAiReadiness, isCurrentAiResult } from "../../lib/ai-ui";
   import { ApiError } from "../../lib/auth";
@@ -8,11 +9,14 @@
   import { renderMarkdown } from "../../lib/markdown";
   import { modal } from "../../lib/modal";
   import { appleEase } from "../../lib/motion";
-  import { createPost, type PollCreateData } from "../../lib/posts";
+  import { createPost, type PollCreateData, type Post } from "../../lib/posts";
+  import { checkUnpaidFines } from "../../lib/tokens";
   import { toaster } from "../../stores/toaster";
+  import { currentUser, initAuth } from "../../stores/auth";
   import WritingAssist from "./WritingAssist.svelte";
 
-  const dispatch = createEventDispatcher();
+  let { onSubmitted, onClose }: { onSubmitted?: (post: Post) => void; onClose?: () => void } = $props();
+
   const POLL_DURATIONS = [
     { hours: 24, key: "poll.duration1Day" },
     { hours: 72, key: "poll.duration3Days" },
@@ -23,47 +27,50 @@
   type AiGenerationState = "idle" | "generating" | "preview" | "success" | "stale" | "needsContext" | "political" | "error";
   type AiAvailability = "checking" | "enabled" | "unavailable";
 
-  let title = "";
-  let content = "";
-  let submitting = false;
-  let mobilePane: "edit" | "preview" = "edit";
-  let pollEnabled = false;
-  let pollQuestion = "";
-  let pollOptions = ["", ""];
-  let pollDurationHours = 72;
-  let pollTouched = false;
-  let pollValidation: string | null = null;
-  let aiAvailability: AiAvailability = "checking";
-  let aiGenerationState: AiGenerationState = "idle";
-  let aiGenerationError = "";
-  let generatedQuestions: string[] = [];
-  let pendingGeneratedPoll: GeneratedPoll | null = null;
-  let pendingPollSignature = "";
-  let aiAvailabilitySequence = 0;
-  let aiRequestSequence = 0;
-  let pollAiReadiness = getPollAiReadiness(title, content);
-  let pollAiInputSignature = "";
+  let title = $state("");
+  let content = $state("");
+  let submitting = $state(false);
+  let mobilePane = $state<"edit" | "preview">("edit");
+  let pollEnabled = $state(false);
+  let pollQuestion = $state("");
+  let pollOptions = $state(["", ""]);
+  let pollDurationHours = $state(72);
+  let pollTouched = $state(false);
+  let aiAvailability = $state<AiAvailability>("checking");
+  let aiGenerationState = $state<AiGenerationState>("idle");
+  let aiGenerationError = $state("");
+  let generatedQuestions = $state<string[]>([]);
+  let pendingGeneratedPoll = $state<GeneratedPoll | null>(null);
+  let pendingPollSignature = $state("");
+  let aiAvailabilitySequence = $state(0);
+  let aiRequestSequence = $state(0);
 
-  $: pollValidation = validatePoll();
-  $: pollAiReadiness = getPollAiReadiness(title, content);
-  $: canGeneratePoll = pollAiReadiness.ready;
-  $: pollAiInputSignature = createAiInputSignature([
+  let pollValidation = $derived(validatePoll());
+  let pollAiReadiness = $derived(getPollAiReadiness(title, content));
+  let canGeneratePoll = $derived(pollAiReadiness.ready);
+  let pollAiInputSignature = $derived.by(() => createAiInputSignature([
     title.trim(),
     content.trim(),
     pollQuestion.trim(),
     ...pollOptions.map((option) => option.trim()),
     $locale,
-  ]);
-  $: if (canGeneratePoll && aiGenerationState === "needsContext") aiGenerationState = "idle";
-  $: if (
-    pendingGeneratedPoll
-    && pendingPollSignature
-    && pendingPollSignature !== pollAiInputSignature
-  ) {
-    pendingGeneratedPoll = null;
-    pendingPollSignature = "";
-    aiGenerationState = "stale";
-  }
+  ]));
+
+  $effect(() => {
+    if (canGeneratePoll && aiGenerationState === "needsContext") aiGenerationState = "idle";
+  });
+
+  $effect(() => {
+    if (
+      pendingGeneratedPoll
+      && pendingPollSignature
+      && pendingPollSignature !== pollAiInputSignature
+    ) {
+      pendingGeneratedPoll = null;
+      pendingPollSignature = "";
+      aiGenerationState = "stale";
+    }
+  });
 
   onMount(() => {
     void loadAiAvailability();
@@ -83,7 +90,7 @@
   }
 
   function close() {
-    dispatch("close");
+    onClose?.();
   }
 
   function validatePoll(): string | null {
@@ -223,6 +230,26 @@
     if (!title.trim() || !content.trim()) return;
     const poll = getPollPayload();
     if (pollEnabled && !poll) return;
+
+    // Users with unpaid fines must pay before posting. The backend enforces
+    // this authoritatively; this check offers a faster, friendlier path
+    // straight to the fines panel. Skip when signed out so the backend
+    // handles auth, and on check failure fall through to submit so a flaky
+    // fines endpoint never blocks legitimate posting — the backend still
+    // surfaces any real error via the createPost flow below.
+    try {
+      await initAuth();
+      if ($currentUser) {
+        const fines = await checkUnpaidFines();
+        if (fines.has_unpaid_fines) {
+          toaster.error($translator("tokens.fines.mustPayFirst"), $translator("tokens.fines.payNow"));
+          window.location.href = "/tokens?fines=1";
+          return;
+        }
+      }
+    } catch {
+      // Best-effort pre-check: delegate to the backend on submit.
+    }
 
     submitting = true;
     try {

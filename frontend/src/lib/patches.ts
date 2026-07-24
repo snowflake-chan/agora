@@ -41,6 +41,8 @@ export interface Vote {
   voter_id: string;
   choice: string;
   voter_username: string | null;
+  stake_amount: number;
+  weight: number;
   created_at: string;
 }
 

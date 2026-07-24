@@ -18,29 +18,27 @@
   import ContentEditModal from "../content/ContentEditModal.svelte";
   import RevisionHistoryModal, { type RevisionSnapshot } from "../content/RevisionHistoryModal.svelte";
 
-  export let postId: string;
-  export let embedded = false;
+  let { postId, embedded = false }: { postId: string; embedded?: boolean } = $props();
 
-  let post: Post | null = null;
-  let comments: Comment[] = [];
-  let loading = true;
-  let replyText = "";
-  let replyingTo: Comment | null = null;
-  let submitting = false;
-  let likingId: string | null = null;
+  let post = $state<Post | null>(null);
+  let comments = $state<Comment[]>([]);
+  let loading = $state(true);
+  let replyText = $state("");
+  let replyingTo = $state<Comment | null>(null);
+  let submitting = $state(false);
+  let likingId = $state<string | null>(null);
 
-  let showDeleteDialog = false;
-  let pendingDelete: "post" | "comment" | null = null;
-  let pendingDeleteIndex = 0;
-  let reportOpen = false;
-  let reportTarget = "";
-  let reportReason = "";
-  let reporting = false;
-  let postRestricted = false;
-  let editTarget: Post | Comment | null = null;
-  let editKind: "post" | "comment" = "post";
-  let historyTarget: Post | Comment | null = null;
-  let translatedPostTitle: string | null = null;
+  let showDeleteDialog = $state(false);
+  let pendingDelete = $state<"post" | "comment" | null>(null);
+  let pendingDeleteIndex = $state(0);
+  let reportOpen = $state(false);
+  let reportTarget = $state("");
+  let reportReason = $state("");
+  let reporting = $state(false);
+  let editTarget = $state<Post | Comment | null>(null);
+  let editKind = $state<"post" | "comment">("post");
+  let historyTarget = $state<Post | Comment | null>(null);
+  let translatedPostTitle = $state<string | null>(null);
 
   async function loadPostDetail(showError = true) {
     try {
@@ -193,7 +191,7 @@
       try {
         await deleteContent(comment.id);
         comments = comments.filter((c) => c.id !== comment.id);
-        if (post) post.reply_count--;
+        if (post) post = { ...post, reply_count: post.reply_count - 1 };
       } catch {
         toaster.error($translator("post.deleteReplyTitle"), $translator("common.tryAgain"));
       }
@@ -211,7 +209,7 @@
       comments = [...comments, newComment];
       replyText = "";
       replyingTo = null;
-      if (post) post.reply_count++;
+      if (post) post = { ...post, reply_count: post.reply_count + 1 };
     } catch (e: any) {
       toaster.error($translator("common.error"), $translator("post.replyFailed"));
     } finally {
@@ -298,34 +296,12 @@
     }));
   }
 
-  let postTitle = "";
-  let postTags: string[] | null = null;
-  let items: Array<{
-    key: string;
-    username: string;
-    userId: string | null;
-    createdAt: string;
-    content: string;
-    replyingToUsername: string | null;
-    replyingToContent: string | null;
-    replyingToId: string | null;
-    title: string | null;
-    tags: string[] | null;
-    likeCount: number;
-    liked: boolean;
-    replyCount: number;
-    moderationStatus: Post["moderation_status"];
-    moderationReason: string | null;
-    moderationReviewNote: string | null;
-    revisionNumber: number;
-    updatedAt: string | null;
-  }> = [];
-
-  $: if (post) {
-    postRestricted = isModerationRestricted(post.moderation_status);
-    postTitle = post.title;
-    postTags = post.tags;
-    items = [
+  let postRestricted = $derived(post ? isModerationRestricted(post.moderation_status) : false);
+  let postTitle = $derived(post?.title ?? "");
+  let postTags = $derived(post?.tags ?? null);
+  let items = $derived.by(() => {
+    if (!post) return [];
+    return [
       {
         key: post.id,
         username: post.author_username ?? $translator("common.anonymous"),
@@ -367,7 +343,7 @@
         updatedAt: c.updated_at,
       })),
     ];
-  }
+  });
 </script>
 
 {#if loading}

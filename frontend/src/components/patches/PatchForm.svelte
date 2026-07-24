@@ -1,7 +1,7 @@
 <script lang="ts">
   import { renderMarkdown } from "../../lib/markdown";
   import { translator } from "../../lib/i18n";
-  import { createEventDispatcher, onMount } from "svelte";
+  import { onMount } from "svelte";
   import { fly } from "svelte/transition";
   import { GITHUB_REPO } from "../../lib/config";
   import { createPatch } from "../../lib/patches";
@@ -11,13 +11,13 @@
   import WritingAssist from "../posts/WritingAssist.svelte";
   import { getBalance, getTokenParams, type TokenBalance } from "../../lib/tokens";
 
-  const dispatch = createEventDispatcher();
+  let { onSubmitted, onClose }: { onSubmitted?: () => void; onClose?: () => void } = $props();
 
-  let title = "";
-  let prNumber: number | null = null;
-  let content = "";
-  let submitting = false;
-  let mobilePane: "edit" | "preview" = "edit";
+  let title = $state("");
+  let prNumber = $state(0);
+  let content = $state("");
+  let submitting = $state(false);
+  let mobilePane = $state<"edit" | "preview">("edit");
   let proposalDeposit = $state(50);
   let tokenBalance = $state<TokenBalance | null>(null);
   let loadingTokenInfo = $state(true);
@@ -35,11 +35,11 @@
   });
 
   function close() {
-    dispatch("close");
+    onClose?.();
   }
 
   async function handleSubmit() {
-    if (!title.trim() || !content.trim() || !prNumber) return;
+    if (!title.trim() || !content.trim() || prNumber <= 0) return;
     submitting = true;
     try {
       const patch = await createPatch({
@@ -99,7 +99,7 @@
       <button
         class="btn btn-primary btn-sm"
         onclick={handleSubmit}
-        disabled={submitting || !title.trim() || !content.trim() || !prNumber || (tokenBalance !== null && tokenBalance.balance < proposalDeposit)}
+        disabled={submitting || !title.trim() || !content.trim() || prNumber <= 0 || (tokenBalance !== null && tokenBalance.balance < proposalDeposit)}
       >
         {submitting ? $translator("common.creating") : $translator("common.create")}
       </button>

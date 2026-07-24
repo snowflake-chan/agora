@@ -1,5 +1,6 @@
 # ------ Backend ------
 .venv/
+venv/
 __pycache__/
 
 # ------ Local dev tools (portable runtimes) ------

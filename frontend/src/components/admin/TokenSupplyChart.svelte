@@ -6,14 +6,15 @@
 
   let { title = "" }: { title?: string } = $props();
 
-  let canvasEl: HTMLCanvasElement | undefined = $state();
-  let chartInstance: Chart | null = null;
-  let loading = $state(true);
-  let error = $state("");
+	let canvasEl: HTMLCanvasElement | undefined = $state();
+	  let chartInstance: Chart | null = null;
+	  let loading = $state(true);
+	  let error = $state("");
+	  let data = $state<any[] | null>(null);
 
   onMount(async () => {
     try {
-      const data = await getSupplyHistory(90);
+      data = await getSupplyHistory(90);
       if (!data || data.length === 0) {
         loading = false;
         return;
@@ -39,7 +40,7 @@
             labels: dates,
             datasets: [
               {
-                label: "Circulating",
+                label: $translator("tokens.admin.circulating"),
                 data: data.map((d) => d.circulating_supply),
                 borderColor: accent,
                 backgroundColor: accent + "20",
@@ -49,7 +50,7 @@
                 pointHoverRadius: 5,
               },
               {
-                label: "Total issued",
+                label: $translator("tokens.admin.totalIssued"),
                 data: data.map((d) => d.total_issued),
                 borderColor: success,
                 backgroundColor: success + "20",
@@ -59,7 +60,7 @@
                 pointHoverRadius: 5,
               },
               {
-                label: "Total burned",
+                label: $translator("tokens.admin.totalBurned"),
                 data: data.map((d) => d.total_burned),
                 borderColor: warning,
                 backgroundColor: warning + "20",
@@ -135,8 +136,8 @@
     <div class="empty-state"><div class="spinner"></div></div>
   {:else if error}
     <p class="row-meta">{error}</p>
-  {:else if !canvasEl || !chartInstance}
-    <p class="row-meta">{$translator("common.loading")}</p>
+  {:else if data.length === 0}
+    <p class="row-meta">{$translator("tokens.admin.supplyTrendEmpty")}</p>
   {:else}
     <div class="chart-container">
       <canvas bind:this={canvasEl}></canvas>

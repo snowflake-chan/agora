@@ -30,7 +30,7 @@ class TokenBalance(Base):
         nullable=False,
     )
 
-    user: Mapped["User"] = relationship("User", back_populates="token_balance")  # type: ignore[name-defined]
+    user: Mapped["User"] = relationship("User")  # type: ignore[name-defined]
 
 
 class TokenTransaction(Base):

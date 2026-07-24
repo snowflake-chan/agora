@@ -11,9 +11,14 @@ from .guild import Guild, GuildMember
 from .guild_member_proposal import GuildMemberProposal
 from .moderation import BanRecord, Report
 from .settings import SiteSetting
+# Token models must be imported before User relationships are resolved
 from .token import TokenBalance, TokenTransaction, TokenParam, TokenParamHistory
 from .token_snapshot import TokenSnapshot
 from .content_boost import ContentBoost
+from .token_stake import TokenStake, TokenYieldRecord
+from .user_achievement import UserAchievement
+from .paid_question import PaidQuestion
+from .violation_fine import ViolationFine
 
 __all__ = [
     "User",
@@ -41,4 +46,9 @@ __all__ = [
     "TokenParamHistory",
     "TokenSnapshot",
     "ContentBoost",
+    "TokenStake",
+    "TokenYieldRecord",
+    "UserAchievement",
+    "PaidQuestion",
+    "ViolationFine",
 ]

@@ -4,7 +4,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -73,8 +73,8 @@ def _deadline_passed(
     return voting_ends_at <= (now or datetime.now(timezone.utc))
 
 
-def _decide_vote_outcome(counts: dict[str, int]) -> str:
-    """Return the strict-majority outcome, counting abstentions in the total."""
+def _decide_vote_outcome(counts: dict[str, float]) -> str:
+    """Return the strict-majority outcome, using weighted votes."""
     total = counts["for"] + counts["against"] + counts["abstain"]
     return "passed" if total > 0 and counts["for"] > total / 2 else "rejected"
 
@@ -84,18 +84,18 @@ def _decide_vote_outcome(counts: dict[str, int]) -> str:
 
 async def _get_vote_counts(
     session: AsyncSession, patch_id: UUID | str
-) -> dict[str, int]:
-    """Return for_count, against_count, abstain_count for a patch."""
+) -> dict[str, float]:
+    """Return weighted for_count, against_count, abstain_count for a patch."""
     rows = (
         await session.execute(
-            select(VoteModel.choice, func.count(VoteModel.id))
+            select(VoteModel.choice, func.sum(VoteModel.weight))
             .where(VoteModel.patch_id == patch_id)
             .group_by(VoteModel.choice)
         )
     ).all()
-    counts = {"for": 0, "against": 0, "abstain": 0}
+    counts = {"for": 0.0, "against": 0.0, "abstain": 0.0}
     for choice, cnt in rows:
-        counts[choice] = cnt
+        counts[choice] = float(cnt or 0)
     return counts
 
 
@@ -158,6 +158,9 @@ async def _tally(session: AsyncSession, patch: PatchModel) -> bool:
 
     if patch_status == "passed":
         spawn(_do_merge_and_deploy(patch_id, pr_number, patch_title), name=f"merge:{patch_id}")
+    else:
+        # Settle proposal staking: losers lose their stake
+        spawn(_settle_losing_stakes(patch_id), name=f"settle_stakes:{patch_id}")
 
     await publish_feed_event(
         "updated",
@@ -199,6 +202,19 @@ async def _notify_patch_voters(patch_id: str, patch_title: str, result: str) -> 
             )
     except Exception:
         logger.exception("patch voter notification failed for %s", patch_id)
+
+
+async def _settle_losing_stakes(patch_id: str) -> None:
+    """Settle proposal stakes for a rejected proposal (losers lose their stake)."""
+    from app.db import async_session as _async_session
+    from uuid import UUID as _UUID
+    try:
+        async with _async_session() as session:
+            from app.tokens.staking import settle_proposal_stakes
+            await settle_proposal_stakes(session, _UUID(patch_id), passed=False)
+            await session.commit()
+    except Exception:
+        logger.exception("settle losing stakes failed for patch %s", patch_id)
 
 
 async def _do_merge_and_deploy(patch_id: str, pr_number: int, patch_title: str | None = None) -> None:
@@ -263,14 +279,20 @@ async def _do_merge_and_deploy(patch_id: str, pr_number: int, patch_title: str |
 
                 # Token economy: refund deposit + pass reward
                 if patch.status == "merged":
-                    from app.tokens import service as token_service
-                    deposit = await token_service.get_param(session, "proposal_deposit")
-                    pass_reward = await token_service.get_param(session, "proposal_pass_reward")
-                    await token_service.earn(session, patch.author_id, deposit, "proposal_deposit_refund", patch.id)
-                    await token_service.earn(session, patch.author_id, pass_reward, "proposal_pass", patch.id, bypass_cap=True)
-                    # Guild leveling: count proposal for author's guild
-                    from app.guilds.leveling import count_proposal_for_guild
-                    await count_proposal_for_guild(session, patch.id, patch.author_id)
+                    try:
+                        from app.tokens import service as token_service
+                        deposit = await token_service.get_param(session, "proposal_deposit")
+                        pass_reward = await token_service.get_param(session, "proposal_pass_reward")
+                        await token_service.earn(session, patch.author_id, deposit, "proposal_deposit_refund", patch.id)
+                        await token_service.earn(session, patch.author_id, pass_reward, "proposal_pass", patch.id, bypass_cap=True)
+                        # Guild leveling: count proposal for author's guild
+                        from app.guilds.leveling import count_proposal_for_guild
+                        await count_proposal_for_guild(session, patch.id, patch.author_id)
+                        # Settle proposal staking: pay out winning stakes
+                        from app.tokens.staking import settle_proposal_stakes
+                        await settle_proposal_stakes(session, patch.id, passed=True)
+                    except Exception:
+                        logger.exception("token economy reward failed for patch %s", patch.id)
             except GitHubPullRequestError as exc:
                 # A transient lookup failure has no truthful terminal result.
                 # Leave the proposal passed so startup reconciliation can retry.
@@ -364,10 +386,10 @@ async def _trigger_deploy() -> None:
 
 def _patch_to_read(
     patch: PatchModel,
-    counts: dict[str, int] | None = None,
+    counts: dict[str, float] | None = None,
     comment_count: int = 0,
 ) -> PatchRead:
-    c = counts or {"for": 0, "against": 0, "abstain": 0}
+    c = counts or {"for": 0.0, "against": 0.0, "abstain": 0.0}
     return PatchRead(
         id=patch.id,
         title=patch.title,
@@ -436,14 +458,14 @@ async def list_patches(
         ):
             spawn(_auto_tally_patch(str(p.id)), name=f"auto_tally:{p.id}")
 
-    # Get vote counts
+    # Get vote counts (weighted)
     patch_ids = [str(p.id) for p in patches]
-    counts_map: dict[str, dict[str, int]] = {}
+    counts_map: dict[str, dict[str, float]] = {}
     comment_counts: dict = {}
     if patch_ids:
         rows = (
             await session.execute(
-                select(VoteModel.patch_id, VoteModel.choice, func.count(VoteModel.id))
+                select(VoteModel.patch_id, VoteModel.choice, func.sum(VoteModel.weight))
                 .where(VoteModel.patch_id.in_(patch_ids))
                 .group_by(VoteModel.patch_id, VoteModel.choice)
             )
@@ -451,8 +473,8 @@ async def list_patches(
         for pid, choice, cnt in rows:
             key = str(pid)
             if key not in counts_map:
-                counts_map[key] = {"for": 0, "against": 0, "abstain": 0}
-            counts_map[key][choice] = cnt
+                counts_map[key] = {"for": 0.0, "against": 0.0, "abstain": 0.0}
+            counts_map[key][choice] = float(cnt or 0)
         comment_counts = dict(
             (
                 await session.execute(
@@ -689,7 +711,9 @@ async def submit_patch(
         raise HTTPException(status_code=422, detail="PATCH_NOT_DRAFT")
 
     if patch.revision_number > 1:
-        moderation = await assess_content_moderation(patch.title, patch.content)
+        moderation = await assess_content_moderation_after_read(
+            session, patch.title, patch.content
+        )
         if moderation.status != "published":
             raise HTTPException(
                 status_code=422, detail="PATCH_CONTENT_REVIEW_REQUIRED"
@@ -797,7 +821,7 @@ async def vote_patch(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(current_user),
 ):
-    """Cast or change a vote on a patch."""
+    """Cast or change a vote on a patch. Equal-weight one-person-one-vote."""
     await check_not_banned(user.id, session)
     if data.choice not in ("for", "against", "abstain"):
         raise HTTPException(status_code=422, detail="INVALID_VOTE_CHOICE")
@@ -820,20 +844,25 @@ async def vote_patch(
     if _deadline_passed(patch.voting_ends_at):
         raise HTTPException(status_code=422, detail="VOTING_ALREADY_ENDED")
 
-    # Upsert vote
+    # Upsert vote - one person, one vote (weight is always 1).
     vote_stmt = select(VoteModel).where(
         VoteModel.patch_id == patch_id,
         VoteModel.voter_id == user.id,
     )
     existing = await session.scalar(vote_stmt)
+
     if existing:
         existing.choice = data.choice
+        existing.stake_amount = 0
+        existing.weight = 1.0
         vote = existing
     else:
         vote = VoteModel(
             patch_id=patch.id,
             voter_id=user.id,
             choice=data.choice,
+            stake_amount=0,
+            weight=1.0,
         )
         session.add(vote)
 
@@ -841,29 +870,32 @@ async def vote_patch(
     await session.refresh(vote)
 
     # Token economy: quality vote reward when voter has also left a substantive comment
-    from app.tokens import service as token_service
-    from app.db.models import TokenTransaction as TokenTxnModel
-    already_rewarded = (await session.execute(
-        select(TokenTxnModel).where(
-            TokenTxnModel.user_id == user.id,
-            TokenTxnModel.source == "vote_quality",
-            TokenTxnModel.reference_id == patch_id,
-        )
-    )).scalar_one_or_none()
-
-    if not already_rewarded:
-        from app.db.models.content import Content as ContentModel
-        quality_comment = (await session.execute(
-            select(func.length(ContentModel.content)).where(
-                ContentModel.author_id == user.id,
-                ContentModel.patch_id == patch_id,
-                func.length(ContentModel.content) >= 20,
+    try:
+        from app.tokens import service as token_service
+        from app.db.models import TokenTransaction as TokenTxnModel
+        already_rewarded = (await session.execute(
+            select(TokenTxnModel).where(
+                TokenTxnModel.user_id == user.id,
+                TokenTxnModel.source == "vote_quality",
+                TokenTxnModel.reference_id == patch_id,
             )
         )).scalar_one_or_none()
-        if quality_comment is not None:
-            vote_reward = await token_service.get_param(session, "vote_reward")
-            await token_service.earn(session, user.id, vote_reward, "vote_quality", patch_id)
-            await session.commit()
+
+        if not already_rewarded:
+            from app.db.models.content import Content as ContentModel
+            quality_comment = (await session.execute(
+                select(func.length(ContentModel.content)).where(
+                    ContentModel.author_id == user.id,
+                    ContentModel.patch_id == patch_id,
+                    func.length(ContentModel.content) >= 20,
+                )
+            )).scalar_one_or_none()
+            if quality_comment is not None:
+                vote_reward = await token_service.get_param(session, "vote_reward")
+                await token_service.earn(session, user.id, vote_reward, "vote_quality", patch_id)
+                await session.commit()
+    except Exception:
+        logger.exception("vote quality reward failed for patch %s user %s", patch_id, user.id)
 
     # Notify patch author (unless voting on your own patch)
     if patch.author_id != user.id:
@@ -886,15 +918,26 @@ async def vote_patch(
         voter_id=vote.voter_id,
         choice=vote.choice,
         voter_username=vote.voter.username,
+        stake_amount=vote.stake_amount,
+        weight=vote.weight,
         created_at=vote.created_at,
     )
+
+
+async def admin_required(user: User = Depends(current_user)):
+    if user.role not in ("super_admin", "moderator"):
+        raise HTTPException(403, detail="FORBIDDEN")
+    return user
 
 
 @router.get("/{patch_id}/votes", response_model=list[VoteRead])
 async def list_votes(
     patch_id: UUID,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
     user: User | None = Depends(optional_current_user),
     session: AsyncSession = Depends(get_session),
+    response: Response = None,
 ):
     """List all votes for a patch."""
     # Verify patch exists
@@ -906,10 +949,18 @@ async def list_votes(
         allow_staff=True,
     )
 
+    total = await session.scalar(
+        select(func.count(VoteModel.id)).where(VoteModel.patch_id == patch_id)
+    )
+    if response is not None:
+        response.headers["X-Total-Count"] = str(total or 0)
+
     stmt = (
         select(VoteModel)
         .where(VoteModel.patch_id == patch_id)
         .order_by(VoteModel.created_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
     )
     result = await session.execute(stmt)
     votes = result.scalars().all()
@@ -921,6 +972,8 @@ async def list_votes(
             voter_id=v.voter_id,
             choice=v.choice,
             voter_username=v.voter.username,
+            stake_amount=v.stake_amount,
+            weight=v.weight,
             created_at=v.created_at,
         )
         for v in votes

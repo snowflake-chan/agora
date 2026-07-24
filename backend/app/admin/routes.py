@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
@@ -38,9 +39,12 @@ from app.db.models.post_poll import PostPoll
 from app.db.models.settings import SiteSetting
 from app.db.models.user import User
 from app.moderation_delivery import deliver_moderation_effects
+from app.notifications.service import create_notification
 from app.posts.realtime import publish_feed_event
 from app.schemas.moderation import ContentReviewDecision, ReportCreate
 from app.users.deps import current_user
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -188,9 +192,9 @@ async def review_content(
     return _content_review_item(content)
 
 
-# ═══════════════════════════════════════════
+# ══════════════════════════════════════════�?
 #  Reports
-# ═══════════════════════════════════════════
+# ══════════════════════════════════════════�?
 
 
 @router.post("/reports")
@@ -499,9 +503,9 @@ async def resolve_report(
     return {"ok": True, "also_resolved": len(related_reports)}
 
 
-# ═══════════════════════════════════════════
+# ══════════════════════════════════════════�?
 #  Post / Patch listing (admin)
-# ═══════════════════════════════════════════
+# ══════════════════════════════════════════�?
 
 
 @router.get("/posts")
@@ -531,9 +535,9 @@ async def admin_list_patches(user: User = Depends(admin_required), session: Asyn
     ) for r in rows]
 
 
-# ═══════════════════════════════════════════
+# ══════════════════════════════════════════�?
 #  Post / Patch CRUD (admin)
-# ═══════════════════════════════════════════
+# ══════════════════════════════════════════�?
 
 
 @router.delete("/posts/{post_id}")
@@ -589,6 +593,18 @@ async def ban_user(
         reason=reason or None,
     )
     session.add(br); await session.commit()
+
+    try:
+        await create_notification(
+            recipient_id=user_id,
+            type="ban",
+            title="Account restricted",
+            message=f"Your account has been {type}: {reason or 'No reason provided'}",
+            link="/settings",
+        )
+    except Exception:
+        logger.exception("Failed to notify banned user %s", user_id)
+
     return {"ok": True}
 
 
@@ -642,9 +658,9 @@ async def delete_patch_admin(patch_id: UUID, user: User = Depends(super_admin_re
     return {"ok": True}
 
 
-# ═══════════════════════════════════════════
+# ══════════════════════════════════════════�?
 #  Guild admin management
-# ═══════════════════════════════════════════
+# ══════════════════════════════════════════�?
 
 
 @router.patch("/guilds/{guild_id}")
@@ -728,9 +744,9 @@ async def admin_delete_discussion(guild_id: UUID, post_id: UUID, user: User = De
     return {"ok": True}
 
 
-# ═══════════════════════════════════════════
+# ══════════════════════════════════════════�?
 #  User listing
-# ═══════════════════════════════════════════
+# ══════════════════════════════════════════�?
 
 
 @router.get("/users")
@@ -959,6 +975,39 @@ async def set_level_names(
     return {"ok": True}
 
 
+
+# -- Admin patch voting controls --
+
+@router.post("/patches/{patch_id}/shorten-vote")
+async def shorten_patch_vote(
+    patch_id: UUID,
+    body: object = Body(...),
+    user: User = Depends(super_admin_required),
+    session: AsyncSession = Depends(get_session),
+):
+    from app.patches.routes import _tally
+    remaining_hours: int | None = body.get("remaining_hours") if isinstance(body, dict) else None
+    patch = (await session.execute(select(PatchModel).where(PatchModel.id == patch_id).with_for_update())).scalar_one_or_none()
+    if patch is None:
+        raise HTTPException(404, detail="PATCH_NOT_FOUND")
+    if patch.status != "voting":
+        raise HTTPException(400, detail="PATCH_NOT_IN_VOTING")
+    now = datetime.now(timezone.utc)
+    if remaining_hours is not None and remaining_hours > 0:
+        new_deadline = now + timedelta(hours=remaining_hours)
+        if patch.voting_ends_at and new_deadline >= patch.voting_ends_at:
+            raise HTTPException(400, detail="NEW_DEADLINE_NOT_SHORTER")
+        patch.voting_ends_at = new_deadline
+        patch.updated_at = now
+        await session.commit()
+        return {"ok": True, "action": "shortened", "new_voting_ends_at": new_deadline.isoformat()}
+    else:
+        patch.voting_ends_at = now
+        patch.updated_at = now
+        await session.flush()
+        await _tally(session, patch)
+        await session.commit()
+        return {"ok": True, "action": "ended", "outcome": patch.status}
 # ── Token economy admin ──
 
 @router.get("/tokens/supply")
@@ -995,18 +1044,31 @@ async def update_token_params(
 
 @router.post("/tokens/mint")
 async def mint_tokens(
-    user_id: UUID = Body(..., embed=True),
+    recipient: str = Body(..., embed=True),
     amount: int = Body(..., embed=True),
     user: User = Depends(super_admin_required),
     session: AsyncSession = Depends(get_session),
 ):
-    # Validate target user exists
-    from app.db.models import User as UserModel
-    target = await session.get(UserModel, user_id)
+    # Resolve recipient by UUID, username or email
+    try:
+        target = await session.get(User, UUID(recipient))
+    except ValueError:
+        target = None
+    if target is None:
+        target = await session.scalar(
+            select(User).where(or_(User.username == recipient, User.email == recipient))
+        )
     if target is None:
         raise HTTPException(404, detail="USER_NOT_FOUND")
     from app.tokens.service import earn
-    await earn(session, user_id, amount, "admin_mint", bypass_cap=True)
+    await earn(
+        session,
+        target.id,
+        amount,
+        "admin_mint",
+        bypass_cap=True,
+        bypass_new_user_rate=True,
+    )
     await session.commit()
     return {"ok": True}
 
@@ -1033,9 +1095,9 @@ async def token_params_history(
                 "changed_by": str(r.changed_by) if r.changed_by else None,
                 "changed_at": r.changed_at.isoformat(),
             }
-	    for r in rows
-	        ]
-	    }
+            for r in rows
+        ]
+    }
 
 
 # ── Monetary policy admin ──

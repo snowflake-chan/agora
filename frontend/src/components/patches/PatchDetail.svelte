@@ -238,7 +238,7 @@
       patch = await getPatch(patchId);
       toaster.success($translator("patch.voteSuccess"));
     } catch (e: any) {
-      toaster.error($translator("patch.voteFailed"), $translator("common.tryAgain"));
+      toaster.error($translator("patch.voteFailed"), e?.message ?? $translator("common.tryAgain"));
     } finally {
       submittingVote = false;
     }
@@ -612,7 +612,7 @@
             {/if}
           </button>
         </div>
-        <p class="vote-change-hint">{$translator("patch.voteChangeHint")}</p>
+	        <p class="vote-change-hint">{$translator("patch.voteChangeHint")}</p>
       {:else if votingIsOpen}
         <a href="/login" class="text-sm transition-colors" style="color: var(--vercel-text-secondary);">{$translator("patch.loginToVote")}</a>
       {/if}
@@ -896,15 +896,15 @@
   }
 
   .vote-bar-for {
-    background: var(--vercel-accent);
+    background: #22c55e;
   }
 
   .vote-bar-against {
-    background: color-mix(in srgb, var(--vercel-accent) 58%, var(--vercel-surface-muted));
+    background: #ef4444;
   }
 
   .vote-bar-abstain {
-    background: color-mix(in srgb, var(--vercel-accent) 22%, var(--vercel-surface-muted));
+    background: color-mix(in srgb, var(--vercel-text-tertiary) 50%, var(--vercel-surface-muted));
   }
 
   .vote-heading,
@@ -963,14 +963,16 @@
     font-size: 0.7rem;
   }
 
-  .vote-total.is-for strong,
-  .vote-total.is-against strong { color: var(--vercel-accent); }
+  .vote-total.is-for strong { color: #22c55e; }
+  .vote-total.is-against strong { color: #ef4444; }
 
   .vote-record-choice {
-    color: var(--vercel-accent);
     font-size: 0.75rem;
     font-weight: 650;
   }
+
+  .vote-record-choice.is-for { color: #22c55e; }
+  .vote-record-choice.is-against { color: #ef4444; }
 
   .vote-record-choice.is-abstain {
     color: var(--vercel-text-tertiary);
@@ -1005,12 +1007,22 @@
     transform: translateY(-1px);
   }
 
-  .vote-choice.is-for,
-  .vote-choice.is-against,
+  .vote-choice.is-for {
+    border-color: color-mix(in srgb, #22c55e 55%, transparent);
+    color: #22c55e;
+    background: color-mix(in srgb, #22c55e 12%, transparent);
+  }
+
+  .vote-choice.is-against {
+    border-color: color-mix(in srgb, #ef4444 55%, transparent);
+    color: #ef4444;
+    background: color-mix(in srgb, #ef4444 12%, transparent);
+  }
+
   .vote-choice.is-abstain {
-    border-color: color-mix(in srgb, var(--vercel-accent) 55%, transparent);
-    color: var(--vercel-accent);
-    background: color-mix(in srgb, var(--vercel-accent) 12%, transparent);
+    border-color: color-mix(in srgb, var(--vercel-text-tertiary) 55%, transparent);
+    color: var(--vercel-text-secondary);
+    background: color-mix(in srgb, var(--vercel-text-tertiary) 12%, transparent);
   }
 
   .vote-choice.is-other {
@@ -1027,6 +1039,40 @@
     font-size: 0.75rem;
     line-height: 1.45;
     text-align: center;
+  }
+
+  .stake-input-section {
+    margin-top: 0.75rem;
+    padding: 0.6rem 0.75rem;
+    background: var(--vercel-surface-muted, #1a2332);
+    border: 1px solid var(--vercel-border, #334155);
+    border-radius: 6px;
+  }
+
+  .stake-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.75rem;
+    color: var(--vercel-text-secondary, #94a3b8);
+  }
+
+  .stake-input {
+    width: 6rem;
+    padding: 0.2rem 0.4rem;
+    border: 1px solid var(--vercel-border, #334155);
+    border-radius: 4px;
+    background: var(--vercel-surface, #1e293b);
+    color: var(--vercel-text, #f1f5f9);
+    font-size: 0.78rem;
+    text-align: right;
+  }
+
+  .stake-help {
+    margin: 0.3rem 0 0;
+    color: var(--vercel-text-tertiary, #64748b);
+    font-size: 0.65rem;
+    line-height: 1.35;
   }
 
   .vote-closed-note {

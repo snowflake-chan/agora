@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
@@ -34,6 +35,7 @@ from app.content_moderation import (
 )
 from app.schemas.content_input import validate_moderation_input_size
 from app.notifications.redis import get_redis
+from app.notifications.service import create_notification
 from app.post_polls import create_post_poll, load_post_polls
 from app.posts.feed import FeedMode, rank_feed_items
 from app.posts.realtime import FEED_CHANNEL, publish_feed_event
@@ -53,6 +55,8 @@ from app.schemas.post import (
 )
 from app.tokens import service as token_service
 from app.users.deps import current_user, optional_current_user
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -209,6 +213,11 @@ async def create_post(
 ):
     """Create a new post."""
     await check_not_banned(user.id, session, "mute_post")
+
+    # Check for unpaid fines
+    from app.tokens.fines import has_unpaid_fines
+    if await has_unpaid_fines(session, user.id):
+        raise HTTPException(status_code=403, detail="UNPAID_FINES")
     if not data.title.strip():
         raise HTTPException(status_code=422, detail="Title is required")
     if not data.content.strip():
@@ -680,7 +689,12 @@ async def feed_stream():
     """SSE stream for home feed changes shared by all connected visitors."""
 
     async def event_generator():
-        redis = await get_redis()
+        try:
+            redis = await get_redis()
+        except Exception:
+            # Redis unavailable, yield heartbeat and close
+            yield ": redis unavailable\n\n"
+            return
         pubsub = redis.pubsub()
         await pubsub.subscribe(FEED_CHANNEL)
         try:
@@ -912,12 +926,37 @@ async def like_post(
         .on_conflict_do_nothing(constraint="uq_post_like_post_user")
     )
 
+    # Check if reward was already given (prevent farming)
+    from app.db.models import TokenTransaction
+    already_rewarded = (
+        await session.execute(
+            select(func.count()).select_from(TokenTransaction).where(
+                TokenTransaction.user_id == content.author_id,
+                TokenTransaction.source == "post_liked",
+                TokenTransaction.reference_id == content.id,
+            )
+        )
+    ).scalar_one() > 0
+
     # Token economy: reward content author for receiving a like (not self-likes, first-time only)
-    if content.author_id != user.id and not already_liked:
+    if content.author_id != user.id and not already_liked and not already_rewarded:
         like_reward = await token_service.get_param(session, "like_reward")
         await token_service.earn(session, content.author_id, like_reward, "post_liked", post_id)
 
     await session.commit()
+
+    if content.author_id != user.id and not already_liked:
+        try:
+            await create_notification(
+                recipient_id=content.author_id,
+                type="like",
+                title="New like",
+                message="Someone liked your post",
+                link=f"/posts/{post_id}",
+            )
+        except Exception:
+            logger.exception("Failed to notify author %s of like", content.author_id)
+
     state = await _post_like_state(session, post_id, user.id)
     root_type = "post" if content.type == "post" else "patch" if content.patch_id else "post"
     root_id = content.id if content.type == "post" else content.patch_id or content.parent_id
@@ -1036,6 +1075,10 @@ async def boost_post(
     user: User = Depends(current_user),
 ):
     """Promote a post for 24 hours by spending AGC."""
+    await check_not_banned(user.id, session, "mute_post")
+    from app.tokens.fines import has_unpaid_fines
+    if await has_unpaid_fines(session, user.id):
+        raise HTTPException(403, detail="UNPAID_FINES")
     if data.tier not in _BOOST_TIERS:
         raise HTTPException(status_code=422, detail="INVALID_BOOST_TIER")
 

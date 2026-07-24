@@ -1,11 +1,13 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { CoinsIcon, FlameIcon, GiftIcon, TrendingDownIcon, TrendingUpIcon } from "@lucide/svelte";
-  import { translator, translateError } from "../../lib/i18n";
+  import { locale, translator, translateError } from "../../lib/i18n";
   import { initAuth, currentUser } from "../../stores/auth";
-  import { claimDailyLogin, getBalance, listTransactions, type TokenBalance, type TokenTransaction } from "../../lib/tokens";
+  import { toaster } from "../../stores/toaster";
+  import { claimDailyLogin, getBalance, listTransactions, listMyStakes, getMyStakingStats, stakeTokens, unstakeTokens, claimYield, listPools, type TokenBalance, type TokenTransaction, type StakeItem, type StakingStats, type StakePool } from "../../lib/tokens";
   import { timeAgo } from "../../lib/utils";
   import Chart from "chart.js/auto";
+  import FinesPanel from "./FinesPanel.svelte";
 
   let tokenBalance = $state<TokenBalance | null>(null);
   let loading = $state(true);
@@ -24,6 +26,18 @@
   let todayChange = $state(0);
   let chartPoints = $state<{ label: string; value: number }[]>([]);
 
+  // Staking
+  let myStakes = $state<StakeItem[]>([]);
+  let stakingStats = $state<StakingStats | null>(null);
+  let pools = $state<StakePool[]>([]);
+  let stakingLoading = $state(true);
+  let showStakeForm = $state(false);
+  let stakeAmount = $state(10);
+  let stakePool = $state("treasury");
+  let stakeSubmitting = $state(false);
+  let unstakingId = $state<string | null>(null);
+  let claimingId = $state<string | null>(null);
+
   // Chart.js
   let canvasEl: HTMLCanvasElement | undefined = $state();
   let chartInstance: Chart | null = null;
@@ -38,14 +52,21 @@
     loading = true;
     error = null;
     try {
-      const [balance, txList] = await Promise.all([
+      const [balance, txList, stakes, stats, poolData] = await Promise.all([
         getBalance(),
         listTransactions(1, 50),
+        listMyStakes(),
+        getMyStakingStats(),
+        listPools(),
       ]);
       tokenBalance = balance;
       transactions = txList.items;
       transactionTotal = txList.total;
       transactionPage = 1;
+      myStakes = stakes.stakes;
+      stakingStats = stats;
+      pools = poolData.pools;
+      stakingLoading = false;
 
       // Today's net change
       const now = new Date();
@@ -133,6 +154,81 @@
     }
   }
 
+  async function handleStake() {
+    if (stakeSubmitting || stakeAmount <= 0) return;
+    stakeSubmitting = true;
+    try {
+      await stakeTokens(stakeAmount, stakePool);
+      toaster.success($translator("tokens.staking.stakeSuccess"));
+      showStakeForm = false;
+      stakeAmount = 10;
+      await refreshStaking();
+      // Refresh balance too
+      tokenBalance = await getBalance();
+    } catch (e: any) {
+      toaster.error(e.message || $translator("common.operationFailed"));
+    } finally {
+      stakeSubmitting = false;
+    }
+  }
+
+  async function handleUnstake(stakeId: string) {
+    if (unstakingId) return;
+    unstakingId = stakeId;
+    try {
+      await unstakeTokens(stakeId);
+      toaster.success($translator("tokens.staking.unstakeSuccess"));
+      await refreshStaking();
+      tokenBalance = await getBalance();
+    } catch (e: any) {
+      toaster.error(e.message || $translator("common.operationFailed"));
+    } finally {
+      unstakingId = null;
+    }
+  }
+
+  async function handleClaimYield(stakeId: string) {
+    if (claimingId) return;
+    claimingId = stakeId;
+    try {
+      await claimYield(stakeId);
+      toaster.success($translator("tokens.staking.claimYieldSuccess"));
+      await refreshStaking();
+      tokenBalance = await getBalance();
+    } catch (e: any) {
+      toaster.error(e.message || $translator("common.operationFailed"));
+    } finally {
+      claimingId = null;
+    }
+  }
+
+  async function refreshStaking() {
+    try {
+      const [stakes, stats] = await Promise.all([
+        listMyStakes(),
+        getMyStakingStats(),
+      ]);
+      myStakes = stakes.stakes;
+      stakingStats = stats;
+    } catch {
+      // silently fail
+    }
+  }
+
+  function poolLabel(poolType: string): string {
+    switch (poolType) {
+      case "treasury": return $translator("tokens.staking.treasury");
+      case "guild": return $translator("tokens.staking.guild");
+      case "proposal": return $translator("tokens.staking.proposal");
+      default: return poolType;
+    }
+  }
+
+  function formatLockedUntil(lockedUntil: string | null): string {
+    if (!lockedUntil) return $translator("tokens.staking.noLock");
+    return new Date(lockedUntil).toLocaleDateString($locale, { month: "short", day: "numeric", year: "numeric" });
+  }
+
   function transactionSign(amount: number, type: string): string {
     if (type === "spend") return `-${amount}`;
     if (type === "earn" || type === "receive") return `+${amount}`;
@@ -158,12 +254,19 @@
 
   // Chart render effect
   $effect(() => {
-    const pts = chartPoints;
     const el = canvasEl;
-    if (!el || pts.length < 2) return;
+    const pts = chartPoints;
+    if (!el || pts.length < 2) {
+      if (chartInstance) {
+        chartInstance.destroy();
+        chartInstance = null;
+      }
+      return;
+    }
 
+    // Cleanup previous instance
     if (chartInstance) {
-      chartInstance.destroy();
+      try { chartInstance.destroy(); } catch (e) { /* ignore */ }
       chartInstance = null;
     }
 
@@ -332,6 +435,101 @@
       {/if}
     </button>
   </section>
+
+  <!-- Staking -->
+  <section class="card stake-section">
+    <div class="stake-header">
+      <h2 class="section-title">{$translator("tokens.staking.title")}</h2>
+      {#if !stakingLoading}
+        <button class="btn btn-primary btn-xs" onclick={() => (showStakeForm = !showStakeForm)}>
+          {showStakeForm ? $translator("common.cancel") : $translator("tokens.staking.stake")}
+        </button>
+      {/if}
+    </div>
+
+    {#if stakingStats}
+      <div class="stake-stats-row">
+        <div class="stake-stat">
+          <span class="stake-stat-label">{$translator("tokens.staking.totalStaked")}</span>
+          <span class="stake-stat-value">{stakingStats.total_staked.toLocaleString()} AGC</span>
+        </div>
+        <div class="stake-stat">
+          <span class="stake-stat-label">{$translator("tokens.staking.pendingYield")}</span>
+          <span class="stake-stat-value">{stakingStats.total_pending_yield.toLocaleString()} AGC</span>
+        </div>
+        <div class="stake-stat">
+          <span class="stake-stat-label">{$translator("tokens.staking.activeStakes")}</span>
+          <span class="stake-stat-value">{stakingStats.active_stakes}</span>
+        </div>
+      </div>
+    {/if}
+
+    {#if showStakeForm}
+      <div class="stake-form">
+        <div class="stake-form-row">
+          <label>
+            <span>{$translator("tokens.staking.poolType")}</span>
+            <select class="input" bind:value={stakePool}>
+              {#each pools as pool}
+                <option value={pool.type}>{pool.name} ({pool.base_apy}% APY)</option>
+              {/each}
+            </select>
+          </label>
+          <label>
+            <span>{$translator("tokens.staking.amount")}</span>
+            <input class="input" type="number" min="1" bind:value={stakeAmount} />
+          </label>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick={handleStake} disabled={stakeSubmitting}>
+          {stakeSubmitting ? $translator("common.processing") : $translator("tokens.staking.stake")}
+        </button>
+      </div>
+    {/if}
+
+    {#if myStakes.length > 0}
+      <div class="stake-list">
+        {#each myStakes as s (s.id)}
+          <div class="stake-row">
+            <div class="stake-info">
+              <span class="stake-pool">{poolLabel(s.pool_type)}</span>
+              <span class="stake-meta">
+                {s.amount.toLocaleString()} AGC · {s.apy}% APY
+              </span>
+              <span class="stake-meta">
+                {$translator("tokens.staking.lockedUntil")}: {formatLockedUntil(s.locked_until)}
+                {#if s.pending_yield > 0}
+                  · {$translator("tokens.staking.pendingYield")}: {s.pending_yield.toLocaleString()} AGC
+                {/if}
+              </span>
+            </div>
+            <div class="stake-actions">
+              {#if s.pending_yield > 0}
+                <button
+                  class="btn btn-ghost btn-xs"
+                  onclick={() => handleClaimYield(s.id)}
+                  disabled={claimingId === s.id}
+                >
+                  {claimingId === s.id ? $translator("common.processing") : $translator("tokens.staking.claimYield")}
+                </button>
+              {/if}
+              <button
+                class="btn btn-danger-ghost btn-xs"
+                onclick={() => handleUnstake(s.id)}
+                disabled={unstakingId === s.id}
+              >
+                {unstakingId === s.id ? $translator("common.processing") : $translator("tokens.staking.unstake")}
+              </button>
+            </div>
+          </div>
+        {/each}
+      </div>
+    {:else if !showStakeForm && !stakingLoading}
+      <p class="empty-meta">{$translator("tokens.staking.noStakes")}</p>
+    {/if}
+  </section>
+
+  <!-- Fines -->
+  <FinesPanel />
 
   <!-- Transactions -->
   <section class="card tx-section">
@@ -525,6 +723,112 @@
     justify-content: space-between;
     gap: 1rem;
     margin-bottom: 1rem;
+  }
+
+  .stake-section {
+    margin-bottom: 1rem;
+  }
+
+  .stake-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.75rem;
+  }
+
+  .stake-stats-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .stake-stat {
+    background: var(--vercel-surface, #1e293b);
+    border: 1px solid var(--vercel-border, #334155);
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+  }
+
+  .stake-stat-label {
+    display: block;
+    font-size: 0.65rem;
+    color: var(--vercel-text-tertiary, #64748b);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+  }
+
+  .stake-stat-value {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--vercel-text, #f1f5f9);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .stake-form {
+    background: var(--vercel-surface, #1e293b);
+    border: 1px solid var(--vercel-border, #334155);
+    border-radius: 6px;
+    padding: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .stake-form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .stake-form-row label {
+    display: grid;
+    gap: 0.25rem;
+  }
+
+  .stake-form-row label span {
+    font-size: 0.7rem;
+    color: var(--vercel-text-tertiary, #64748b);
+  }
+
+  .stake-list {
+    display: grid;
+    gap: 0.5rem;
+  }
+
+  .stake-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.6rem 0.75rem;
+    background: var(--vercel-surface, #1e293b);
+    border: 1px solid var(--vercel-border, #334155);
+    border-radius: 6px;
+  }
+
+  .stake-info {
+    display: grid;
+    gap: 0.1rem;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .stake-pool {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--vercel-text, #f1f5f9);
+  }
+
+  .stake-meta {
+    font-size: 0.65rem;
+    color: var(--vercel-text-tertiary, #64748b);
+  }
+
+  .stake-actions {
+    display: flex;
+    gap: 0.35rem;
+    flex-shrink: 0;
   }
 
   .daily-left {

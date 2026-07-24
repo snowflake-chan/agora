@@ -1,0 +1,5 @@
+---
+// Redirect old /profile/{id} notification links to /users/{id}
+const { id } = Astro.params;
+return Astro.redirect(`/users/${id}`, 302);
+---

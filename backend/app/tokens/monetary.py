@@ -19,7 +19,7 @@ TARGET_INFLATION_UPPER = 3.0
 
 async def record_snapshot(session: AsyncSession) -> dict:
     """Record today's supply snapshot (idempotent: replaces if today exists)."""
-    today = date.today()
+    today = datetime.now(timezone.utc).date()
 
     # Aggregate from TokenBalance
     row = (
@@ -85,7 +85,7 @@ async def get_supply_history(
     session: AsyncSession, days: int = 90
 ) -> list[dict]:
     """Return time-series snapshot data for charting."""
-    since = date.today() - timedelta(days=days)
+    since = datetime.now(timezone.utc).date() - timedelta(days=days)
     rows = (
         (
             await session.execute(
@@ -117,7 +117,7 @@ async def calculate_inflation_rate(
     session: AsyncSession,
 ) -> dict:
     """Calculate 7-day and 30-day inflation rates from snapshots."""
-    today = date.today()
+    today = datetime.now(timezone.utc).date()
 
     # Get latest snapshot (or today's live aggregate)
     latest = (
@@ -129,7 +129,7 @@ async def calculate_inflation_rate(
     ).scalar()
 
     if latest is None:
-        # No snapshots yet — use live data as baseline
+        # No snapshots yet �?use live data as baseline
         return {"inflation_7d": 0.0, "inflation_30d": 0.0}
 
     current_supply = latest.circulating_supply
@@ -229,68 +229,37 @@ async def apply_auto_adjustment(
     dry_run: bool = False,
     updated_by: UUID | None = None,
 ) -> dict:
-    """Automatically adjust parameters based on inflation/deflation.
-
-    *dry_run=True* returns suggested changes without applying them.
-    """
     from app.tokens.service import get_all_params, set_param
-
     inflation = await calculate_inflation_rate(session)
     rate_30d = inflation["inflation_30d"]
-
     params = await get_all_params(session)
     adjustments: dict[str, int] = {}
     reason = ""
-
+    reason_code = ""
+    reason_params: dict = {}
     if rate_30d > TARGET_INFLATION_UPPER:
-        # ── Cooling: reduce issuance and rewards ──
         factor = min((rate_30d - TARGET_INFLATION_UPPER) / TARGET_INFLATION_UPPER, 1.0)
         for key in ("like_reward", "vote_reward", "daily_login_base", "proposal_pass_reward"):
             adjustments[key] = max(1, int(params[key] * (1 - factor * 0.10)))
         for key in ("boost_price_low", "boost_price_mid", "boost_price_high", "guild_create_fee"):
             adjustments[key] = max(1, int(params[key] * (1 - factor * 0.05)))
-        reason = (
-            f"Inflation {rate_30d}% above target {TARGET_INFLATION_UPPER}%. "
-            f"Reduced parameters by {factor * 0.15:.1%}–{factor * 0.05:.1%}."
-        )
-
+        reason = f"Inflation {rate_30d}% above target {TARGET_INFLATION_UPPER}%. Reduced rewards by {factor*0.10:.1%}, reduced costs by {factor*0.05:.1%}."
+        reason_code = "inflation_above"
+        reason_params = {"rate": rate_30d, "target": TARGET_INFLATION_UPPER, "max_reduction": factor*0.10, "min_reduction": factor*0.05, "issuance_reduction": factor*0.10}
     elif rate_30d < TARGET_INFLATION_LOWER:
-        # ── Stimulus: increase issuance and rewards ──
         factor = min((TARGET_INFLATION_LOWER - rate_30d) / max(TARGET_INFLATION_LOWER, 0.1), 1.0)
         for key in ("like_reward", "vote_reward", "daily_login_base", "proposal_pass_reward"):
             adjustments[key] = max(1, int(params[key] * (1 + factor * 0.10)))
         for key in ("boost_price_low", "boost_price_mid", "boost_price_high", "guild_create_fee"):
-            adjustments[key] = max(1, int(params[key] * (1 + factor * 0.05)))
-        reason = (
-            f"Inflation {rate_30d}% below target {TARGET_INFLATION_LOWER}%. "
-            f"Increased parameters by {factor * 0.20:.1%}–{factor * 0.05:.1%}."
-        )
-
+            adjustments[key] = max(1, int(params[key] * (1 - factor * 0.05)))
+        reason = f"Inflation {rate_30d}% below target {TARGET_INFLATION_LOWER}%. Increased rewards by {factor*0.10:.1%}, reduced costs by {factor*0.05:.1%}."
+        reason_code = "inflation_below"
+        reason_params = {"rate": rate_30d, "target": TARGET_INFLATION_LOWER, "max_increase": factor*0.10, "min_reduction": factor*0.05, "issuance_increase": factor*0.10}
     else:
-        # ── In target range: no adjustment needed ──
-        return {
-            "adjusted": False,
-            "reason": f"Inflation {rate_30d}% is within target range "
-                       f"({TARGET_INFLATION_LOWER}%–{TARGET_INFLATION_UPPER}%). No changes.",
-            "adjustments": {},
-        }
-
+        return {"adjusted": False, "reason": f"Inflation {rate_30d}% within target range ({TARGET_INFLATION_LOWER}% to {TARGET_INFLATION_UPPER}%). No changes.", "reason_code": "inflation_normal", "reason_params": {"rate": rate_30d, "target_lower": TARGET_INFLATION_LOWER, "target_upper": TARGET_INFLATION_UPPER}, "adjustments": {}}
     if dry_run:
-        return {
-            "adjusted": False,
-            "reason": reason,
-            "adjustments": adjustments,
-            "dry_run": True,
-        }
-
-    # Apply adjustments
+        return {"adjusted": False, "reason": reason, "reason_code": reason_code, "reason_params": reason_params, "adjustments": adjustments, "dry_run": True}
     for key, value in adjustments.items():
         await set_param(session, key, value, updated_by=updated_by)
     await session.flush()
-
-    return {
-        "adjusted": True,
-        "reason": reason,
-        "adjustments": adjustments,
-        "dry_run": False,
-    }
+    return {"adjusted": True, "reason": reason, "reason_code": reason_code, "reason_params": reason_params, "adjustments": adjustments, "dry_run": False}

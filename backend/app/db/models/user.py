@@ -26,12 +26,6 @@ class User(SQLAlchemyBaseUserTableUUID, Base):
     )
 
     # Relationships
-    token_balance: Mapped["TokenBalance"] = relationship(  # type: ignore[name-defined]
-        "TokenBalance",
-        back_populates="user",
-        uselist=False,
-        primaryjoin="User.id == foreign(TokenBalance.user_id)",
-    )
 
 
 async def get_user_db(session: AsyncSession = Depends(get_session)):

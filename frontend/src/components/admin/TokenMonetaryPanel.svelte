@@ -17,11 +17,15 @@
   let applied = $state(false);
   let error = $state("");
 
+  // ---- slider state for auto-adjustment factor (0-100%) ----
+  let sliderFactor = $state(50);
+  let showCustom = $state(false);
+  let customReason = $state("");
+
   onMount(async () => {
     try {
       const m = await getMonetaryMetrics();
       metrics = m;
-      // Fetch dry-run adjustment in parallel
       adjustment = await applyPolicyAdjustment(true);
     } catch (e) {
       error = translateError(e, $translator, "tokens.loadFailed");
@@ -29,6 +33,40 @@
       loading = false;
     }
   });
+
+  function reasonText(adj: PolicyAdjustment): string {
+    if (!adj.reason_code || !adj.reason_params) return adj.reason;
+    const p = adj.reason_params;
+    const t = $translator;
+    switch (adj.reason_code) {
+      case "inflation_above":
+        return t("tokens.admin.policyReason.inflation_above", {
+          rate: String(p.rate),
+          target: String(p.target),
+          max_reduction: toPercent(p.max_reduction),
+          min_reduction: toPercent(p.min_reduction),
+        });
+      case "inflation_below":
+        return t("tokens.admin.policyReason.inflation_below", {
+          rate: String(p.rate),
+          target: String(p.target),
+          max_increase: toPercent(p.max_increase),
+          min_increase: toPercent(p.min_increase),
+        });
+      case "inflation_normal":
+        return t("tokens.admin.policyReason.inflation_normal", {
+          rate: String(p.rate),
+          target_lower: String(p.target_lower),
+          target_upper: String(p.target_upper),
+        });
+      default:
+        return adj.reason;
+    }
+  }
+
+  function toPercent(val: number): string {
+    return (val * 100).toFixed(1) + "%";
+  }
 
   function statusColor(status: string): string {
     switch (status) {
@@ -55,7 +93,6 @@
       const result = await applyPolicyAdjustment(false);
       adjustment = result;
       applied = result.adjusted;
-      // Re-fetch metrics
       metrics = await getMonetaryMetrics();
       onAdjusted?.();
     } catch (e) {
@@ -64,6 +101,20 @@
       adjusting = false;
     }
   }
+
+  // ---- parameter descriptions for footnote tooltips ----
+  const paramDescs: Record<string, string> = {
+    like_reward: "tokens.admin.param.like_reward_desc",
+    vote_reward: "tokens.admin.param.vote_reward_desc",
+    proposal_pass_reward: "tokens.admin.param.proposal_pass_reward_desc",
+    daily_login_base: "tokens.admin.param.daily_login_base_desc",
+    proposal_deposit: "tokens.admin.param.proposal_deposit_desc",
+    boost_price_low: "tokens.admin.param.boost_price_low_desc",
+    boost_price_mid: "tokens.admin.param.boost_price_mid_desc",
+    boost_price_high: "tokens.admin.param.boost_price_high_desc",
+    guild_create_fee: "tokens.admin.param.guild_create_fee_desc",
+    daily_user_cap: "tokens.admin.param.daily_user_cap_desc",
+  };
 </script>
 
 <div class="monetary-panel">
@@ -73,7 +124,6 @@
     <p class="row-meta">{error}</p>
   {:else if metrics}
     <div class="metrics-grid">
-      <!-- Inflation rate -->
       <div class="metric-card">
         <span class="metric-label">{$translator("tokens.admin.inflation30d")}</span>
         <span class="metric-value" style="color: {statusColor(metrics.status)}">
@@ -83,46 +133,65 @@
           {statusLabel(metrics.status)}
         </span>
       </div>
-
-      <!-- 7-day -->
       <div class="metric-card">
         <span class="metric-label">{$translator("tokens.admin.inflation7d")}</span>
         <span class="metric-value" class:negative={metrics.inflation_7d < 0}>
           {metrics.inflation_7d > 0 ? "+" : ""}{metrics.inflation_7d}%
         </span>
       </div>
-
-      <!-- Velocity -->
       <div class="metric-card">
         <span class="metric-label">{$translator("tokens.admin.velocity")}</span>
         <span class="metric-value">{metrics.velocity.toFixed(4)}</span>
       </div>
-
-      <!-- Active users -->
       <div class="metric-card">
         <span class="metric-label">{$translator("tokens.admin.activeUsers")}</span>
         <span class="metric-value">{metrics.active_users.toLocaleString()}</span>
       </div>
     </div>
 
-    <!-- Adjustment suggestion / result -->
+    <!-- Adjustment reason (i18n-aware) -->
     {#if adjustment}
       <div class="adjustment-box" class:adjustment-applied={adjustment.adjusted}>
-        <p class="adjustment-reason">{adjustment.reason}</p>
+        <p class="adjustment-reason">{reasonText(adjustment)}</p>
         {#if Object.keys(adjustment.adjustments).length > 0}
           <div class="adjustment-params">
             {#each Object.entries(adjustment.adjustments) as [key, value]}
-              <span class="param-change">
-                {key.replace(/_/g, " ")} → {value.toLocaleString()}
-              </span>
+              <div class="param-chip-group">
+                <span class="param-change">
+                  {$translator(`tokens.admin.param.${key}`)} &rarr; {value.toLocaleString()}
+                </span>
+                {#if paramDescs[key]}
+                  <span class="param-desc">{$translator(paramDescs[key])}</span>
+                {/if}
+              </div>
             {/each}
           </div>
         {/if}
       </div>
     {/if}
 
-    <!-- Apply button (only if there are adjustments and not already applied) -->
+    <!-- Slider + Apply -->
     {#if adjustment && Object.keys(adjustment.adjustments).length > 0 && !adjustment.adjusted}
+      <div class="slider-section">
+        <label class="slider-label">
+          {$translator("tokens.admin.sliderLabel", { value: String(sliderFactor) })}
+        </label>
+        <input
+          type="range"
+          min="0"
+          max="100"
+          step="5"
+          bind:value={sliderFactor}
+          class="slider"
+        />
+        <div class="slider-marks">
+          <span>0%</span>
+          <span>{$translator("tokens.admin.inflating")}</span>
+          <span>50%</span>
+          <span>{$translator("tokens.admin.deflating")}</span>
+          <span>100%</span>
+        </div>
+      </div>
       <button
         class="btn btn-primary btn-sm"
         onclick={handleApply}
@@ -137,9 +206,7 @@
 </div>
 
 <style>
-  .monetary-panel {
-    width: 100%;
-  }
+  .monetary-panel { width: 100%; }
   .metrics-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -166,9 +233,7 @@
     font-weight: 600;
     color: var(--vercel-text, #f1f5f9);
   }
-  .metric-value.negative {
-    color: var(--vercel-danger, #ef4444);
-  }
+  .metric-value.negative { color: var(--vercel-danger, #ef4444); }
   .metric-badge {
     display: inline-block;
     font-size: 0.7rem;
@@ -185,9 +250,7 @@
     padding: 0.75rem 1rem;
     margin-bottom: 1rem;
   }
-  .adjustment-box.adjustment-applied {
-    border-color: var(--vercel-success, #22c55e);
-  }
+  .adjustment-box.adjustment-applied { border-color: var(--vercel-success, #22c55e); }
   .adjustment-reason {
     font-size: 0.8rem;
     color: var(--vercel-text-secondary, #94a3b8);
@@ -197,7 +260,12 @@
   .adjustment-params {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.5rem;
+    gap: 0.75rem;
+  }
+  .param-chip-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
   }
   .param-change {
     font-size: 0.75rem;
@@ -206,6 +274,36 @@
     padding: 0.2rem 0.5rem;
     border-radius: 4px;
     white-space: nowrap;
+  }
+  .param-desc {
+    font-size: 0.65rem;
+    color: var(--vercel-text-tertiary, #64748b);
+    max-width: 12rem;
+    line-height: 1.3;
+  }
+  .slider-section {
+    margin-bottom: 1rem;
+    padding: 0.75rem;
+    background: var(--vercel-surface, #1e293b);
+    border: 1px solid var(--vercel-border, #334155);
+    border-radius: var(--vercel-radius, 8px);
+  }
+  .slider-label {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--vercel-text-secondary, #94a3b8);
+    margin-bottom: 0.5rem;
+  }
+  .slider {
+    width: 100%;
+    accent-color: var(--vercel-accent, #6366f1);
+  }
+  .slider-marks {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.65rem;
+    color: var(--vercel-text-tertiary, #64748b);
+    margin-top: 0.25rem;
   }
   .applied-notice {
     font-size: 0.85rem;
@@ -226,9 +324,7 @@
     border-radius: 50%;
     animation: spin 0.7s linear infinite;
   }
-  @keyframes spin {
-    to { transform: rotate(360deg); }
-  }
+  @keyframes spin { to { transform: rotate(360deg); } }
   .row-meta {
     color: var(--vercel-text-tertiary, #64748b);
     font-size: 0.8rem;

@@ -43,14 +43,14 @@
   async function loadPatches() {
     // Cancel any in-flight request so rapid filter switching works correctly.
     abortCtrl?.abort();
-    abortCtrl = new AbortController();
+    const currentCtrl = abortCtrl = new AbortController();
 
     loading = true;
     error = null;
     onStateChange?.("loading");
 
     try {
-      patches = await listPatches(1, activeFilter || undefined, abortCtrl.signal);
+      patches = await listPatches(1, activeFilter || undefined, currentCtrl.signal);
       onItemsUpdated?.(patches);
       if (patches[0]) onFirstItem?.(patches[0]);
       onStateChange?.(patches.length > 0 ? "ready" : "empty");
@@ -62,7 +62,7 @@
       onStateChange?.("error");
     } finally {
       // Only clear loading if this is still the active controller.
-      if (abortCtrl && !abortCtrl.signal.aborted) {
+      if (!currentCtrl.signal.aborted) {
         loading = false;
       }
     }

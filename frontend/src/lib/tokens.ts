@@ -94,6 +94,8 @@ export interface SupplySnapshot {
 }
 
 export interface PolicyAdjustment {
+  reason_code?: string;
+  reason_params?: Record<string, number>;
   adjusted: boolean;
   reason: string;
   adjustments: Record<string, number>;
@@ -178,7 +180,7 @@ export async function mintTokens(userId: string, amount: number): Promise<{ ok: 
   return req("/admin/tokens/mint", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ user_id: userId, amount }),
+    body: JSON.stringify({ recipient: userId, amount }),
   });
 }
 
@@ -199,5 +201,239 @@ export async function applyPolicyAdjustment(dryRun = true): Promise<PolicyAdjust
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ dry_run: dryRun }),
+  });
+}
+
+export async function shortenPatchVote(
+  patchId: string,
+  remainingHours?: number,
+): Promise<{ ok: boolean; action: "shortened" | "ended"; new_voting_ends_at?: string; outcome?: string }> {
+  return req("/admin/patches/" + patchId + "/shorten-vote", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ remaining_hours: remainingHours ?? null }),
+  });
+}
+
+// ── Staking API ──
+
+export interface StakePool {
+  type: string;
+  name: string;
+  description: string;
+  base_apy: number;
+  lock_days: number;
+  risk_level: string;
+  min_stake: number;
+}
+
+export interface StakeResult {
+  ok: boolean;
+  stake: {
+    id: string;
+    amount: number;
+    pool_type: string;
+    apy: number;
+    locked_until: string | null;
+    created_at: string;
+  };
+}
+
+export interface UnstakeResult {
+  ok: boolean;
+  principal_returned: number;
+  yield_earned: number;
+  penalty: number;
+  total_returned: number;
+}
+
+export interface ClaimYieldResult {
+  ok: boolean;
+  claimed: number;
+}
+
+export interface StakeItem {
+  id: string;
+  amount: number;
+  pool_type: string;
+  reference_id: string | null;
+  locked_until: string | null;
+  apy: number;
+  pending_yield: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface StakingStats {
+  total_staked: number;
+  total_pending_yield: number;
+  active_stakes: number;
+}
+
+export async function listPools(): Promise<{ pools: StakePool[] }> {
+  return req("/tokens/staking/pools");
+}
+
+export async function stakeTokens(amount: number, poolType: string, referenceId?: string): Promise<StakeResult> {
+  return req("/tokens/staking/stake", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ amount, pool_type: poolType, reference_id: referenceId ?? null }),
+  });
+}
+
+export async function unstakeTokens(stakeId: string): Promise<UnstakeResult> {
+  return req("/tokens/staking/unstake", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ stake_id: stakeId }),
+  });
+}
+
+export async function claimYield(stakeId: string): Promise<ClaimYieldResult> {
+  return req("/tokens/staking/claim-yield", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ stake_id: stakeId }),
+  });
+}
+
+export async function listMyStakes(includeInactive = false): Promise<{ stakes: StakeItem[] }> {
+  return req(`/tokens/staking/my-stakes?include_inactive=${includeInactive}`);
+}
+
+export async function getMyStakingStats(): Promise<StakingStats> {
+  return req("/tokens/staking/my-stats");
+}
+
+export async function getUserStakingStats(userId: string): Promise<StakingStats> {
+  return req(`/tokens/staking/user-stats/${userId}`);
+}
+
+// ── Achievement API ──
+
+export interface AchievementItem {
+  key: string;
+  name: string;
+  score: number;
+  tier: number;
+  tier_label: string;
+  thresholds: number[];
+}
+
+export interface AchievementCategory {
+  key: string;
+  label: string;
+  achievements: AchievementItem[];
+}
+
+export interface AchievementData {
+  categories: AchievementCategory[];
+}
+
+export async function getUserAchievements(userId: string): Promise<AchievementData> {
+  return req(`/tokens/achievements/user/${userId}`);
+}
+
+export async function syncMyAchievements(): Promise<{ ok: boolean; newly_earned: Array<{ key: string; name: string; category: string; tier: number; score: number }> }> {
+  return req("/tokens/achievements/sync", { method: "POST" });
+}
+
+// ── Paid Q&A API ──
+
+export interface PaidQuestionItem {
+  id: string;
+  from_user: { id: string; username: string; nickname: string | null } | null;
+  to_user: { id: string; username: string; nickname: string | null };
+  question_text: string;
+  amount: number;
+  is_anonymous: boolean;
+  is_answered: boolean;
+  answer_text: string | null;
+  created_at: string;
+  answered_at: string | null;
+}
+
+export interface QACounts {
+  questions_received: number;
+  questions_answered: number;
+  questions_asked: number;
+}
+
+export async function askQuestion(toUserId: string, questionText: string, amount: number, isAnonymous = false): Promise<{ ok: boolean; question: { id: string; amount: number; is_anonymous: boolean; created_at: string } }> {
+  return req("/tokens/qa/ask", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ to_user_id: toUserId, question_text: questionText, amount, is_anonymous: isAnonymous }),
+  });
+}
+
+export async function listUserQuestions(userId: string, page = 1, pageSize = 20): Promise<{ items: PaidQuestionItem[]; total: number; page: number; page_size: number }> {
+  return req(`/tokens/qa/user/${userId}?page=${page}&page_size=${pageSize}`);
+}
+
+export async function getQACounts(userId: string): Promise<QACounts> {
+  return req(`/tokens/qa/count/${userId}`);
+}
+
+export async function answerQuestion(questionId: string, answerText: string): Promise<{ ok: boolean; question: { id: string; is_answered: boolean; answered_at: string | null } }> {
+  return req("/tokens/qa/answer", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question_id: questionId, answer_text: answerText }),
+  });
+}
+
+// ── Fine API ──
+
+export interface FineItem {
+  id: string;
+  user: { id: string; username: string };
+  amount: number;
+  reason: string;
+  reference_type: string;
+  reference_id: string | null;
+  issued_by: { id: string; username: string } | null;
+  status: string;
+  issued_at: string;
+  paid_at: string | null;
+}
+
+export async function getMyFines(page = 1, pageSize = 20): Promise<{ items: FineItem[]; total: number; page: number; page_size: number }> {
+  return req(`/tokens/fines/my?page=${page}&page_size=${pageSize}`);
+}
+
+export async function payFine(fineId: string): Promise<{ ok: boolean; status: string }> {
+  return req("/tokens/fines/pay", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ fine_id: fineId }),
+  });
+}
+
+export async function checkUnpaidFines(): Promise<{ has_unpaid_fines: boolean }> {
+  return req("/tokens/fines/check");
+}
+
+export async function listFines(userId?: string, status?: string, page = 1, pageSize = 20): Promise<{ items: FineItem[]; total: number; page: number; page_size: number }> {
+  const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
+  if (userId) params.set("user_id", userId);
+  if (status) params.set("status", status);
+  return req(`/tokens/fines/list?${params}`);
+}
+
+export async function issueFine(userId: string, amount: number, reason: string, referenceType: string = "general", referenceId?: string): Promise<{ ok: boolean; fine: { id: string; user_id: string; amount: number; status: string } }> {
+  return req("/tokens/fines/issue", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ user_id: userId, amount, reason, reference_type: referenceType, reference_id: referenceId ?? null }),
+  });
+}
+
+export async function cancelFine(fineId: string): Promise<{ ok: boolean; status: string }> {
+  return req("/tokens/fines/cancel", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ fine_id: fineId }),
   });
 }

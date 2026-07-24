@@ -3,9 +3,11 @@
 from uuid import uuid4
 
 import httpx
-
+import pytest
 
 BASE = "http://localhost:8000"
+
+pytestmark = pytest.mark.usefixtures("server")
 
 
 def _register_and_login(client: httpx.Client) -> dict[str, str]:

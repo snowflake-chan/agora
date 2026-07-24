@@ -22,6 +22,10 @@ from app.notifications import router as notifications_router
 from app.public import router as public_router
 from app.ai.routes import router as ai_router
 from app.tokens import router as tokens_router
+from app.tokens.staking_routes import router as staking_router
+from app.tokens.achievement_routes import router as achievement_router
+from app.tokens.qa_routes import router as qa_router
+from app.tokens.fine_routes import router as fine_router
 
 if not logging.getLogger().handlers:
     logging.basicConfig(
@@ -76,3 +80,7 @@ app.include_router(notifications_router, prefix="/api/v1/notifications", tags=["
 app.include_router(public_router, prefix="/api/v1/public", tags=["public"])
 app.include_router(ai_router, prefix="/api/v1/ai", tags=["ai"])
 app.include_router(tokens_router, prefix="/api/v1/tokens", tags=["tokens"])
+app.include_router(staking_router, prefix="/api/v1/tokens", tags=["staking"])
+app.include_router(achievement_router, prefix="/api/v1/tokens", tags=["achievements"])
+app.include_router(qa_router, prefix="/api/v1/tokens", tags=["paid_qa"])
+app.include_router(fine_router, prefix="/api/v1/tokens", tags=["fines"])

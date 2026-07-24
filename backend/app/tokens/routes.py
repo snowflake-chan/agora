@@ -72,7 +72,7 @@ async def tip(
 ):
     # Determine the author of the target post
     from app.db.models import Content
-    q = select(Content).where(Content.id == body.post_id)
+    q = select(Content).where(Content.id == body.post_id, Content.type == "post")
     result = await session.execute(q)
     post = result.scalar_one_or_none()
     if post is None:
@@ -85,6 +85,7 @@ async def tip(
     except ValueError as exc:
         raise HTTPException(400, detail=str(exc))
 
+    await session.commit()
     return {"ok": True, "balance_after": new_balance}
 
 

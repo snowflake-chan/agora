@@ -121,6 +121,36 @@ async def create_guild(
     return await _guild_to_read(g, session)
 
 
+# ── User Guild Badge ──
+
+
+@router.get("/-/my", response_model=UserGuildBadge | None)
+async def my_guild(
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    m = (await session.execute(
+        select(GuildMember)
+        .where(GuildMember.user_id == user.id, _approved_membership())
+        .order_by(GuildMember.joined_at)
+        .limit(1)
+    )).scalars().first()
+    if not m:
+        return None
+    mc = (await session.execute(
+        select(func.count(GuildMember.id)).where(
+            GuildMember.guild_id == m.guild_id,
+            _approved_membership(),
+        )
+    )).scalar() or 0
+    return UserGuildBadge(
+        guild_id=m.guild_id,
+        guild_name=m.guild.name,
+        guild_level=m.guild.level or calc_guild_level(m.guild.proposal_score),
+        role=m.role,
+    )
+
+
 # ── Single Guild ──
 
 
@@ -599,14 +629,14 @@ async def list_guild_patches(
     comment_counts: dict = {}
     if patch_ids:
         rows = (await session.execute(
-            select(VoteModel.patch_id, VoteModel.choice, func.count(VoteModel.id))
+            select(VoteModel.patch_id, VoteModel.choice, func.sum(VoteModel.weight))
             .where(VoteModel.patch_id.in_(patch_ids))
             .group_by(VoteModel.patch_id, VoteModel.choice)
         )).all()
         for pid, choice, cnt in rows:
             key = str(pid)
             if key not in counts_map:
-                counts_map[key] = {"for": 0, "against": 0, "abstain": 0}
+                counts_map[key] = {"for": 0.0, "against": 0.0, "abstain": 0.0}
             counts_map[key][choice] = cnt
         comment_counts = dict(
             (
@@ -630,9 +660,9 @@ async def list_guild_patches(
             voting_ends_at=p.voting_ends_at,
             voting_period_hours=p.voting_period_hours,
             voting_window_kind=p.voting_window_kind,
-            for_count=counts_map.get(str(p.id), {}).get("for", 0),
-            against_count=counts_map.get(str(p.id), {}).get("against", 0),
-            abstain_count=counts_map.get(str(p.id), {}).get("abstain", 0),
+            for_count=counts_map.get(str(p.id), {}).get("for", 0.0),
+            against_count=counts_map.get(str(p.id), {}).get("against", 0.0),
+            abstain_count=counts_map.get(str(p.id), {}).get("abstain", 0.0),
             comment_count=comment_counts.get(p.id, 0),
             revision_number=p.revision_number,
             created_at=p.created_at, updated_at=p.updated_at,
@@ -788,36 +818,6 @@ async def delete_discussion(
     await session.delete(c)
     await session.commit()
     return {"ok": True}
-
-
-# ── User Guild Badge ──
-
-
-@router.get("/-/my", response_model=UserGuildBadge | None)
-async def my_guild(
-    user: User = Depends(current_user),
-    session: AsyncSession = Depends(get_session),
-):
-    m = (await session.execute(
-        select(GuildMember)
-        .where(GuildMember.user_id == user.id, _approved_membership())
-        .order_by(GuildMember.joined_at)
-        .limit(1)
-    )).scalars().first()
-    if not m:
-        return None
-    mc = (await session.execute(
-        select(func.count(GuildMember.id)).where(
-            GuildMember.guild_id == m.guild_id,
-            _approved_membership(),
-        )
-    )).scalar() or 0
-    return UserGuildBadge(
-        guild_id=m.guild_id,
-        guild_name=m.guild.name,
-        guild_level=m.guild.level or calc_guild_level(m.guild.proposal_score),
-        role=m.role,
-    )
 
 
 # ── Guild Proposal Contributions & Leveling ──

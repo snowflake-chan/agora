@@ -405,10 +405,10 @@
 </div>
 
 {#if showPostForm}
-  <PostForm on:close={() => closeComposer("post")} />
+  <PostForm onClose={() => closeComposer("post")} />
 {/if}
 {#if showPatchForm}
-  <PatchForm on:close={() => closeComposer("patch")} />
+  <PatchForm onClose={() => closeComposer("patch")} />
 {/if}
 
 <LoginDialog

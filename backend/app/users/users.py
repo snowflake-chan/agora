@@ -1,5 +1,7 @@
 from uuid import UUID
 
+import logging
+
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +23,7 @@ from app.content_moderation import (
     content_visibility_clause,
     moderation_metadata_for,
 )
+from app.notifications.service import create_notification
 from app.post_polls import load_post_polls
 from app.schemas.guild import UserGuildBadge
 from app.schemas.post import PostRead
@@ -33,7 +36,10 @@ from app.schemas.user import (
     UserUpdate,
 )
 from app.db.models.user import User, get_user_db
+from app.utils import calc_guild_level
 from .deps import current_user, optional_current_user
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 password_helper = PasswordHelper()
@@ -117,7 +123,7 @@ async def update_me(
     user: User = Depends(current_user),
 ) -> UserRead:
     """Update the currently authenticated user's profile."""
-    update_dict = data.model_dump(exclude_unset=True, exclude_none=True)
+    update_dict = data.model_dump(exclude_unset=True)
 
     if not update_dict:
         raise HTTPException(status_code=400, detail="UPDATE_NO_FIELDS")
@@ -302,6 +308,18 @@ async def follow_user(
         .on_conflict_do_nothing(constraint="uq_follow_pair")
     )
     await session.commit()
+
+    try:
+        await create_notification(
+            recipient_id=user_id,
+            type="follow",
+            title="New follower",
+            message=f"{user.username} started following you",
+            link=f"/users/{user.id}",
+        )
+    except Exception:
+        logger.exception("Failed to notify follow target %s", user_id)
+
     return await _follow_state(session, user_id, user.id)
 
 
@@ -576,7 +594,7 @@ async def get_user_guild(
     return UserGuildBadge(
         guild_id=member.guild_id,
         guild_name=member.guild.name,
-        guild_level=member.guild.level,
+        guild_level=member.guild.level or calc_guild_level(member.guild.proposal_score),
         role=member.role,
     )
 

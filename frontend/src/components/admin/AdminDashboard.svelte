@@ -60,6 +60,7 @@
     getSupplyHistory,
     mintTokens,
     updateTokenParams,
+    shortenPatchVote,
     type TokenParamHistoryItem,
     type TokenParams,
     type TokenSupply,
@@ -136,7 +137,14 @@
 
   let monetaryMetrics = $state<MonetaryMetrics | null>(null);
   let supplyHistory = $state<SupplySnapshot[]>([]);
-  let policyKey = $state(0); // to trigger re-fetch after adjustment
+
+  // shorten-vote modal
+  let shortenModal = $state(false);
+  let shortenPatchId = $state("");
+  let shortenPatchTitle = $state("");
+  let shortenHours = $state<number | null>(null);
+  let shortenSubmitting = $state(false);
+  let shortenResult = $state<{ action: string; new_voting_ends_at?: string; outcome?: string } | null>(null);
 
   let confirmOpen = $state(false);
   let confirmTitle = $state("");
@@ -225,6 +233,17 @@
       );
     } finally {
       tokenLoading = false;
+    }
+  }
+
+  async function loadMonetaryMetrics() {
+    try {
+      monetaryMetrics = await getMonetaryMetrics();
+    } catch (error) {
+      showNotice(
+        translateError(error, $translator, "common.operationFailed"),
+        "error",
+      );
     }
   }
 
@@ -539,6 +558,29 @@
     confirmText = text;
     confirmAction = action;
     confirmOpen = true;
+  }
+
+  function openShortenModal(patch: AdminPatch) {
+    shortenPatchId = patch.id;
+    shortenPatchTitle = patch.title;
+    shortenHours = null;
+    shortenResult = null;
+    shortenModal = true;
+  }
+
+  async function handleShortenVote() {
+    shortenSubmitting = true;
+    shortenResult = null;
+    try {
+      const result = await shortenPatchVote(shortenPatchId, shortenHours ?? undefined);
+      shortenResult = result;
+      // Refresh the patches list so the status updates
+      patches = await listAdminPatches();
+    } catch (error) {
+      showNotice(translateError(error, $translator, "common.operationFailed"), "error");
+    } finally {
+      shortenSubmitting = false;
+    }
   }
 
   async function deletePost(post: AdminPost) {
@@ -877,6 +919,16 @@
                 </div>
               </div>
               <div class="row-actions">
+                {#if tab === "patches" && (item as AdminPatch).status === "voting"}
+                  {#if isSuperAdmin}
+                    <button
+                      class="btn btn-warning btn-sm"
+                      onclick={() => openShortenModal(item as AdminPatch)}
+                    >
+                      {$translator("admin.shortenVote")}
+                    </button>
+                  {/if}
+                {/if}
                 <a
                   href={tab === "posts" ? `/posts/${item.id}` : `/patches/${item.id}`}
                   target="_blank"
@@ -1159,7 +1211,7 @@
 
         <div class="token-section">
           <h3 class="token-section-title">{$translator("tokens.admin.monetaryTitle")}</h3>
-          <TokenMonetaryPanel onAdjusted={() => (policyKey++)} />
+          <TokenMonetaryPanel onAdjusted={loadMonetaryMetrics} />
         </div>
 
         <div class="token-section">
@@ -1175,6 +1227,7 @@
                 <label>
                   <span>{$translator(`tokens.admin.param.${key}`)}</span>
                   <input class="input" type="number" min="0" bind:value={tokenParamDraft[key]} />
+                  <span class="param-desc-note">{$translator(`tokens.admin.param.${key}_desc`)}</span>
                 </label>
               {/each}
             </div>
@@ -1193,7 +1246,12 @@
           <div class="mint-grid">
             <label>
               <span>{$translator("tokens.admin.mintRecipient")}</span>
-              <input class="input" type="text" bind:value={mintRecipient} />
+              <input
+                class="input"
+                type="email"
+                placeholder={$translator("tokens.admin.mintRecipientPlaceholder")}
+                bind:value={mintRecipient}
+              />
             </label>
             <label>
               <span>{$translator("tokens.admin.mintAmount")}</span>
@@ -1337,11 +1395,68 @@
   </div>
 </GlassModal>
 
-<GlassModal
-  show={unbanModal}
-  title={$translator("admin.unbanTitle", { name: unbanUsername })}
-  onclose={() => (unbanModal = false)}
->
+	<!-- Shorten vote modal -->
+	<GlassModal
+	  show={shortenModal}
+	  title={$translator("admin.shortenVote")}
+	  onclose={() => (shortenModal = false)}
+	>
+	  <div class="shorten-modal">
+	    <p class="shorten-patch-title">{shortenPatchTitle}</p>
+
+	    {#if shortenResult}
+	      <div class="shorten-result">
+	        {#if shortenResult.action === "shortened"}
+	          <p>{$translator("admin.voteShortened", { hours: String(shortenHours ?? 0) })}</p>
+	        {:else}
+	          <p>{$translator("admin.voteEnded", { outcome: shortenResult.outcome ?? "" })}</p>
+	        {/if}
+	      </div>
+	      <div class="shorten-actions">
+	        <button class="btn btn-primary btn-sm" onclick={() => (shortenModal = false)}>
+	          {$translator("common.close")}
+	        </button>
+	      </div>
+	    {:else}
+	      <div class="shorten-form">
+	        <label class="shorten-label">
+	          {$translator("admin.shortenVoteModal")}
+	          <input
+	            class="input"
+	            type="number"
+	            min="1"
+	            max="168"
+	            placeholder="{$translator("admin.shortenVoteModal")}"
+	            bind:value={shortenHours}
+	          />
+	        </label>
+	        <p class="field-note">{$translator("common.optional")}</p>
+	      </div>
+	      <div class="shorten-actions">
+<button
+          class="btn btn-primary btn-sm"
+          onclick={() => { shortenHours = null; handleShortenVote(); }}
+          disabled={shortenSubmitting}
+        >
+          {$translator("admin.endVoteNow")}
+        </button>
+	        <button
+	          class="btn btn-warning btn-sm"
+	          onclick={handleShortenVote}
+	          disabled={shortenSubmitting || !shortenHours}
+	        >
+	          {shortenSubmitting ? $translator("common.processing") : $translator("admin.shortenVote")}
+	        </button>
+	      </div>
+	    {/if}
+	  </div>
+	</GlassModal>
+
+	<GlassModal
+	  show={unbanModal}
+	  title={$translator("admin.unbanTitle", { name: unbanUsername })}
+	  onclose={() => (unbanModal = false)}
+	>
   {#if unbanStatuses.length === 0}
     <p>{$translator("admin.noRestrictions")}</p>
   {:else}
@@ -1864,6 +1979,13 @@
   .mint-grid label > span {
     color: var(--vercel-text-tertiary);
     font-size: 0.75rem;
+  }
+
+  .param-desc-note {
+    color: var(--vercel-text-tertiary);
+    font-size: 0.65rem;
+    line-height: 1.3;
+    opacity: 0.75;
   }
 
   .mint-grid {
