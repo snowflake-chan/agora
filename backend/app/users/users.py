@@ -594,7 +594,7 @@ async def get_user_guild(
     return UserGuildBadge(
         guild_id=member.guild_id,
         guild_name=member.guild.name,
-        guild_level=member.guild.level or calc_guild_level(member.guild.proposal_score),
+        guild_level=member.guild.level or calc_guild_level(member.guild.points),
         role=member.role,
     )
 

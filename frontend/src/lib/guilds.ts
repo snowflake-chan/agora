@@ -9,6 +9,7 @@ export interface Guild {
   president_id: string;
   president_username: string;
   member_count: number;
+  points: number;
   level: number;
   created_at: string;
 }

@@ -17,6 +17,7 @@ class Guild(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     level: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     proposal_score: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    points: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     president_id: Mapped[UUID] = mapped_column(ForeignKey("user.id", ondelete="RESTRICT"))
 
     created_at: Mapped[datetime] = mapped_column(

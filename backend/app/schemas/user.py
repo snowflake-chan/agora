@@ -11,6 +11,8 @@ class UserRead(BaseModel):
     bio: str | None = None
     role: str = "user"
     is_active: bool
+    points: int = 0
+    first_guild_id: uuid.UUID | None = None
 
     model_config = {"from_attributes": True}
 
@@ -24,6 +26,8 @@ class UserPublic(BaseModel):
     follower_count: int = 0
     following_count: int = 0
     is_following: bool = False
+    points: int = 0
+    first_guild_id: uuid.UUID | None = None
 
     model_config = {"from_attributes": True}
 

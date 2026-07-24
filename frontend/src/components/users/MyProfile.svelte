@@ -5,6 +5,7 @@
     ExternalLink,
     LockKeyhole,
     LogOut,
+    StarIcon,
     UserRound,
   } from "@lucide/svelte";
   import { translateError, translator } from "../../lib/i18n";
@@ -234,6 +235,10 @@
         <p class="settings-kicker">{$translator("profile.accountEyebrow")}</p>
         <h1>{$translator("profile.settingsTitle")}</h1>
         <p>{$translator("profile.settingsDescription")}</p>
+        <div class="points-badge">
+          <StarIcon size={14} />
+          <span>{$currentUser.points ?? 0} {$translator("profile.points")}</span>
+        </div>
       </div>
 
       <a class="public-profile-link" href="/users/{$currentUser.id}">
@@ -484,6 +489,20 @@
   .profile-settings {
     --settings-line: var(--vercel-border);
     padding-bottom: 2rem;
+  }
+
+  .points-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-top: 0.35rem;
+    padding: 0.2rem 0.55rem;
+    background: rgba(250, 204, 21, 0.12);
+    border: 1px solid rgba(250, 204, 21, 0.2);
+    border-radius: 9999px;
+    color: #facc15;
+    font-size: 0.6875rem;
+    font-weight: 600;
   }
 
   .profile-heading {

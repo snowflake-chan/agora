@@ -58,7 +58,8 @@ async def _guild_to_read(g: Guild, session: AsyncSession) -> GuildRead:
         president_id=g.president_id,
         president_username=g.president.username if g.president else "",
         member_count=mc,
-        level=g.level or calc_guild_level(g.proposal_score),
+        points=g.points,
+        level=g.level or calc_guild_level(g.points),
         created_at=g.created_at,
     )
 
@@ -113,6 +114,21 @@ async def create_guild(
         await session.flush()
         m = GuildMember(guild_id=g.id, user_id=user.id, role="president")
         session.add(m)
+
+        # First guild for the creator: credit historical points.
+        if not user.first_guild_id:
+            user.first_guild_id = g.id
+            if user.points > 0:
+                from app.db.models.points import PointTransaction
+                g.points = (g.points or 0) + user.points
+                session.add(PointTransaction(
+                    user_id=user.id,
+                    guild_id=g.id,
+                    amount=user.points,
+                    reason="first_guild_credit",
+                    note=f"创建社团，历史积分 {user.points} 归属「{g.name}」",
+                ))
+
         await session.commit()
     except IntegrityError as exc:
         await session.rollback()
@@ -146,7 +162,7 @@ async def my_guild(
     return UserGuildBadge(
         guild_id=m.guild_id,
         guild_name=m.guild.name,
-        guild_level=m.guild.level or calc_guild_level(m.guild.proposal_score),
+        guild_level=m.guild.level or calc_guild_level(m.guild.points),
         role=m.role,
     )
 
@@ -431,6 +447,22 @@ async def approve_request(
     # Guild leveling: lock the new member's uncounted passed proposals
     from app.guilds.leveling import lock_user_proposals
     await lock_user_proposals(session, guild_id, m.user_id)
+
+    # First-guild credit: if this is the user's first ever guild, credit all historical points
+    member_user = await session.get(User, m.user_id)
+    if member_user and not member_user.first_guild_id:
+        member_user.first_guild_id = guild_id
+        g = await session.get(Guild, guild_id)
+        if g and member_user.points > 0:
+            from app.db.models.points import PointTransaction
+            g.points = (g.points or 0) + member_user.points
+            session.add(PointTransaction(
+                user_id=member_user.id,
+                guild_id=guild_id,
+                amount=member_user.points,
+                reason="first_guild_credit",
+                note=f"用户首次加入社团，历史积分 {member_user.points} 归属「{g.name}」",
+            ))
 
     await session.commit()
     return {"ok": True}
@@ -844,13 +876,13 @@ async def guild_level_detail(
     if not guild:
         raise HTTPException(404, detail="GUILD_NOT_FOUND")
 
-    score = guild.proposal_score
+    score = guild.points
     current_level = guild.level or calc_guild_level(score)
 
-    thresholds = {2: 5, 3: 15, 4: 30, 5: 50}
+    thresholds = {2: 20, 3: 50, 4: 100, 5: 200, 6: 350, 7: 500, 8: 700, 9: 1000, 10: 1500}
     next_level = None
     next_threshold = None
-    for lv in range(current_level + 1, 6):
+    for lv in range(current_level + 1, 11):
         if lv in thresholds:
             next_level = lv
             next_threshold = thresholds[lv]
@@ -858,7 +890,7 @@ async def guild_level_detail(
 
     return {
         "guild_id": str(guild_id),
-        "proposal_score": score,
+        "points": score,
         "current_level": current_level,
         "next_level": next_level,
         "next_threshold": next_threshold,

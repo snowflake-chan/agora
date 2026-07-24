@@ -10,6 +10,8 @@ export interface User {
   bio: string | null;
   role: "user" | "moderator" | "super_admin";
   is_active: boolean;
+  points: number;
+  first_guild_id: string | null;
 }
 
 export interface UserPublic {
@@ -20,6 +22,8 @@ export interface UserPublic {
   follower_count: number;
   following_count: number;
   is_following: boolean;
+  points: number;
+  first_guild_id: string | null;
 }
 
 export interface FollowState {

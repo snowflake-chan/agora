@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { PenLineIcon } from "@lucide/svelte";
+  import { PenLineIcon, StarIcon } from "@lucide/svelte";
   import { onMount } from "svelte";
   import { translator } from "../../lib/i18n";
   import { requestLogin } from "../../lib/login";
@@ -27,11 +27,13 @@
     isModerationRestricted,
     onModerationUpdate,
   } from "../../lib/moderation";
+  import { API_BASE } from "../../lib/config";
 
   let { userId }: { userId: string } = $props();
 
   let user = $state<UserPublic | null>(null);
   let items = $state<UserContentItem[]>([]);
+  let guildBadge = $state<{ guild_id: string; guild_name: string; guild_level: number; role: string } | null>(null);
   let loading = $state(true);
   let error = $state<string | null>(null);
   let followingBusy = $state(false);
@@ -57,6 +59,19 @@
         getUser(userId),
         getUserContent(userId),
       ]);
+
+      // Fetch guild badge
+      try {
+        const res = await fetch(`${API_BASE}/users/${userId}/guild`, { credentials: "include" });
+        if (res.ok) {
+          const data = await res.json();
+          guildBadge = data;
+        } else {
+          guildBadge = null;
+        }
+      } catch {
+        guildBadge = null;
+      }
     } catch {
       if (showError) error = "PROFILE_LOAD_FAILED";
     } finally {
@@ -132,6 +147,17 @@
         <p class="profile-kicker">{$translator("profile.kicker")}</p>
         <h1>{displayName(user.nickname, user.username)}</h1>
         <p class="profile-handle">@{user.username}</p>
+        <div class="profile-badges">
+          <span class="points-badge">
+            <StarIcon size={12} />
+            {user.points ?? 0} {$translator("profile.points")}
+          </span>
+          {#if guildBadge}
+            <a href="/guilds/{guildBadge.guild_id}" class="guild-badge" title="Lv.{guildBadge.guild_level} {guildBadge.guild_name}">
+              Lv.{guildBadge.guild_level} {guildBadge.guild_name}
+            </a>
+          {/if}
+        </div>
       </div>
     </div>
 
@@ -305,6 +331,27 @@
   }
   .profile-header h1 { font-size: 1.5rem; font-weight: 650; letter-spacing: 0; }
   .profile-handle { color: var(--vercel-text-tertiary); font-size: .8rem; }
+  .profile-badges {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin-top: 0.4rem;
+  }
+  .points-badge {
+    display: inline-flex; align-items: center; gap: 0.3rem;
+    padding: 0.15rem 0.5rem;
+    background: rgba(250, 204, 21, 0.12);
+    border: 1px solid rgba(250, 204, 21, 0.2);
+    border-radius: 9999px;
+    color: #facc15; font-size: 0.6875rem; font-weight: 600;
+  }
+  .guild-badge {
+    display: inline-flex; align-items: center;
+    padding: 0.15rem 0.5rem;
+    background: rgba(59, 130, 246, 0.12);
+    border: 1px solid rgba(59, 130, 246, 0.2);
+    border-radius: 9999px;
+    color: #60a5fa; font-size: 0.6875rem; font-weight: 600;
+    text-decoration: none; transition: background 0.18s ease;
+  }
+  .guild-badge:hover { background: rgba(59, 130, 246, 0.2); }
   .profile-bio {
     grid-column: 1 / -1; max-width: 42rem; color: var(--vercel-text-secondary);
     font-size: .875rem; line-height: 1.65;

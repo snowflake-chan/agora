@@ -217,6 +217,42 @@ async def _settle_losing_stakes(patch_id: str) -> None:
         logger.exception("settle losing stakes failed for patch %s", patch_id)
 
 
+async def _award_merge_points(session: AsyncSession, patch: PatchModel, patch_title: str) -> None:
+    """Award 10 points to author and 10 to their first guild on merge."""
+    from app.db.models.points import PointTransaction
+    from app.db.models.user import User
+
+    PATCH_MERGE_POINTS = 10
+
+    # Award author
+    author = await session.get(User, patch.author_id)
+    if author:
+        author.points = (author.points or 0) + PATCH_MERGE_POINTS
+        session.add(PointTransaction(
+            user_id=author.id,
+            patch_id=patch.id,
+            amount=PATCH_MERGE_POINTS,
+            reason="patch_merged",
+            note=f"变更「{patch_title}」合并通过",
+        ))
+
+    # Award first guild (if any)
+    if author and author.first_guild_id:
+        guild = await session.get(Guild, author.first_guild_id)
+        if guild:
+            guild.points = (guild.points or 0) + PATCH_MERGE_POINTS
+            session.add(PointTransaction(
+                user_id=author.id,
+                guild_id=guild.id,
+                patch_id=patch.id,
+                amount=PATCH_MERGE_POINTS,
+                reason="patch_merged",
+                note=f"变更「{patch_title}」合并通过，积分归属社团「{guild.name}」",
+            ))
+
+    await session.commit()
+
+
 async def _do_merge_and_deploy(patch_id: str, pr_number: int, patch_title: str | None = None) -> None:
     """Serialize merge recovery, persist its outcome, then deploy once."""
     from app.db import async_session as _async_session
@@ -277,7 +313,7 @@ async def _do_merge_and_deploy(patch_id: str, pr_number: int, patch_title: str |
                     )
                     patch.status = "merged"
 
-                # Token economy: refund deposit + pass reward
+                # Token economy: refund deposit + pass reward + guild leveling
                 if patch.status == "merged":
                     try:
                         from app.tokens import service as token_service
@@ -291,6 +327,8 @@ async def _do_merge_and_deploy(patch_id: str, pr_number: int, patch_title: str |
                         # Settle proposal staking: pay out winning stakes
                         from app.tokens.staking import settle_proposal_stakes
                         await settle_proposal_stakes(session, patch.id, passed=True)
+                        # Award merged-patch points to author and first guild
+                        await _award_merge_points(session, patch, patch_title)
                     except Exception:
                         logger.exception("token economy reward failed for patch %s", patch.id)
             except GitHubPullRequestError as exc:

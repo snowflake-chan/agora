@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
+from uuid import UUID
 
-from sqlalchemy import String
+from sqlalchemy import ForeignKey, Integer, String
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import TIMESTAMP
 
@@ -24,6 +25,8 @@ class User(SQLAlchemyBaseUserTableUUID, Base):
         default=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
+    points: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    first_guild_id: Mapped[UUID | None] = mapped_column(ForeignKey("guild.id", ondelete="SET NULL"), nullable=True)
 
     # Relationships
 

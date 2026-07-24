@@ -19,6 +19,7 @@ from .token_stake import TokenStake, TokenYieldRecord
 from .user_achievement import UserAchievement
 from .paid_question import PaidQuestion
 from .violation_fine import ViolationFine
+from .points import PointTransaction
 
 __all__ = [
     "User",
@@ -51,4 +52,5 @@ __all__ = [
     "UserAchievement",
     "PaidQuestion",
     "ViolationFine",
+    "PointTransaction",
 ]
